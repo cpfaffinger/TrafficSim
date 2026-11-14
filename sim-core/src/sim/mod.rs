@@ -14,6 +14,7 @@
 //! The core has no I/O, no wall clock and no global RNG; identical package, config and seed
 //! give bit-identical states (see [`Simulation::state_checksum`]).
 
+mod actuated;
 mod demand;
 mod junction;
 pub use demand::DemandSource;
@@ -216,6 +217,8 @@ pub struct Simulation {
     history: Vec<perception::History>,
     /// Run metrics (#57, #58, #62), `None` when disabled.
     metrics: Option<Box<Metrics>>,
+    /// Vehicle-actuated signal controllers (#82).
+    actuated: Vec<actuated::Controller>,
     scratch_acc: Vec<f64>,
     log_events: bool,
     lane_change_log: Vec<LaneChangeEvent>,
@@ -267,6 +270,15 @@ impl Simulation {
         } else {
             None
         };
+        if let crate::config::ActuatedSelection::Nodes(nodes) = &config.signal_control.actuated {
+            for id in nodes {
+                let node = net.node_index(id);
+                if !net.signals.controllers.iter().any(|c| Some(c.node) == node) {
+                    return Err(format!("signalControl.actuated: '{id}' has no signal controller"));
+                }
+            }
+        }
+        let actuated = actuated::Controller::build(&net, |id| config.signal_control.actuated.includes(id));
         let segments = net.segment_count();
         let connectors = net.connectors.len();
         Ok(Self {
@@ -293,6 +305,7 @@ impl Simulation {
             seed,
             history: Vec::new(),
             metrics,
+            actuated,
             scratch_acc: Vec::new(),
             log_events: false,
             lane_change_log: Vec::new(),
@@ -506,6 +519,7 @@ impl Simulation {
         self.update_travel_times();
         self.sample_metrics();
         self.net.signals.states_into(self.time, &mut self.signal_state);
+        self.update_actuated();
         self.spawn();
         self.lane_change_phase();
         self.junction_phase();
@@ -823,9 +837,12 @@ impl Simulation {
     /// Aspect of every signal group, in package order (controllers, then groups):
     /// 0 = red, 1 = amber, 2 = green.
     pub fn signal_states(&self) -> Vec<u8> {
-        (0..self.net.signals.group_count())
-            .map(|g| self.net.signals.state(g, self.time) as u8)
-            .collect()
+        let mut states = Vec::new();
+        self.net.signals.states_into(self.time, &mut states);
+        for c in &self.actuated {
+            c.write_states(&mut states);
+        }
+        states.into_iter().map(|s| s as u8).collect()
     }
 
     /// Ids of the signal groups in the order of [`Self::signal_states`].
@@ -913,6 +930,10 @@ impl Simulation {
         }
         for &t in &self.travel_times.smoothed {
             h.f64(t);
+        }
+        for c in &self.actuated {
+            h.u64(c.phase as u64);
+            h.f64(c.since);
         }
         h.f64(c.travel_time_sum);
         h.0

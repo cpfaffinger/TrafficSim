@@ -120,6 +120,59 @@ impl Default for ReRoutingConfig {
     }
 }
 
+/// Which signal controllers run actuated: `true` (all), `false` (none) or a list of node ids.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub enum ActuatedSelection {
+    All(bool),
+    Nodes(Vec<String>),
+}
+
+impl Default for ActuatedSelection {
+    fn default() -> Self {
+        Self::All(false)
+    }
+}
+
+impl ActuatedSelection {
+    pub fn includes(&self, node: &str) -> bool {
+        match self {
+            Self::All(all) => *all,
+            Self::Nodes(nodes) => nodes.iter().any(|n| n == node),
+        }
+    }
+}
+
+/// Vehicle-actuated signal control (#82). Fixed-time plans stay the default.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SignalControlConfig {
+    pub actuated: ActuatedSelection,
+    /// Minimum and maximum green time of a phase (s).
+    pub min_green: f64,
+    pub max_green: f64,
+    /// Gap-out: a phase ends when its detectors have been empty this long (s) and another
+    /// phase has a call; every detection extends the green by this unit extension.
+    pub extension: f64,
+    /// Detector zone length before the stop line (m).
+    pub detector_length: f64,
+    /// All-red clearance between phases (s).
+    pub all_red: f64,
+}
+
+impl Default for SignalControlConfig {
+    fn default() -> Self {
+        Self {
+            actuated: ActuatedSelection::default(),
+            min_green: 7.0,
+            max_green: 60.0,
+            extension: 3.0,
+            detector_length: 30.0,
+            all_red: 2.0,
+        }
+    }
+}
+
 /// Metrics (#57, #58, #62).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -215,6 +268,7 @@ pub struct SimConfig {
     pub vehicle_mix_curves: BTreeMap<String, String>,
     pub re_routing: ReRoutingConfig,
     pub metrics: MetricsConfig,
+    pub signal_control: SignalControlConfig,
 }
 
 impl Default for SimConfig {
@@ -246,6 +300,7 @@ impl Default for SimConfig {
             vehicle_mix_curves: BTreeMap::new(),
             re_routing: ReRoutingConfig::default(),
             metrics: MetricsConfig::default(),
+            signal_control: SignalControlConfig::default(),
         }
     }
 }
@@ -332,6 +387,20 @@ impl SimConfig {
                  maxBuckets ≥ 1 and positive speeds and gaps"
                     .into(),
             );
+        }
+        let s = &self.signal_control;
+        let finite = [
+            s.min_green,
+            s.max_green,
+            s.extension,
+            s.detector_length,
+            s.all_red,
+        ];
+        if !finite.iter().all(|v| v.is_finite() && *v >= 0.0)
+            || s.min_green > s.max_green
+            || s.max_green <= 0.0
+        {
+            return Err("signalControl needs non-negative times with 0 < minGreen ≤ maxGreen".into());
         }
         Ok(())
     }
@@ -472,6 +541,12 @@ mod tests {
             (r#"{"metrics": {"maxBuckets": 0}}"#, "metrics"),
             (r#"{"metrics": {"queueSpeed": -1}}"#, "metrics"),
             (r#"{"metrics": {"tailbackMinLength": -1}}"#, "metrics"),
+            (r#"{"signalControl": {"minGreen": 70}}"#, "signalControl"),
+            (r#"{"signalControl": {"extension": -1}}"#, "signalControl"),
+            (
+                r#"{"signalControl": {"actuated": 3}}"#,
+                "invalid simulation config",
+            ),
         ] {
             let e = SimConfig::from_json(json).unwrap_err();
             assert!(e.contains(needle), "{json}: {e}");

@@ -1701,6 +1701,115 @@ fn experienced_travel_times_track_free_flow_traffic() {
     assert!((t - 20.0).abs() < 0.2, "{t}");
 }
 
+// ---------------------------------------------------------------- #82 actuated signals
+
+/// Signalised crossroads: east-west movements in group "ew" (green 0–27 s), north-south in
+/// "ns" (green 30–57 s) of a 60 s cycle.
+fn signal_crossroads() -> NetBuilder {
+    let mut b = crossroads(NodeControl::Signal, Priority::Signal, Priority::Signal);
+    b.signal("C", 60.0, &[("ew", 0.0, 27.0, 3.0), ("ns", 30.0, 57.0, 3.0)]);
+    let ids: Vec<String> = b.package.connectors.iter().map(|c| c.id.clone()).collect();
+    for id in ids {
+        let group = if id.starts_with('W') || id.starts_with('E') {
+            "ew"
+        } else {
+            "ns"
+        };
+        b.connector_mut(&id).signal_group = Some(group.into());
+    }
+    b
+}
+
+/// Runs `steps` and returns the green durations (s) per group (0 = ew, 1 = ns).
+fn green_times(s: &mut Simulation, steps: usize) -> [Vec<f64>; 2] {
+    let mut greens: [Vec<f64>; 2] = [Vec::new(), Vec::new()];
+    let mut since = [None::<f64>; 2];
+    for _ in 0..steps {
+        s.step();
+        check_invariants(s);
+        let states = s.signal_states();
+        for g in 0..2 {
+            let green = states[g] == SignalState::Green as u8;
+            match (green, since[g]) {
+                (true, None) => since[g] = Some(s.time()),
+                (false, Some(t0)) => {
+                    greens[g].push(s.time() - t0);
+                    since[g] = None;
+                }
+                _ => {}
+            }
+        }
+    }
+    greens
+}
+
+#[test]
+fn actuated_signals_rest_in_green_without_conflicting_calls() {
+    let config = |actuated: &str| {
+        SimConfig::from_json(&format!(
+            r#"{{"defaultDemand": 0, "demand": {{"W": 600, "E": 600}}, "signalControl": {{"actuated": {actuated}}}}}"#
+        ))
+        .unwrap()
+    };
+    let mut fixed = sim(&signal_crossroads(), config("false"));
+    let mut actuated = sim(&signal_crossroads(), config(r#"["C"]"#));
+    fixed.set_event_logging(true);
+    actuated.set_event_logging(true);
+    green_times(&mut fixed, 3000);
+    let greens = green_times(&mut actuated, 3000);
+    assert!(
+        greens[0].is_empty() && greens[1].is_empty(),
+        "ew rests in green: {greens:?}"
+    );
+    assert_eq!(
+        actuated.signal_states(),
+        [SignalState::Green as u8, SignalState::Red as u8]
+    );
+    let stopped = |s: &Simulation| {
+        s.entry_log()
+            .iter()
+            .filter(|e| e.signal == Some(SignalState::Green))
+            .count()
+    };
+    assert_eq!(stopped(&actuated), actuated.entry_log().len());
+    assert!(
+        actuated.stats().mean_travel_time < fixed.stats().mean_travel_time - 2.0,
+        "{:?} vs {:?}",
+        actuated.stats(),
+        fixed.stats()
+    );
+}
+
+#[test]
+fn actuated_greens_gap_out_and_respect_min_and_max_green() {
+    let config = SimConfig::from_json(
+        r#"{"defaultDemand": 0, "demand": {"W": 500, "E": 500, "N": 100, "S": 100},
+            "signalControl": {"actuated": true, "minGreen": 6, "maxGreen": 40, "extension": 2.5}}"#,
+    )
+    .unwrap();
+    let mut s = sim(&signal_crossroads(), config);
+    let greens = green_times(&mut s, 12_000);
+    assert!(greens[0].len() > 5 && greens[1].len() > 5, "{greens:?}");
+    // Min green always; max green whenever another phase was waiting (a phase without a
+    // conflicting call may rest beyond it).
+    assert!(greens.iter().flatten().all(|&g| g >= 6.0 - 1e-6), "{greens:?}");
+    let all: Vec<f64> = greens.iter().flatten().copied().collect();
+    let within = all.iter().filter(|&&g| g <= 40.0 + 0.2).count();
+    assert!(within * 10 >= all.len() * 9, "{greens:?}");
+    // The light north-south traffic gaps out early, the busy east-west phase runs longer.
+    let mean = |v: &[f64]| v.iter().sum::<f64>() / v.len() as f64;
+    assert!(mean(&greens[1]) < mean(&greens[0]), "{greens:?}");
+    let c = &s.actuated[0];
+    assert!(c.gap_outs > 0 && c.switches > 10, "{c:?}");
+    assert!(s.stats().arrived > 300, "{:?} {greens:?}", s.stats());
+    // Unknown actuated nodes are rejected.
+    let bad = SimConfig::from_json(r#"{"signalControl": {"actuated": ["W"]}}"#).unwrap();
+    let e = Simulation::new(signal_crossroads().network(), bad, 1)
+        .err()
+        .unwrap();
+    assert!(e.contains("no signal controller"), "{e}");
+}
+
 // ---------------------------------------------------------------- #57 lane cells
 
 use crate::metrics::cells::LaneCells;

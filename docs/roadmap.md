@@ -11,11 +11,11 @@ Progress is tracked live on the [milestones page](https://github.com/cpfaffinger
 | 2 | [Phase 2 — Road network model & OSM compiler](https://github.com/cpfaffinger/TrafficSim/milestone/3) | [#21](https://github.com/cpfaffinger/TrafficSim/issues/21) | ✅ done | Lane-accurate domain model and the OSM→lane-graph compiler, persisted as immutable baselines and delivered as a versioned network package. |
 | 3 | [Phase 3 — 3D viewer](https://github.com/cpfaffinger/TrafficSim/milestone/4) | [#32](https://github.com/cpfaffinger/TrafficSim/issues/32) | ✅ done | Search a place, select an area, import it and explore the lane-accurate road network in 3D with inspector and attribution. |
 | 4 | [Phase 4 — Simulation core v1](https://github.com/cpfaffinger/TrafficSim/milestone/5) | [#39](https://github.com/cpfaffinger/TrafficSim/issues/39) | ✅ done | Vehicles drive on the imported lane graph: IDM, routing, signals, priorities, MOBIL lane changes, rendered live from the worker. |
-| 5 | [Phase 5 — Demand & vehicle diversity](https://github.com/cpfaffinger/TrafficSim/milestone/6) | [#49](https://github.com/cpfaffinger/TrafficSim/issues/49) | open | Realistic demand (commuters, trucks, time-of-day) and heterogeneous vehicles and drivers (reaction times, attentiveness). |
-| 6 | [Phase 6 — Metrics & heatmaps](https://github.com/cpfaffinger/TrafficSim/milestone/7) | [#56](https://github.com/cpfaffinger/TrafficSim/issues/56) | open | Aggregated lane-cell and junction metrics rendered as heatmaps over time; results persisted. |
+| 5 | [Phase 5 — Demand & vehicle diversity](https://github.com/cpfaffinger/TrafficSim/milestone/6) | [#49](https://github.com/cpfaffinger/TrafficSim/issues/49) | ✅ done | Realistic demand (commuters, trucks, time-of-day) and heterogeneous vehicles and drivers (reaction times, attentiveness). |
+| 6 | [Phase 6 — Metrics & heatmaps](https://github.com/cpfaffinger/TrafficSim/milestone/7) | [#56](https://github.com/cpfaffinger/TrafficSim/issues/56) | ✅ done | Aggregated lane-cell and junction metrics rendered as heatmaps over time; results persisted. |
 | 7 | [Phase 7 — Network editor](https://github.com/cpfaffinger/TrafficSim/milestone/8) | [#63](https://github.com/cpfaffinger/TrafficSim/issues/63) | ✅ done | City-builder style editing: lanes, turn lanes, speed limits, restrictions, signal plans, new roads — as changesets with undo/redo. |
-| 8 | [Phase 8 — Scenarios & comparison](https://github.com/cpfaffinger/TrafficSim/milestone/9) | [#71](https://github.com/cpfaffinger/TrafficSim/issues/71) | open | Scenarios (baseline + changeset + demand + seed), batch runs, A/B heatmap comparison, reports and exports. |
-| 9 | [Phase 9 — Scale & performance](https://github.com/cpfaffinger/TrafficSim/milestone/10) | [#77](https://github.com/cpfaffinger/TrafficSim/issues/77) | open | Motorway and city scale: performance budgets, SharedArrayBuffer, LOD, actuated signals, WebGPU, native batch runner. |
+| 8 | [Phase 8 — Scenarios & comparison](https://github.com/cpfaffinger/TrafficSim/milestone/9) | [#71](https://github.com/cpfaffinger/TrafficSim/issues/71) | ✅ done | Scenarios (baseline + changeset + demand + seed), batch runs, A/B heatmap comparison, reports and exports. |
+| 9 | [Phase 9 — Scale & performance](https://github.com/cpfaffinger/TrafficSim/milestone/10) | [#77](https://github.com/cpfaffinger/TrafficSim/issues/77) | ✅ done | Motorway and city scale: performance budgets, SharedArrayBuffer, LOD, actuated signals, WebGPU, native batch runner. |
 | 10 | [Phase 10 — Road signs & follow-ups](https://github.com/cpfaffinger/TrafficSim/milestone/11) | [#99](https://github.com/cpfaffinger/TrafficSim/issues/99) | open | Traffic signs end to end (OSM sign tags, signed priority roads, 3D sign models) and follow-ups found while building phases 4–8. Exit: signs are read from all common OSM taggings, rendered in 3D, and the known editor/sim limitations are resolved. |
 
 ## Phase 0 — Foundation & walking skeleton
@@ -108,15 +108,15 @@ Every vehicle has a type and a driver with individual parameters; demand follows
 
 Epic: [#49](https://github.com/cpfaffinger/TrafficSim/issues/49)
 
-- [ ] [#50](https://github.com/cpfaffinger/TrafficSim/issues/50) Vehicle type catalogue as data
-- [ ] [#51](https://github.com/cpfaffinger/TrafficSim/issues/51) Driver profiles with parameter distributions
-- [ ] [#52](https://github.com/cpfaffinger/TrafficSim/issues/52) Reaction time and distraction model
-- [ ] [#53](https://github.com/cpfaffinger/TrafficSim/issues/53) Demand model: zones, OD matrix, time-of-day curves
-- [ ] [#54](https://github.com/cpfaffinger/TrafficSim/issues/54) Demand editor UI
-- [ ] [#55](https://github.com/cpfaffinger/TrafficSim/issues/55) Commuter re-routing on experienced travel times
-- [ ] [#111](https://github.com/cpfaffinger/TrafficSim/issues/111) Road-class demand profiles: default volumes and time-of-day curves per road type
-- [ ] [#112](https://github.com/cpfaffinger/TrafficSim/issues/112) Residential trip generation: access roads of residential areas as sources and sinks
-- [ ] [#113](https://github.com/cpfaffinger/TrafficSim/issues/113) Default demand generated at import and editable per scenario
+- [x] [#50](https://github.com/cpfaffinger/TrafficSim/issues/50) Vehicle type catalogue as data
+- [x] [#51](https://github.com/cpfaffinger/TrafficSim/issues/51) Driver profiles with parameter distributions
+- [x] [#52](https://github.com/cpfaffinger/TrafficSim/issues/52) Reaction time and distraction model
+- [x] [#53](https://github.com/cpfaffinger/TrafficSim/issues/53) Demand model: zones, OD matrix, time-of-day curves
+- [x] [#54](https://github.com/cpfaffinger/TrafficSim/issues/54) Demand editor UI
+- [x] [#55](https://github.com/cpfaffinger/TrafficSim/issues/55) Commuter re-routing on experienced travel times
+- [x] [#111](https://github.com/cpfaffinger/TrafficSim/issues/111) Road-class demand profiles: default volumes and time-of-day curves per road type
+- [x] [#112](https://github.com/cpfaffinger/TrafficSim/issues/112) Residential trip generation: access roads of residential areas as sources and sinks
+- [x] [#113](https://github.com/cpfaffinger/TrafficSim/issues/113) Default demand generated at import and editable per scenario
 
 ## Phase 6 — Metrics & heatmaps
 
@@ -124,12 +124,12 @@ Make congestion visible: tailbacks, platoons, stop-and-go waves as lane-accurate
 
 Epic: [#56](https://github.com/cpfaffinger/TrafficSim/issues/56)
 
-- [ ] [#57](https://github.com/cpfaffinger/TrafficSim/issues/57) Lane-cell aggregation in the sim core
-- [ ] [#58](https://github.com/cpfaffinger/TrafficSim/issues/58) Junction metrics: queue length, wait time, level of service
-- [ ] [#59](https://github.com/cpfaffinger/TrafficSim/issues/59) Heatmap rendering: lane ribbons and density overlay
-- [ ] [#60](https://github.com/cpfaffinger/TrafficSim/issues/60) Timeline and replay of aggregated buckets
+- [x] [#57](https://github.com/cpfaffinger/TrafficSim/issues/57) Lane-cell aggregation in the sim core
+- [x] [#58](https://github.com/cpfaffinger/TrafficSim/issues/58) Junction metrics: queue length, wait time, level of service
+- [x] [#59](https://github.com/cpfaffinger/TrafficSim/issues/59) Heatmap rendering: lane ribbons and density overlay
+- [x] [#60](https://github.com/cpfaffinger/TrafficSim/issues/60) Timeline and replay of aggregated buckets
 - [x] [#61](https://github.com/cpfaffinger/TrafficSim/issues/61) Persist run results (API + PostGIS)
-- [ ] [#62](https://github.com/cpfaffinger/TrafficSim/issues/62) Phenomena detection: tailbacks and stop-and-go waves
+- [x] [#62](https://github.com/cpfaffinger/TrafficSim/issues/62) Phenomena detection: tailbacks and stop-and-go waves
 
 ## Phase 7 — Network editor
 
@@ -153,10 +153,11 @@ Answer "what if?" questions: compare variants quantitatively and visually.
 Epic: [#71](https://github.com/cpfaffinger/TrafficSim/issues/71)
 
 - [x] [#72](https://github.com/cpfaffinger/TrafficSim/issues/72) Scenario management (CRUD)
-- [ ] [#73](https://github.com/cpfaffinger/TrafficSim/issues/73) Batch runs with multiple seeds
-- [ ] [#74](https://github.com/cpfaffinger/TrafficSim/issues/74) A/B heatmap diff view
+- [x] [#73](https://github.com/cpfaffinger/TrafficSim/issues/73) Batch runs with multiple seeds
+- [x] [#74](https://github.com/cpfaffinger/TrafficSim/issues/74) A/B heatmap diff view
 - [x] [#75](https://github.com/cpfaffinger/TrafficSim/issues/75) KPI report and exports (CSV, GeoJSON with ODbL notice)
 - [x] [#76](https://github.com/cpfaffinger/TrafficSim/issues/76) Read-only shareable scenario links
+- [x] [#115](https://github.com/cpfaffinger/TrafficSim/issues/115) Automatic scenario generation at import from OSM land use, buildings and POIs
 
 ## Phase 9 — Scale & performance
 
@@ -164,13 +165,13 @@ Reach and exceed the quality targets (10k+ vehicles, 60 fps) and support motorwa
 
 Epic: [#77](https://github.com/cpfaffinger/TrafficSim/issues/77)
 
-- [ ] [#78](https://github.com/cpfaffinger/TrafficSim/issues/78) Benchmark harness and performance budgets
+- [x] [#78](https://github.com/cpfaffinger/TrafficSim/issues/78) Benchmark harness and performance budgets
 - [x] [#79](https://github.com/cpfaffinger/TrafficSim/issues/79) SharedArrayBuffer vehicle state sharing
 - [x] [#80](https://github.com/cpfaffinger/TrafficSim/issues/80) Rendering LOD and culling
-- [ ] [#81](https://github.com/cpfaffinger/TrafficSim/issues/81) Motorway scenarios: ramps, merges, weaving
-- [ ] [#82](https://github.com/cpfaffinger/TrafficSim/issues/82) Actuated traffic signals
+- [x] [#81](https://github.com/cpfaffinger/TrafficSim/issues/81) Motorway scenarios: ramps, merges, weaving
+- [x] [#82](https://github.com/cpfaffinger/TrafficSim/issues/82) Actuated traffic signals
 - [x] [#83](https://github.com/cpfaffinger/TrafficSim/issues/83) WebGPU renderer evaluation
-- [ ] [#84](https://github.com/cpfaffinger/TrafficSim/issues/84) Headless native batch runner (server-side)
+- [x] [#84](https://github.com/cpfaffinger/TrafficSim/issues/84) Headless native batch runner (server-side)
 
 ## Phase 10 — Road signs & follow-ups
 
@@ -188,7 +189,8 @@ Epic: [#99](https://github.com/cpfaffinger/TrafficSim/issues/99)
 - [x] [#107](https://github.com/cpfaffinger/TrafficSim/issues/107) Editor: warn before discarding unsaved edits when loading another network
 - [ ] [#108](https://github.com/cpfaffinger/TrafficSim/issues/108) Sim: continuous lateral lane-change motion
 - [ ] [#109](https://github.com/cpfaffinger/TrafficSim/issues/109) Sim: conflict areas instead of single conflict points
-- [ ] [#110](https://github.com/cpfaffinger/TrafficSim/issues/110) Polygon import areas (non-rectangular selections)
+- [x] [#110](https://github.com/cpfaffinger/TrafficSim/issues/110) Polygon import areas (non-rectangular selections)
+- [x] [#114](https://github.com/cpfaffinger/TrafficSim/issues/114) Import management and drawing UX: names, delete, basemap in preview, auto-closing polygon
 
 ## Backlog (unscheduled)
 

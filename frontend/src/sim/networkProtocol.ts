@@ -14,6 +14,8 @@ export type ToNetworkWorker =
   | { type: 'pause' }
   | { type: 'speed'; factor: number }
   | { type: 'demand'; node: string; vehiclesPerHour: number }
+  /** Requests the run results (summary + all retained lane-cell buckets) for saving (#61, #73). */
+  | { type: 'results' }
   | { type: 'dispose' };
 
 /** Statistics reported by sim-core `statsJson()`. */
@@ -49,6 +51,10 @@ export interface NetworkFrame {
 export type FromNetworkWorker =
   | { type: 'ready'; timeStep: number; signalGroupIds: string[]; entries: string[] }
   | NetworkFrame
+  /** Newly finished lane-cell buckets (`lane-cells-v1`, #59/#60). */
+  | { type: 'cells'; blob: ArrayBuffer }
+  /** Run results: sim-core summary JSON and the lane-cell history. */
+  | { type: 'results'; summaryJson: string; cells: ArrayBuffer; time: number }
   /** A (new) shared snapshot buffer; frames then carry no snapshot copy (see snapshotBuffer.ts). */
   | { type: 'buffer'; buffer: SharedArrayBuffer }
   | { type: 'error'; message: string };

@@ -621,3 +621,41 @@ dl.stats dd {
 .import-name {
   margin-top: 8px;
 }
+
+/* Heatmap legend and timeline (#59, #60). */
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  margin: 6px 0;
+}
+
+.legend-bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+}
+
+.legend-bar.good-high {
+  background: linear-gradient(to right, #e5484d, #f5a524, #30a46c);
+}
+
+.legend-bar.good-low {
+  background: linear-gradient(to right, #30a46c, #f5a524, #e5484d);
+}
+
+.timeline input[type='range'] {
+  width: 100%;
+}
+
+.timeline-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.timeline-controls span {
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+}

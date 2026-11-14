@@ -49,6 +49,10 @@ export class NetworkSimClient {
     this.worker.postMessage({ type: 'demand', node, vehiclesPerHour });
   }
 
+  requestResults(): void {
+    this.worker.postMessage({ type: 'results' });
+  }
+
   dispose(): void {
     this.listeners.clear();
     this.worker.postMessage({ type: 'dispose' });

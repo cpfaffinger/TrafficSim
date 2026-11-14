@@ -16,6 +16,8 @@ import type { PickTarget } from '../network/meshData';
 import type { BBox, NetworkPackage } from '../network/types';
 import { NetworkScene, type BasemapStatus } from '../scene/NetworkScene';
 import { useNetworkSimulation } from './useNetworkSimulation';
+import { useHeatmap } from './useHeatmap';
+import { HeatmapPanel } from '../components/HeatmapPanel';
 import { ScenarioPanel } from '../scenarios/ScenarioPanel';
 import { SharedScenarioPanel } from '../scenarios/SharedScenarioPanel';
 import { useNetworkEditor } from './useNetworkEditor';
@@ -89,7 +91,8 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
 
   const editor = useNetworkEditor({ sceneRef, index, client: scenarios, enabled: !readOnly && index !== null, showPackage });
   const openScenario = editor.session.scenario;
-  const sim = useNetworkSimulation(pkg, simSettings, sceneRef, openScenario?.demand ?? undefined);
+  const heat = useHeatmap(sceneRef, pkg);
+  const sim = useNetworkSimulation(pkg, simSettings, sceneRef, openScenario?.demand ?? undefined, heat.onCells);
 
   // Data basis of the generated scenarios (#115).
   const baselineForAnalysis = pkg?.baselineId ?? null;
@@ -169,6 +172,24 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
             onReset={sim.restart}
             onSpeed={sim.setSpeed}
             onSettings={setSimSettings}
+          />
+        )}
+        {pkg && (
+          <HeatmapPanel
+            enabled={heat.enabled}
+            metric={heat.metric}
+            smooth={heat.smooth}
+            range={heat.range}
+            bucket={heat.bucket}
+            live={heat.live}
+            replaying={heat.replaying}
+            timeOfDay={heat.timeOfDay}
+            onEnabled={heat.setEnabled}
+            onMetric={heat.setMetric}
+            onSmooth={heat.setSmooth}
+            onBucket={heat.setBucket}
+            onLive={heat.goLive}
+            onReplay={heat.replay}
           />
         )}
         {editing && (

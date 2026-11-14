@@ -12,7 +12,13 @@ export function useNetworkSimulation(
   settings: SimulationSettings,
   sceneRef: RefObject<NetworkScene | null>,
   scenarioDemand?: unknown,
+  onCells?: (blob: ArrayBuffer) => void,
+  onResults?: (results: { summaryJson: string; cells: ArrayBuffer; time: number }) => void,
 ) {
+  const onCellsRef = useRef(onCells);
+  onCellsRef.current = onCells;
+  const onResultsRef = useRef(onResults);
+  onResultsRef.current = onResults;
   const clientRef = useRef<NetworkSimClient | null>(null);
   const [ready, setReady] = useState(false);
   const [running, setRunning] = useState(false);
@@ -55,6 +61,12 @@ export function useNetworkSimulation(
           if (message.stats) setStats(message.stats);
           break;
         }
+        case 'cells':
+          onCellsRef.current?.(message.blob);
+          break;
+        case 'results':
+          onResultsRef.current?.(message);
+          break;
         case 'error':
           setError(message.message);
           setRunning(false);
@@ -92,5 +104,7 @@ export function useNetworkSimulation(
     clientRef.current?.setSpeed(factor);
   }, []);
 
-  return { ready, running, speed, time, timeOfDay, vehicles, stats, error, play, pause, restart, setSpeed };
+  const requestResults = useCallback(() => clientRef.current?.requestResults(), []);
+
+  return { ready, running, speed, time, timeOfDay, vehicles, stats, error, play, pause, restart, setSpeed, requestResults, generation };
 }

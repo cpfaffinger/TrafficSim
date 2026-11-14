@@ -12,6 +12,7 @@ import { buildNetworkMeshes, type NetworkMeshes } from '../network/networkMeshes
 import type { BBox, GeoOrigin, NetworkPackage } from '../network/types';
 import { disposeGroup, subsetGeometry, toBufferGeometry } from './geometry';
 import { RtsCameraController } from './RtsCameraController';
+import { HeatmapLayer } from './HeatmapLayer';
 import { SignLayer } from './SignLayer';
 import { SimulationLayer } from './SimulationLayer';
 
@@ -73,6 +74,8 @@ export class NetworkScene {
   private readonly highlightGroup = new THREE.Group();
   private readonly simulation = new SimulationLayer();
   private readonly signs = new SignLayer();
+  private readonly heatmap = new HeatmapLayer();
+  private currentPackage: NetworkPackage | null = null;
   private lodMeshes: { markings: THREE.Object3D[]; buildings: THREE.Object3D[] } = { markings: [], buildings: [] };
   private lod: LodState = lodFor(0);
   private readonly lastCamera = new THREE.Matrix4();
@@ -111,7 +114,7 @@ export class NetworkScene {
     this.ground.rotation.x = -Math.PI / 2;
     this.ground.position.y = -0.3;
     this.ground.scale.set(20_000, 20_000, 1);
-    this.scene.add(this.ground, this.basemapGroup, this.networkGroup, this.tunnelGroup, this.overlayGroup, this.highlightGroup, this.simulation.group, this.signs.group);
+    this.scene.add(this.ground, this.basemapGroup, this.networkGroup, this.tunnelGroup, this.overlayGroup, this.highlightGroup, this.simulation.group, this.signs.group, this.heatmap.group);
 
     this.controls = new RtsCameraController(this.camera, this.renderer.domElement, (x, y) => this.pick(x, y));
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -133,6 +136,24 @@ export class NetworkScene {
     this.dirty = true;
   }
 
+  /** Prepares heatmap ribbons for a lane-cell layout (#59); returns the colour array to fill. */
+  prepareHeatmap(lanes: readonly import('../metrics/laneCells').LaneRow[], cellCount: number, cellLength: number): Float32Array | null {
+    if (!this.currentPackage) return null;
+    this.heatmap.prepare(this.currentPackage, lanes, cellCount, cellLength);
+    return this.heatmap.colorArray;
+  }
+
+  /** Uploads heatmap colours written into the array returned by `prepareHeatmap`. */
+  commitHeatmap(): void {
+    this.heatmap.commit();
+    this.dirty = true;
+  }
+
+  setHeatmapVisible(visible: boolean): void {
+    this.heatmap.setVisible(visible);
+    this.dirty = true;
+  }
+
   clearSimulation(): void {
     this.simulation.clear();
     this.dirty = true;
@@ -146,6 +167,8 @@ export class NetworkScene {
 
   loadPackage(pkg: NetworkPackage, options: { keepCamera?: boolean } = {}): void {
     this.networkBbox = pkg.bbox;
+    this.currentPackage = pkg;
+    this.heatmap.clear();
     const keepCamera = options.keepCamera === true && this.meshes !== null;
     this.clearNetwork();
     this.simulation.clear();

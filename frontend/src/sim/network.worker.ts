@@ -18,6 +18,16 @@ let last = performance.now();
 let lastStats = 0;
 let ready: Promise<unknown> | null = null;
 let shared: SnapshotBuffer | null = null;
+let sentBuckets = 0;
+
+function postCells(): void {
+  if (!sim) return;
+  const finished = sim.laneCellBuckets;
+  if (finished <= sentBuckets) return;
+  const blob = sim.laneCellsSince(sentBuckets);
+  sentBuckets = finished;
+  post({ type: 'cells', blob: blob.buffer as ArrayBuffer }, [blob.buffer as ArrayBuffer]);
+}
 const useShared = sharedMemoryAvailable();
 
 const post = (message: FromNetworkWorker, transfer: Transferable[] = []) =>
@@ -53,6 +63,7 @@ function tick(): void {
     carry = steps < result.steps ? 0 : result.carry;
     if (steps > 0) sim.step(steps);
     postFrame();
+    postCells();
   }
   last = now;
 }
@@ -74,6 +85,7 @@ self.onmessage = async (event: MessageEvent<ToNetworkWorker>) => {
         delete config.demandScale;
         const resolved = scaleDemand(config, scale, JSON.parse(builtinRoadClassProfilesJson()) as Record<string, { volumePerLane: number }>);
         sim = new NetworkSim(packageJson, JSON.stringify(resolved), BigInt(Math.max(0, Math.floor(seed))));
+        sentBuckets = 0;
         carry = 0;
         const groups = JSON.parse(sim.signalGroupIdsJson()) as string[];
         const pkg = JSON.parse(packageJson) as { nodes: { id: string; control: string }[]; links: { from: string }[] };
@@ -97,6 +109,12 @@ self.onmessage = async (event: MessageEvent<ToNetworkWorker>) => {
       case 'demand':
         sim?.setDemand(message.node, message.vehiclesPerHour);
         break;
+      case 'results': {
+        if (!sim) break;
+        const cells = sim.laneCellsHistory();
+        post({ type: 'results', summaryJson: sim.summaryJson(), cells: cells.buffer as ArrayBuffer, time: sim.time }, [cells.buffer as ArrayBuffer]);
+        break;
+      }
       case 'dispose':
         sim?.free();
         sim = null;

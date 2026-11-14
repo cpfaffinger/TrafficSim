@@ -6,6 +6,7 @@ import { ModeTabs, type AppMode } from './components/ModeTabs';
 import { mergeAttributions } from './lib/attribution';
 import { NetworkViewer } from './views/NetworkViewer';
 import { RingDemo } from './views/RingDemo';
+import { shareTokenFrom } from './scenarios/shareUrl';
 
 export function App() {
   const api = useMemo(() => new ApiClient(), []);
@@ -15,6 +16,7 @@ export function App() {
   const [metaAttributions, setMetaAttributions] = useState<string[]>([]);
   const [viewerAttributions, setViewerAttributions] = useState<string[]>([]);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const shareToken = useMemo(() => shareTokenFrom(window.location.search), []);
 
   // Backend status and metadata.
   useEffect(() => {
@@ -54,7 +56,7 @@ export function App() {
       </header>
       <main className="app-main" id={`panel-${mode}`} role="tabpanel" aria-labelledby={`tab-${mode}`}>
         {mode === 'network' ? (
-          <NetworkViewer api={api} onAttributions={setViewerAttributions} />
+          <NetworkViewer api={api} onAttributions={setViewerAttributions} shareToken={shareToken} />
         ) : (
           <RingDemo status={status} version={version} />
         )}

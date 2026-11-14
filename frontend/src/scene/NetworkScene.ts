@@ -3,7 +3,7 @@ import { buildBasemapMeshes } from '../basemap/basemapMeshes';
 import { loadBasemap } from '../basemap/loader';
 import { frameRect } from '../lib/rtsCamera';
 import { nextPick, uniqueOwners, type PreviousPick } from '../lib/picking';
-import { LocalTangentPlane, toScene } from '../network/geo';
+import { fromScene, LocalTangentPlane, toScene } from '../network/geo';
 import type { MeshData, PickTarget } from '../network/meshData';
 import { buildNetworkMeshes, type NetworkMeshes } from '../network/networkMeshes';
 import type { BBox, GeoOrigin, NetworkPackage } from '../network/types';
@@ -32,6 +32,14 @@ export interface NetworkSceneCallbacks {
   onPick?: (target: PickTarget | null) => void;
   onBasemap?: (status: BasemapStatus, attribution: string | null) => void;
 }
+
+/** A click on the scene: the ground point under the cursor in package ENU metres (null above the horizon). */
+export interface SceneClick {
+  ground: [east: number, north: number] | null;
+}
+
+/** Returns true when the click was consumed (e.g. by a drawing tool) and must not pick. */
+export type SceneClickHandler = (click: SceneClick) => boolean;
 
 interface Pickable {
   mesh: THREE.Mesh;
@@ -66,6 +74,7 @@ export class NetworkScene {
   private basemapAbort: AbortController | null = null;
   private origin: GeoOrigin | null = null;
   private basemapKey = '';
+  private clickHandler: SceneClickHandler | null = null;
 
   constructor(
     private readonly container: HTMLElement,
@@ -97,8 +106,12 @@ export class NetworkScene {
     this.animate();
   }
 
-  /** Replaces the displayed network. Basemap tiles are (re)loaded around it in the background. */
-  loadPackage(pkg: NetworkPackage): void {
+  /**
+   * Replaces the displayed network. Basemap tiles are (re)loaded around it in the background.
+   * `keepCamera` keeps the view (e.g. when showing an edited version of the same area).
+   */
+  loadPackage(pkg: NetworkPackage, options: { keepCamera?: boolean } = {}): void {
+    const keepCamera = options.keepCamera === true && this.meshes !== null;
     this.clearNetwork();
     this.origin = pkg.origin;
     this.meshes = buildNetworkMeshes(pkg);
@@ -128,7 +141,7 @@ export class NetworkScene {
     const rect: [number, number, number, number] = [minE, -maxN, maxE, -minN];
     const margin = 500;
     this.controls.limits = { ...this.controls.limits, bounds: [rect[0] - margin, rect[1] - margin, rect[2] + margin, rect[3] + margin] };
-    this.controls.setState(frameRect(rect, (this.camera.fov * Math.PI) / 180, this.camera.aspect, this.controls.limits));
+    if (!keepCamera) this.controls.setState(frameRect(rect, (this.camera.fov * Math.PI) / 180, this.camera.aspect, this.controls.limits));
     this.loadBasemapFor(pkg.bbox, pkg.origin);
     this.dirty = true;
   }
@@ -199,6 +212,27 @@ export class NetworkScene {
     material.dispose();
   }
 
+  /** Routes clicks to a tool before picking (null restores plain picking). */
+  setClickHandler(handler: SceneClickHandler | null): void {
+    this.clickHandler = handler;
+  }
+
+  /** Adds editor overlays (drawn above the network, disposed by their owner). */
+  addOverlay(object: THREE.Object3D): void {
+    this.scene.add(object);
+    this.dirty = true;
+  }
+
+  removeOverlay(object: THREE.Object3D): void {
+    this.scene.remove(object);
+    this.dirty = true;
+  }
+
+  /** Requests a redraw after overlays changed. */
+  invalidate(): void {
+    this.dirty = true;
+  }
+
   resetView(): void {
     if (!this.meshes) return;
     const [minE, minN, maxE, maxN] = this.meshes.extent;
@@ -265,6 +299,11 @@ export class NetworkScene {
   }
 
   private pick(clientX: number, clientY: number): void {
+    if (this.clickHandler) {
+      const g = this.controls.groundAt(clientX, clientY);
+      const ground = g ? fromScene(g[0], 0, g[1]) : null;
+      if (this.clickHandler({ ground: ground ? [ground[0], ground[1]] : null })) return;
+    }
     if (!this.meshes) return;
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);

@@ -1,23 +1,35 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ScenarioClient } from '../api/scenarioClient';
 import { ImportPanel, type ViewerApi } from '../components/ImportPanel';
 import { InspectorPanel } from '../components/InspectorPanel';
 import { NetworkSummaryPanel } from '../components/NetworkSummaryPanel';
 import { ViewToolbar } from '../components/ViewToolbar';
+import { DrawRoadPanel } from '../editor/components/DrawRoadPanel';
+import { EditorPanel } from '../editor/components/EditorPanel';
+import { EditorToolbar } from '../editor/components/EditorToolbar';
+import { carrySelection } from '../editor/selection';
 import { mergeAttributions } from '../lib/attribution';
 import { inspect, PackageIndex } from '../network/inspect';
 import type { PickTarget } from '../network/meshData';
 import type { BBox, NetworkPackage } from '../network/types';
 import { NetworkScene, type BasemapStatus } from '../scene/NetworkScene';
+import { ScenarioPanel } from '../scenarios/ScenarioPanel';
+import { SharedScenarioPanel } from '../scenarios/SharedScenarioPanel';
+import { useNetworkEditor } from './useNetworkEditor';
+import '../editor/editor.css';
 
 export interface NetworkViewerProps {
   api: ViewerApi;
   onAttributions: (attributions: string[]) => void;
+  /** Opens a shared scenario read-only (#76): no import and no edit tools. */
+  shareToken?: string | null;
+  scenarioClient?: ScenarioClient;
 }
 
 const language = () => (typeof navigator !== 'undefined' ? navigator.language.slice(0, 2) : undefined);
 
-/** Phase 3 network viewer: import panel, 3D scene, inspector (glue only; logic lives in lib/ and network/). */
-export function NetworkViewer({ api, onAttributions }: NetworkViewerProps) {
+/** Network viewer and editor: import panel, 3D scene, inspector, scenarios and edit tools (glue only; logic lives in lib/, network/, editor/). */
+export function NetworkViewer({ api, onAttributions, shareToken = null, scenarioClient }: NetworkViewerProps) {
   const sceneHost = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<NetworkScene | null>(null);
   const [pkg, setPkg] = useState<NetworkPackage | null>(null);
@@ -26,6 +38,8 @@ export function NetworkViewer({ api, onAttributions }: NetworkViewerProps) {
   const [geocoderAttribution, setGeocoderAttribution] = useState<string | null>(null);
   const [showTunnels, setShowTunnels] = useState(true);
   const [showBasemap, setShowBasemap] = useState(true);
+  const readOnly = shareToken !== null;
+  const scenarios = useMemo(() => scenarioClient ?? new ScenarioClient(), [scenarioClient]);
 
   useEffect(() => {
     if (!sceneHost.current) return;
@@ -52,11 +66,31 @@ export function NetworkViewer({ api, onAttributions }: NetworkViewerProps) {
     );
   }, [pkg, basemap.attribution, geocoderAttribution, onAttributions]);
 
-  const onPackage = useCallback((p: NetworkPackage) => {
-    sceneRef.current?.loadPackage(p);
+  // Edited packages replace the displayed one in place: camera and (by OSM ids) selection are kept.
+  const shown = useRef<{ index: PackageIndex | null; target: PickTarget | null }>({ index: null, target: null });
+  useEffect(() => {
+    shown.current = { index, target };
+  }, [index, target]);
+  const showPackage = useCallback((p: NetworkPackage, keepCamera: boolean) => {
+    const before = shown.current;
+    const next = keepCamera && before.index ? carrySelection(before.index, new PackageIndex(p), before.target) : null;
+    sceneRef.current?.loadPackage(p, { keepCamera });
+    sceneRef.current?.select(next);
     setPkg(p);
-    setTarget(null);
+    setTarget(next);
   }, []);
+
+  const editor = useNetworkEditor({ sceneRef, index, client: scenarios, enabled: !readOnly && index !== null, showPackage });
+  const { startBaseline } = editor.session;
+
+  const onPackage = useCallback(
+    (p: NetworkPackage) => {
+      showPackage(p, false);
+      if (p.baselineId) startBaseline(p, p.baselineId);
+    },
+    [showPackage, startBaseline],
+  );
+  const onSharedPackage = useCallback((p: NetworkPackage) => showPackage(p, false), [showPackage]);
 
   const onArea = useCallback((bbox: BBox | null) => sceneRef.current?.showAreaPreview(bbox), []);
 
@@ -65,17 +99,30 @@ export function NetworkViewer({ api, onAttributions }: NetworkViewerProps) {
     sceneRef.current?.select(null);
   }, []);
 
+  const editing = !readOnly && editor.session.baselineId !== null;
+  const drawing = editing && editor.mode === 'draw';
+
   return (
     <div className="viewer">
       <aside className="panel">
-        <ImportPanel
-          api={api}
-          onArea={onArea}
-          onPackage={onPackage}
-          onGeocoderAttribution={setGeocoderAttribution}
-          language={language()}
-        />
+        {readOnly ? (
+          <SharedScenarioPanel api={scenarios} token={shareToken} onPackage={onSharedPackage} />
+        ) : (
+          <ImportPanel
+            api={api}
+            onArea={onArea}
+            onPackage={onPackage}
+            onGeocoderAttribution={setGeocoderAttribution}
+            language={language()}
+          />
+        )}
         {pkg && <NetworkSummaryPanel pkg={pkg} />}
+        {editing && (
+          <>
+            <EditorToolbar session={editor.session} mode={editor.mode} onMode={editor.setMode} onSave={() => void editor.session.save()} />
+            <ScenarioPanel api={scenarios} session={editor.session} />
+          </>
+        )}
       </aside>
       <div className="scene-wrap">
         <div className="scene" ref={sceneHost} />
@@ -88,10 +135,18 @@ export function NetworkViewer({ api, onAttributions }: NetworkViewerProps) {
           onShowTunnels={setShowTunnels}
           onReset={() => sceneRef.current?.resetView()}
         />
-        {!pkg && (
+        {!pkg && !readOnly && (
           <p className="scene-hint">Search a place to import its road network, or load a recent import.</p>
         )}
-        {pkg && <InspectorPanel model={model} onClose={closeInspector} />}
+        {pkg && (
+          <div className="scene-side">
+            {drawing && <DrawRoadPanel draft={editor.draft} onFinish={editor.finishRoad} />}
+            {editing && !drawing && index && (
+              <EditorPanel index={index} target={target} session={editor.session} scope={editor.scope} onScope={editor.setScope} />
+            )}
+            <InspectorPanel model={model} onClose={closeInspector} />
+          </div>
+        )}
       </div>
     </div>
   );

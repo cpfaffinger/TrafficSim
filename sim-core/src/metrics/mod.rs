@@ -103,6 +103,8 @@ pub(crate) struct WaveCandidate {
     pub last_seen: f64,
     pub first_front: f64,
     pub front: f64,
+    /// Upstream end of the cluster (m).
+    pub back: f64,
     pub observations: u32,
     pub min_speed: f64,
     /// Born at (or ever touching) a stop line / lane end: a queue, not a wave.
@@ -145,6 +147,8 @@ pub struct Metrics {
     pub phenomena: Phenomena,
     /// Partial bucket values at the last reset (subtracted from the totals).
     baseline: Option<Vec<LinkTotals>>,
+    /// Per-link queue of the current sample: (length, vehicles).
+    pub(crate) queue_scratch: Vec<(f64, u32)>,
 }
 
 impl Metrics {
@@ -179,7 +183,51 @@ impl Metrics {
                 ..Phenomena::default()
             },
             baseline: None,
+            queue_scratch: vec![(0.0, 0); net.links.len()],
         })
+    }
+
+    /// One vehicle-step: boundary crossings between the old and the new position and the
+    /// occupancy of the new cell. `alive = false` means the vehicle left the network.
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    pub fn observe(
+        &mut self,
+        lane_count: u32,
+        old: (u32, f64, f64),
+        new: (u32, f64, f64),
+        alive: bool,
+        dt: f64,
+        step: u64,
+    ) {
+        let (layout, acc) = (&self.layout, &mut self.acc);
+        let (old_seg, old_pos, old_speed) = old;
+        let (new_seg, new_pos, new_speed) = new;
+        if old_seg < lane_count {
+            let from = layout.cell(old_seg, old_pos);
+            if alive && new_seg == old_seg {
+                acc.cross(from, layout.cell(new_seg, new_pos).max(from));
+            } else {
+                acc.cross(from, layout.last_cell(old_seg) + 1);
+            }
+        }
+        if !alive || new_seg >= lane_count {
+            return;
+        }
+        let cell = layout.cell(new_seg, new_pos);
+        if new_seg != old_seg {
+            acc.cross(layout.first_cell(new_seg), cell);
+        }
+        let limit = layout.cell_limit[cell];
+        acc.occupy(
+            cell,
+            dt,
+            new_speed,
+            old_speed,
+            limit,
+            self.config.queue_speed,
+            step,
+        );
     }
 
     /// Closes the current bucket: encodes it, adds it to the link totals and resets it.

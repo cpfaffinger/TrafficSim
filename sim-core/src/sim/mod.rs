@@ -18,8 +18,12 @@ mod demand;
 mod junction;
 pub use demand::DemandSource;
 mod lane_change;
+mod observe;
 mod perception;
 mod reroute;
+pub use observe::{
+    ApproachMetrics, EventCounts, JunctionMetrics, LinkMetrics, MovementMetrics, NetworkKpis, Summary,
+};
 
 use std::collections::BTreeMap;
 
@@ -27,6 +31,7 @@ use serde::Serialize;
 
 use crate::config::SimConfig;
 use crate::driver::Fleet;
+use crate::metrics::{Metrics, cells};
 use crate::network::{NONE, Network};
 use crate::rng::Pcg32;
 use crate::routing::Router;
@@ -95,6 +100,10 @@ pub struct Vehicle {
     pub odo: f64,
     /// Time the vehicle entered its current link (s).
     pub link_enter: f64,
+    /// Seconds below 0.5 m/s and seconds lost against the speed limit on the current link
+    /// (junction movement metrics, #58).
+    pub link_wait: f64,
+    pub link_delay: f64,
     /// End of the current distraction lapse (s); in the past when attentive.
     pub lapse_until: f64,
     /// Start of the next distraction lapse (s).
@@ -205,6 +214,8 @@ pub struct Simulation {
     seed: u64,
     /// Perception history per vehicle (same order as `vehicles`).
     history: Vec<perception::History>,
+    /// Run metrics (#57, #58, #62), `None` when disabled.
+    metrics: Option<Box<Metrics>>,
     scratch_acc: Vec<f64>,
     log_events: bool,
     lane_change_log: Vec<LaneChangeEvent>,
@@ -250,6 +261,12 @@ impl Simulation {
         config.validate()?;
         let fleet = config.fleet()?;
         let demand = demand::Demand::build(&net, &config, &fleet, seed)?;
+        let metrics = if config.metrics.enabled {
+            let m = Metrics::new(&net, &config.metrics, config.time_step, demand.start_time)?;
+            Some(Box::new(m))
+        } else {
+            None
+        };
         let segments = net.segment_count();
         let connectors = net.connectors.len();
         Ok(Self {
@@ -275,6 +292,7 @@ impl Simulation {
             fleet,
             seed,
             history: Vec::new(),
+            metrics,
             scratch_acc: Vec::new(),
             log_events: false,
             lane_change_log: Vec::new(),
@@ -431,6 +449,8 @@ impl Simulation {
             lost: false,
             odo: 0.0,
             link_enter: self.time - pos / self.net.seg_speed_limit[lane as usize],
+            link_wait: 0.0,
+            link_delay: 0.0,
             lapse_until: f64::NEG_INFINITY,
             next_lapse,
             lc_phase: (self.steps % u64::from(self.config.lane_change.interval)) as u32,
@@ -484,6 +504,7 @@ impl Simulation {
     pub fn step(&mut self) {
         self.rebuild_lists();
         self.update_travel_times();
+        self.sample_metrics();
         self.net.signals.states_into(self.time, &mut self.signal_state);
         self.spawn();
         self.lane_change_phase();
@@ -496,6 +517,11 @@ impl Simulation {
         self.steps += 1;
         self.time = self.steps as f64 * self.dt;
         self.record_history();
+        if let Some(m) = self.metrics.as_deref_mut()
+            && self.steps.is_multiple_of(m.bucket_steps)
+        {
+            m.flush();
+        }
     }
 
     fn rebuild_lists(&mut self) {
@@ -635,7 +661,11 @@ impl Simulation {
         let travel_times = &mut self.travel_times;
         let lateral_rate = 3.25 / self.config.lane_change.visual_duration.max(dt);
         let arrival_time = self.time + dt;
+        let mut metrics = self.metrics.as_deref_mut();
+        let lane_count = net.lane_count() as u32;
+        let step = self.steps;
         for v in &mut self.vehicles {
+            let old = (v.seg, v.pos, v.speed);
             let (dist, speed) = ballistic(v.speed, v.acc, dt);
             v.speed = speed;
             v.pos += dist;
@@ -679,6 +709,12 @@ impl Simulation {
                             claims[c as usize] -= 1;
                         }
                         travel_times.record(info.from_link, arrival_time - v.link_enter);
+                        if let Some(m) = &mut metrics {
+                            let mv = &mut m.movements[c as usize];
+                            mv.count += 1;
+                            mv.wait += v.link_wait;
+                            mv.delay += v.link_delay;
+                        }
                         v.claimed = NONE;
                         v.pos -= len;
                         v.prev_seg = v.seg;
@@ -696,8 +732,19 @@ impl Simulation {
                         v.prev_seg = v.seg;
                         v.seg = net.connectors[c as usize].to_lane;
                         v.link_enter = arrival_time;
+                        v.link_wait = 0.0;
+                        v.link_delay = 0.0;
                     }
                 }
+            }
+            if v.seg < lane_count {
+                v.link_delay += dt * (1.0 - v.speed / net.seg_speed_limit[v.seg as usize]).max(0.0);
+                if v.speed < cells::STOP_SPEED {
+                    v.link_wait += dt;
+                }
+            }
+            if let Some(m) = &mut metrics {
+                m.observe(lane_count, old, (v.seg, v.pos, v.speed), v.alive, dt, step);
             }
             let mut f = 0;
             if v.acc < -1.0 {

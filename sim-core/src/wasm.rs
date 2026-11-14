@@ -221,6 +221,55 @@ impl NetworkSim {
         format!("{:016x}", self.sim.state_checksum())
     }
 
+    /// Finished lane-cell buckets in the run (index of the next bucket).
+    #[wasm_bindgen(getter, js_name = laneCellBuckets)]
+    pub fn lane_cell_buckets(&self) -> f64 {
+        self.sim.lane_cell_buckets() as f64
+    }
+
+    /// `lane-cells-v1` blob (`Uint8Array`) with the latest finished bucket (none before the
+    /// first bucket ends; empty array when metrics are disabled).
+    #[wasm_bindgen(js_name = laneCellsLatest)]
+    pub fn lane_cells_latest(&self) -> Vec<u8> {
+        self.sim.lane_cells_latest()
+    }
+
+    /// `lane-cells-v1` blob with all retained buckets (`metrics.maxBuckets`).
+    #[wasm_bindgen(js_name = laneCellsHistory)]
+    pub fn lane_cells_history(&self) -> Vec<u8> {
+        self.sim.lane_cells_since(0)
+    }
+
+    /// `lane-cells-v1` blob with the retained buckets whose index is ≥ `from`.
+    #[wasm_bindgen(js_name = laneCellsSince)]
+    pub fn lane_cells_since(&self, from: u32) -> Vec<u8> {
+        self.sim.lane_cells_since(u64::from(from))
+    }
+
+    /// Run summary as JSON: network KPIs, per-link metrics, junctions and event counts.
+    #[wasm_bindgen(js_name = summaryJson)]
+    pub fn summary_json(&self) -> String {
+        self.sim.summary_json()
+    }
+
+    /// Junction metrics as JSON (queues per approach, delay and LOS per movement).
+    #[wasm_bindgen(js_name = junctionsJson)]
+    pub fn junctions_json(&self) -> String {
+        self.sim.junctions_json()
+    }
+
+    /// Detected tailbacks and stop-and-go waves as JSON.
+    #[wasm_bindgen(js_name = eventsJson)]
+    pub fn events_json(&self) -> String {
+        self.sim.events_json()
+    }
+
+    /// Restarts the metric totals now (e.g. after a warm-up); buckets and events are kept.
+    #[wasm_bindgen(js_name = resetMetrics)]
+    pub fn reset_metrics(&mut self) {
+        self.sim.reset_metrics();
+    }
+
     /// Vehicle type catalogue of this run (built-in types plus `vehicleTypes` overrides) as JSON.
     #[wasm_bindgen(js_name = vehicleTypesJson)]
     pub fn vehicle_types_json(&self) -> String {
@@ -306,6 +355,14 @@ mod tests {
             "07:00-08:00 factor"
         );
         assert!(od.demand_json().contains(r#""kind":"od""#));
+        assert_eq!(sim.lane_cell_buckets(), 1.0);
+        let latest = crate::metrics::cells::LaneCells::decode(&sim.lane_cells_latest()).unwrap();
+        assert_eq!(latest.buckets.len(), 1);
+        assert_eq!(sim.lane_cells_history(), sim.lane_cells_since(0));
+        assert!(sim.summary_json().contains(r#""formatVersion":1"#));
+        assert!(sim.junctions_json().starts_with(r#"[{"id":"n0""#));
+        assert!(sim.events_json().starts_with(r#"{"tailbacks":"#));
+        sim.reset_metrics();
         assert!(builtin_road_class_profiles_json().contains(r#""motorway":{"volumePerLane":1400.0"#));
         assert!(sim.vehicle_types_json().contains("\"articulatedTruck\""));
         assert!(sim.driver_profiles_json().contains("\"distracted\""));

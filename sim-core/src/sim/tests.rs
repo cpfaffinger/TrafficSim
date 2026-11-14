@@ -1701,6 +1701,224 @@ fn experienced_travel_times_track_free_flow_traffic() {
     assert!((t - 20.0).abs() < 0.2, "{t}");
 }
 
+// ---------------------------------------------------------------- #57 lane cells
+
+use crate::metrics::cells::LaneCells;
+
+#[test]
+fn lane_cells_count_a_single_vehicle_exactly() {
+    let b = corridor(1, 300.0, 15.0);
+    let mut s = sim(&b, quiet());
+    assert_eq!(
+        LaneCells::decode(&s.lane_cells_latest()).unwrap().buckets.len(),
+        0
+    );
+    s.place_vehicle("up", 0, 0.0, 15.0, "down", car()).unwrap();
+    s.run(300);
+    assert_eq!(s.lane_cell_buckets(), 1);
+    let d = LaneCells::decode(&s.lane_cells_latest()).unwrap();
+    assert_eq!((d.first_bucket, d.buckets.len(), d.cell_count), (0, 1, 60));
+    assert_eq!(d.bucket_duration, 30.0);
+    assert_eq!(d.start_time_of_day, 25_200.0);
+    let b0 = &d.buckets[0];
+    // 30 s at 15 m/s from the start of "up": cells 0..=29 of "up" and 0..=13 of "down" crossed.
+    assert!(b0.flow[..30].iter().all(|&f| f == 1), "{:?}", &b0.flow[..30]);
+    assert!(b0.flow[30..43].iter().all(|&f| f == 1), "{:?}", &b0.flow[30..45]);
+    assert_eq!(b0.flow[50], 0);
+    // 10 m at 15 m/s = 2/3 s in a cell: 0.667 vehicle-s / (30 s × 10 m) = 2.22 veh/km.
+    assert!((b0.density[5] - 2.222).abs() < 0.4, "{}", b0.density[5]);
+    assert!((b0.mean_speed[5] - 15.0).abs() < 1e-3 && (b0.speed_ratio[5] - 1.0).abs() < 1e-3);
+    assert!(b0.mean_speed[55].is_nan());
+    assert_eq!(b0.stops.iter().map(|&s| u32::from(s)).sum::<u32>(), 0);
+    assert!(b0.delay.iter().all(|&d| d.abs() < 1e-3));
+    s.run(900);
+    assert_eq!(s.lane_cell_buckets(), 4);
+    let all = LaneCells::decode(&s.lane_cells_since(0)).unwrap();
+    assert_eq!(all.buckets.len(), 4);
+    let tail = LaneCells::decode(&s.lane_cells_since(2)).unwrap();
+    assert_eq!((tail.first_bucket, tail.buckets.len()), (2, 2));
+    assert_eq!(format!("{:?}", tail.buckets[1]), format!("{:?}", all.buckets[3]));
+    // Every cell boundary is crossed exactly once over the whole trip.
+    let total: Vec<u32> = (0..60)
+        .map(|c| all.buckets.iter().map(|b| u32::from(b.flow[c])).sum())
+        .collect();
+    assert!(total.iter().all(|&f| f == 1), "{total:?}");
+}
+
+#[test]
+fn lane_cells_capture_queues_stops_and_retention() {
+    let b = corridor(1, 300.0, 15.0);
+    let config =
+        SimConfig::from_json(r#"{"defaultDemand": 900, "metrics": {"maxBuckets": 2, "bucketDuration": 20}}"#)
+            .unwrap();
+    let mut s = sim(&b, config);
+    s.place_vehicle("up", 0, 200.0, 0.0, "down", crawler()).unwrap();
+    s.run(1800);
+    assert_eq!(s.lane_cell_buckets(), 9);
+    let d = LaneCells::decode(&s.lane_cells_since(0)).unwrap();
+    assert_eq!(
+        (d.first_bucket, d.buckets.len()),
+        (7, 2),
+        "only the newest buckets are kept"
+    );
+    let b = &d.buckets[1];
+    let queued = (0..60).filter(|&c| b.queue_share[c] > 5_000).count();
+    assert!(queued > 5, "{:?}", &b.queue_share[..30]);
+    let stops: u32 = d
+        .buckets
+        .iter()
+        .flat_map(|b| b.stops.iter())
+        .map(|&s| u32::from(s))
+        .sum();
+    let delay: f32 = b.delay.iter().sum();
+    assert!(delay > 100.0, "{delay}");
+    let early = LaneCells::decode(&s.lane_cells_since(0)).unwrap();
+    assert!(stops > 0 || early.buckets.iter().any(|b| b.stops.iter().any(|&s| s > 0)));
+    // Disabled metrics produce nothing.
+    let mut off = sim(
+        &corridor(1, 300.0, 15.0),
+        SimConfig::from_json(r#"{"metrics": {"enabled": false}}"#).unwrap(),
+    );
+    off.run(400);
+    assert!(off.metrics().is_none() && off.lane_cells_latest().is_empty());
+    assert_eq!(off.lane_cell_buckets(), 0);
+    assert!(off.summary().links.is_empty() && off.junction_metrics().is_empty());
+    assert_eq!(off.events_json(), r#"{"tailbacks":[],"waves":[]}"#);
+}
+
+// ---------------------------------------------------------------- #58 junction metrics, summary
+
+#[test]
+fn junction_metrics_report_queues_delays_and_levels_of_service() {
+    let mut s = busy_fixture(3);
+    s.run(6000);
+    let junctions = s.junction_metrics();
+    assert_eq!(
+        junctions.len(),
+        1,
+        "only n0 has connectors (bridges are plain links)"
+    );
+    let n0 = &junctions[0];
+    assert_eq!(
+        (n0.id.as_str(), n0.control.as_str(), n0.signalised),
+        ("n0", "signal", true)
+    );
+    assert!(n0.throughput > 200 && n0.flow > 1000.0, "{n0:?}");
+    assert!(n0.queue_max > 20.0 && n0.mean_delay.unwrap() > 5.0, "{n0:?}");
+    assert!(n0.los.is_some());
+    assert_eq!(n0.approaches.len(), 4);
+    assert!(n0.approaches.iter().all(|a| a.queue_max >= a.queue_mean));
+    let total: u64 = n0.movements.iter().map(|m| m.count).sum();
+    assert_eq!(total, n0.throughput);
+    let left = n0.movements.iter().find(|m| m.connector == "c3").unwrap();
+    assert_eq!(
+        (left.turn.as_str(), left.from_link.as_str(), left.to_link.as_str()),
+        ("left", "l1", "l8")
+    );
+    let json = s.junctions_json();
+    assert!(json.starts_with(r#"[{"id":"n0","control":"signal""#), "{json}");
+}
+
+#[test]
+fn summary_links_match_the_demand_in_steady_state() {
+    let b = corridor(2, 500.0, 15.0);
+    let mut s = sim(&b, with_demand(900.0));
+    s.run(1500);
+    s.reset_metrics();
+    s.run(6000);
+    let summary = s.summary();
+    assert_eq!(summary.format_version, 1);
+    assert!((summary.duration - 600.0).abs() < 1e-6);
+    let up = summary.links.iter().find(|l| l.id == "up").unwrap();
+    assert!((up.flow - 900.0).abs() < 150.0, "{up:?}");
+    assert!((up.mean_speed.unwrap() - 15.0).abs() < 1.0, "{up:?}");
+    // Fundamental relation q = k · v (per link, all lanes).
+    let q_from_kv = up.density * up.mean_speed.unwrap() * 3.6;
+    assert!(
+        (q_from_kv - up.flow).abs() < 0.1 * up.flow,
+        "{q_from_kv} vs {}",
+        up.flow
+    );
+    assert!(up.delay.unwrap() < 2.0 && up.queue_max < 1.0, "{up:?}");
+    assert!((up.travel_time - up.free_flow_time).abs() < 3.0);
+    let n = &summary.network;
+    assert!(
+        n.vehicle_km > 0.0 && n.vehicle_hours > 0.0 && n.mean_speed > 13.0,
+        "{n:?}"
+    );
+    let json = s.summary_json();
+    assert!(
+        json.contains(r#""links":[{"id":"up","length":500.0,"lanes":2,"meanSpeed":"#),
+        "{json}"
+    );
+    assert!(
+        json.contains(r#""events":{"tailbacks":0,"stopAndGoWaves":0}"#),
+        "{json}"
+    );
+}
+
+// ---------------------------------------------------------------- #62 phenomena
+
+#[test]
+fn tailbacks_grow_upstream_and_spill_back() {
+    let b = corridor(1, 400.0, 15.0);
+    let mut s = sim(&b, with_demand(900.0));
+    s.place_vehicle("down", 0, 100.0, 0.0, "down", crawler()).unwrap();
+    s.run(3000);
+    let events: serde_json::Value = serde_json::from_str(&s.events_json()).unwrap();
+    let tailbacks = events["tailbacks"].as_array().unwrap();
+    let down = tailbacks
+        .iter()
+        .find(|t| t["link"] == "down")
+        .expect("tailback on down");
+    assert!(down["maxLength"].as_f64().unwrap() > 200.0, "{down}");
+    assert_eq!(down["spillback"], true);
+    let samples = down["samples"].as_array().unwrap();
+    let first = samples[0][1].as_f64().unwrap();
+    let max = down["maxLength"].as_f64().unwrap();
+    assert!(max > 2.0 * first, "the tailback grows: {first} → {max}");
+    assert!(
+        tailbacks.iter().any(|t| t["link"] == "up"),
+        "spills back into the upstream link"
+    );
+    assert!(s.summary().events.tailbacks >= 2);
+}
+
+#[test]
+fn stop_and_go_waves_travel_upstream_and_signal_queues_are_not_waves() {
+    // A dense platoon at 20 m/s on a long road (equilibrium spacing ≈ 38 m).
+    let b = corridor(1, 2000.0, 25.0);
+    let mut s = sim(&b, quiet());
+    let mut ids = Vec::new();
+    for k in 0..40 {
+        let pos = 1900.0 - 38.0 * f64::from(k);
+        ids.push(s.place_vehicle("down", 0, pos, 20.0, "down", car()).unwrap());
+    }
+    s.run(20);
+    // The fourth driver brakes to a standstill for a moment, then drives on.
+    let at = |s: &Simulation, id| s.vehicles.iter().position(|v| v.id == id).unwrap();
+    let i = at(&s, ids[3]);
+    let max_speed = s.vehicles[i].params.max_speed;
+    s.vehicles[i].params.max_speed = 0.0;
+    s.run(100);
+    let i = at(&s, ids[3]);
+    s.vehicles[i].params.max_speed = max_speed;
+    s.run(1200);
+    let events: serde_json::Value = serde_json::from_str(&s.events_json()).unwrap();
+    let waves = events["waves"].as_array().unwrap();
+    assert!(!waves.is_empty(), "{events}");
+    let w = &waves[0];
+    let speed = w["speed"].as_f64().unwrap() * 3.6;
+    assert!((-30.0..=-5.0).contains(&speed), "{w}");
+    assert!(w["to"].as_f64().unwrap() < w["from"].as_f64().unwrap(), "{w}");
+    assert!(s.summary().events.stop_and_go_waves >= 1);
+    // Queues discharging at a signal are anchored at the stop line: no waves.
+    let mut f = busy_fixture(5);
+    f.run(6000);
+    let waves = f.metrics().unwrap().phenomena.waves.clone();
+    assert_eq!(f.summary().events.stop_and_go_waves, 0, "{waves:?}");
+}
+
 /// Throughput benchmark (run with `cargo test --release -- --ignored --nocapture perf`).
 #[test]
 #[ignore]
@@ -1718,7 +1936,10 @@ fn perf_grid() {
         net.lane_count(),
         net.connectors.len()
     );
-    let mut s = Simulation::new(net, with_demand(env("PERF_VPH", 900.0)), 1).unwrap();
+    let mut config = with_demand(env("PERF_VPH", 900.0));
+    config.metrics.enabled = env("PERF_METRICS", 1.0) > 0.0;
+    config.perception.enabled = env("PERF_PERCEPTION", 1.0) > 0.0;
+    let mut s = Simulation::new(net, config, 1).unwrap();
     s.run(3000);
     let start = std::time::Instant::now();
     let mut vehicle_steps = 0usize;

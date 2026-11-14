@@ -43,7 +43,7 @@ export default defineConfig({
         'src/views/**',
         'src/main.tsx',
         'src/App.tsx',
-        'src/sim/sim.worker.ts',
+        'src/sim/*.worker.ts',
       ],
       thresholds: { lines: 70, functions: 70, branches: 60, statements: 70 },
     },

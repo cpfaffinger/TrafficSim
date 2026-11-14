@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ImportPanel, type ViewerApi } from '../components/ImportPanel';
 import { InspectorPanel } from '../components/InspectorPanel';
 import { NetworkSummaryPanel } from '../components/NetworkSummaryPanel';
+import { SimulationPanel, type SimulationSettings } from '../components/SimulationPanel';
 import { ViewToolbar } from '../components/ViewToolbar';
 import { mergeAttributions } from '../lib/attribution';
 import { inspect, PackageIndex } from '../network/inspect';
 import type { PickTarget } from '../network/meshData';
 import type { BBox, NetworkPackage } from '../network/types';
 import { NetworkScene, type BasemapStatus } from '../scene/NetworkScene';
+import { useNetworkSimulation } from './useNetworkSimulation';
 
 export interface NetworkViewerProps {
   api: ViewerApi;
@@ -26,6 +28,8 @@ export function NetworkViewer({ api, onAttributions }: NetworkViewerProps) {
   const [geocoderAttribution, setGeocoderAttribution] = useState<string | null>(null);
   const [showTunnels, setShowTunnels] = useState(true);
   const [showBasemap, setShowBasemap] = useState(true);
+  const [simSettings, setSimSettings] = useState<SimulationSettings>({ vehiclesPerHour: 300, truckShare: 0.08, seed: 1 });
+  const sim = useNetworkSimulation(pkg, simSettings, sceneRef);
 
   useEffect(() => {
     if (!sceneHost.current) return;
@@ -76,6 +80,23 @@ export function NetworkViewer({ api, onAttributions }: NetworkViewerProps) {
           language={language()}
         />
         {pkg && <NetworkSummaryPanel pkg={pkg} />}
+        {pkg && (
+          <SimulationPanel
+            running={sim.running}
+            ready={sim.ready}
+            speed={sim.speed}
+            settings={simSettings}
+            stats={sim.stats}
+            time={sim.time}
+            vehicles={sim.vehicles}
+            error={sim.error}
+            onPlay={sim.play}
+            onPause={sim.pause}
+            onReset={sim.restart}
+            onSpeed={sim.setSpeed}
+            onSettings={setSimSettings}
+          />
+        )}
       </aside>
       <div className="scene-wrap">
         <div className="scene" ref={sceneHost} />

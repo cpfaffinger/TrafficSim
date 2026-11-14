@@ -9,6 +9,7 @@ import { buildNetworkMeshes, type NetworkMeshes } from '../network/networkMeshes
 import type { BBox, GeoOrigin, NetworkPackage } from '../network/types';
 import { disposeGroup, subsetGeometry, toBufferGeometry } from './geometry';
 import { RtsCameraController } from './RtsCameraController';
+import { SimulationLayer } from './SimulationLayer';
 
 /** Positron-inspired palette. */
 const COLORS = {
@@ -53,6 +54,7 @@ export class NetworkScene {
   private readonly tunnelGroup = new THREE.Group();
   private readonly overlayGroup = new THREE.Group();
   private readonly highlightGroup = new THREE.Group();
+  private readonly simulation = new SimulationLayer();
   private readonly lastCamera = new THREE.Matrix4();
   private readonly ground: THREE.Mesh;
   private readonly resizeObserver: ResizeObserver;
@@ -88,7 +90,7 @@ export class NetworkScene {
     this.ground.rotation.x = -Math.PI / 2;
     this.ground.position.y = -0.3;
     this.ground.scale.set(20_000, 20_000, 1);
-    this.scene.add(this.ground, this.basemapGroup, this.networkGroup, this.tunnelGroup, this.overlayGroup, this.highlightGroup);
+    this.scene.add(this.ground, this.basemapGroup, this.networkGroup, this.tunnelGroup, this.overlayGroup, this.highlightGroup, this.simulation.group);
 
     this.controls = new RtsCameraController(this.camera, this.renderer.domElement, (x, y) => this.pick(x, y));
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -97,9 +99,28 @@ export class NetworkScene {
     this.animate();
   }
 
+  /** Prepares the live simulation overlay (signal heads) for the loaded package. */
+  prepareSimulation(pkg: NetworkPackage, signalGroupIds: readonly string[]): void {
+    this.simulation.prepare(pkg, signalGroupIds);
+    this.dirty = true;
+  }
+
+  /** Updates vehicles (stride-9 snapshot) and signal aspects from a simulation frame. */
+  updateSimulation(snapshot: Float32Array, signals: Uint8Array): void {
+    this.simulation.updateVehicles(snapshot);
+    this.simulation.updateSignals(signals);
+    this.dirty = true;
+  }
+
+  clearSimulation(): void {
+    this.simulation.clear();
+    this.dirty = true;
+  }
+
   /** Replaces the displayed network. Basemap tiles are (re)loaded around it in the background. */
   loadPackage(pkg: NetworkPackage): void {
     this.clearNetwork();
+    this.simulation.clear();
     this.origin = pkg.origin;
     this.meshes = buildNetworkMeshes(pkg);
     const m = this.meshes;
@@ -208,6 +229,7 @@ export class NetworkScene {
 
   dispose(): void {
     cancelAnimationFrame(this.frameHandle);
+    this.simulation.dispose();
     this.basemapAbort?.abort();
     this.resizeObserver.disconnect();
     this.controls.dispose();

@@ -583,3 +583,41 @@ dl.stats dd {
     display: none;
   }
 }
+
+/* Recent imports: load button with rename/delete actions beside it (#114). */
+.recent-list li {
+  display: flex;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.recent-list .recent-load,
+.recent-list .rename-form {
+  flex: 1;
+  min-width: 0;
+}
+
+.recent-list .rename-form {
+  display: flex;
+  gap: 4px;
+}
+
+.recent-list .rename-form input {
+  flex: 1;
+  min-width: 0;
+}
+
+.recent-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recent-actions button {
+  padding: 2px 8px;
+  line-height: 1.2;
+}
+
+.import-name {
+  margin-top: 8px;
+}

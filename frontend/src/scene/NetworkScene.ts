@@ -3,6 +3,7 @@ import { buildBasemapMeshes } from '../basemap/basemapMeshes';
 import { isRing, type Ring } from '../lib/polygonArea';
 import { loadBasemap } from '../basemap/loader';
 import { lodFor, sameLod, type LodState } from '../lib/lod';
+import { expandBbox } from '../lib/area';
 import { frameRect } from '../lib/rtsCamera';
 import { nextPick, uniqueOwners, type PreviousPick } from '../lib/picking';
 import { fromScene, LocalTangentPlane, toScene } from '../network/geo';
@@ -15,6 +16,9 @@ import { SignLayer } from './SignLayer';
 import { SimulationLayer } from './SimulationLayer';
 
 /** Positron-inspired palette. */
+/** The preview basemap covers this multiple of the proposed area's width/height. */
+const PREVIEW_BASEMAP_FACTOR = 3;
+
 const COLORS = {
   sky: 0xdfe6ec,
   ground: 0xeceae4,
@@ -138,7 +142,10 @@ export class NetworkScene {
    * Replaces the displayed network. Basemap tiles are (re)loaded around it in the background.
    * `keepCamera` keeps the view (e.g. when showing an edited version of the same area).
    */
+  private networkBbox: BBox | null = null;
+
   loadPackage(pkg: NetworkPackage, options: { keepCamera?: boolean } = {}): void {
+    this.networkBbox = pkg.bbox;
     const keepCamera = options.keepCamera === true && this.meshes !== null;
     this.clearNetwork();
     this.simulation.clear();
@@ -181,7 +188,12 @@ export class NetworkScene {
   showAreaPreview(area: BBox | Ring | null, closed = true): void {
     disposeGroup(this.overlayGroup);
     this.dirty = true;
-    if (!area || area.length === 0) return;
+    if (!area) {
+      // Preview ended: show the loaded network's surroundings again.
+      if (this.networkBbox && this.origin) this.loadBasemapFor(this.networkBbox, this.origin);
+      return;
+    }
+    if (area.length === 0) return;
     if (isRing(area)) {
       this.showRingPreview(area, closed);
       return;
@@ -210,7 +222,8 @@ export class NetworkScene {
     this.overlayGroup.add(outline, fill);
     this.controls.limits = { ...this.controls.limits, bounds: [w - 3000, -n - 3000, e + 3000, -s + 3000] };
     this.controls.setState(frameRect([w, -n, e, -s], (this.camera.fov * Math.PI) / 180, this.camera.aspect, this.controls.limits));
-    if (!this.meshes) this.loadBasemapFor(bbox, this.origin!);
+    // Basemap around the proposed area (with room to draw a custom shape), also over a loaded network.
+    this.loadBasemapFor(expandBbox(bbox, PREVIEW_BASEMAP_FACTOR), this.origin!);
   }
 
   setTunnelsVisible(visible: boolean): void {

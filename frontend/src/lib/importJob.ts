@@ -7,7 +7,7 @@ import type { BBox } from '../network/types';
 export type ImportPhase = 'submitting' | ImportStatus | 'loading';
 
 export interface ImportApi {
-  startImport(area: BBox | Ring, signal?: AbortSignal): Promise<ImportJob>;
+  startImport(area: BBox | Ring, signal?: AbortSignal, name?: string): Promise<ImportJob>;
   getImportJob(jobId: string, signal?: AbortSignal): Promise<ImportJob>;
 }
 
@@ -26,6 +26,8 @@ export interface RunImportOptions {
   timeoutMs?: number;
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
   now?: () => number;
+  /** Name of the import (#114). */
+  name?: string;
 }
 
 export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -50,7 +52,7 @@ export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> 
 export async function runImport(api: ImportApi, bbox: BBox | Ring, options: RunImportOptions = {}): Promise<string> {
   const { onPhase, signal, pollIntervalMs = 1000, timeoutMs = 15 * 60_000, sleep = abortableSleep, now = Date.now } = options;
   onPhase?.('submitting');
-  let job = await api.startImport(bbox, signal);
+  let job = await api.startImport(bbox, signal, options.name);
   const started = now();
   for (;;) {
     onPhase?.(job.status);

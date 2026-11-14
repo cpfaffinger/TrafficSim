@@ -14,10 +14,12 @@ import { RecentNetworks } from './RecentNetworks';
 /** The backend calls the import workflow needs (implemented by ApiClient; faked in tests). */
 export interface ViewerApi {
   geocode(query: string, limit: number, signal?: AbortSignal, lang?: string): Promise<GeocodeResponse>;
-  startImport(area: BBox | Ring, signal?: AbortSignal): Promise<ImportJob>;
+  startImport(area: BBox | Ring, signal?: AbortSignal, name?: string): Promise<ImportJob>;
   getImportJob(jobId: string, signal?: AbortSignal): Promise<ImportJob>;
   getPackage(baselineId: string, signal?: AbortSignal): Promise<unknown>;
   listNetworks(limit: number, signal?: AbortSignal): Promise<NetworkSummary[]>;
+  renameNetwork?(id: string, name: string, signal?: AbortSignal): Promise<unknown>;
+  deleteNetwork?(id: string, signal?: AbortSignal): Promise<void>;
 }
 
 export interface ImportPanelProps {
@@ -39,21 +41,20 @@ const errorMessage = (e: unknown) => (e instanceof Error ? e.message : 'Unexpect
 /** Search → area → import → load (#34), plus "load recent". */
 export function ImportPanel({ api, onArea, onDraw, onPackage, onGeocoderAttribution, language, pollIntervalMs, sleep }: ImportPanelProps) {
   const [selection, setSelection] = useState<{ label: string; bbox: BBox } | null>(null);
-  const [shape, setShape] = useState<{ ring: LonLat[]; closed: boolean } | null>(null);
+  const [shape, setShape] = useState<{ ring: LonLat[] } | null>(null);
+  const [name, setName] = useState('');
+  const drawing = shape !== null;
 
-  // While drawing, map clicks add corners.
+  // While drawing, every map click adds a corner (#114: no explicit finish step).
   useEffect(() => {
-    if (!onDraw) return;
-    if (!shape || shape.closed) {
-      onDraw(null);
-      return;
-    }
-    onDraw((point) => setShape((s) => (s && !s.closed ? { ...s, ring: [...s.ring, point] } : s)));
+    if (!onDraw || !drawing) return;
+    onDraw((point) => setShape((s) => (s ? { ring: [...s.ring, point] } : s)));
     return () => onDraw(null);
-  }, [onDraw, shape]);
+  }, [onDraw, drawing]);
 
+  // From three corners on the outline is closed; new corners extend it.
   useEffect(() => {
-    if (shape) onArea(shape.ring, shape.closed);
+    if (shape) onArea(shape.ring, shape.ring.length >= 3);
   }, [shape, onArea]);
   const [phase, setPhase] = useState<ImportPhase | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +83,7 @@ export function ImportPanel({ api, onArea, onDraw, onPackage, onGeocoderAttribut
   const select = (result: GeocodeResult) => {
     const bbox = proposeArea(result);
     setSelection({ label: result.label, bbox });
+    setName(result.label.split(',')[0]?.trim() ?? result.label);
     setPhase(null);
     setError(null);
     onArea(bbox);
@@ -98,7 +100,7 @@ export function ImportPanel({ api, onArea, onDraw, onPackage, onGeocoderAttribut
     onArea(null);
   };
 
-  const startShape = () => setShape({ ring: [], closed: false });
+  const startShape = () => setShape({ ring: [] });
   const backToRectangle = () => {
     setShape(null);
     if (selection) onArea(selection.bbox);
@@ -130,9 +132,20 @@ export function ImportPanel({ api, onArea, onDraw, onPackage, onGeocoderAttribut
   };
 
   const startImport = () => {
-    const area: BBox | Ring | null = shape?.closed ? roundRing(shape.ring) : selection ? roundBbox(selection.bbox) : null;
+    const area: BBox | Ring | null = shape ? (shape.ring.length >= 3 ? roundRing(shape.ring) : null) : selection ? roundBbox(selection.bbox) : null;
     if (!area) return;
-    void load((signal) => runImport(api, area, { signal, onPhase: setPhase, pollIntervalMs, ...(sleep ? { sleep } : {}) }));
+    const importName = name.trim() || selection?.label;
+    void load((signal) =>
+      runImport(api, area, { signal, onPhase: setPhase, pollIntervalMs, ...(sleep ? { sleep } : {}), ...(importName ? { name: importName } : {}) }),
+    );
+  };
+
+  const renameRecent = (id: string, newName: string) => {
+    void api.renameNetwork?.(id, newName).then(() => refreshRecent(), (e: unknown) => setError(errorMessage(e)));
+  };
+
+  const deleteRecent = (id: string) => {
+    void api.deleteNetwork?.(id).then(() => refreshRecent(), (e: unknown) => setError(errorMessage(e)));
   };
 
   const loadRecent = (id: string) => {
@@ -147,6 +160,12 @@ export function ImportPanel({ api, onArea, onDraw, onPackage, onGeocoderAttribut
         onSelect={select}
         onAttribution={onGeocoderAttribution}
       />
+      {(selection ?? shape) && (
+        <div className="field import-name">
+          <label htmlFor="import-name">Name of the import</label>
+          <input id="import-name" value={name} maxLength={120} disabled={busy} onChange={(e) => setName(e.target.value)} placeholder="e.g. Vienna inner city" />
+        </div>
+      )}
       {selection && !shape && (
         <AreaEditor
           label={selection.label}
@@ -161,11 +180,9 @@ export function ImportPanel({ api, onArea, onDraw, onPackage, onGeocoderAttribut
       {shape && (
         <PolygonDrawer
           ring={shape.ring}
-          closed={shape.closed}
           busy={busy}
-          onUndo={() => setShape((s) => (s ? { ring: s.ring.slice(0, -1), closed: false } : s))}
-          onClear={() => setShape({ ring: [], closed: false })}
-          onFinish={() => setShape((s) => (s ? { ...s, closed: true } : s))}
+          onUndo={() => setShape((s) => (s ? { ring: s.ring.slice(0, -1) } : s))}
+          onClear={() => setShape({ ring: [] })}
           onRectangle={backToRectangle}
           onImport={startImport}
           onCancel={cancelSelection}
@@ -183,7 +200,14 @@ export function ImportPanel({ api, onArea, onDraw, onPackage, onGeocoderAttribut
           )}
         </>
       )}
-      <RecentNetworks networks={recent} disabled={busy} onLoad={loadRecent} />
+      <RecentNetworks
+        networks={recent}
+        disabled={busy}
+        onLoad={loadRecent}
+        {...(api.renameNetwork ? { onRename: renameRecent } : {})}
+        {...(api.deleteNetwork ? { onDelete: deleteRecent } : {})}
+        confirm={(m) => window.confirm(m)}
+      />
     </>
   );
 }

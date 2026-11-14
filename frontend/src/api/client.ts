@@ -34,6 +34,8 @@ export interface ImportJob {
 
 export interface NetworkSummary {
   id: string;
+  /** User-facing name (#114). */
+  name?: string | null;
   bbox: [number, number, number, number];
   /** Import polygon for non-rectangular imports (#110). */
   polygon?: [number, number][] | null;
@@ -72,8 +74,13 @@ export class ApiClient {
 
   /** Starts (or reuses) an import of the area; `202` while running, `200` if an identical import exists. */
   /** Starts an import of a `[w, s, e, n]` box or a `[lon, lat][]` polygon ring (#110). */
-  async startImport(area: readonly [number, number, number, number] | readonly (readonly [number, number])[], signal?: AbortSignal): Promise<ImportJob> {
-    const body = area.length > 0 && Array.isArray(area[0]) ? { polygon: area } : { bbox: area };
+  async startImport(
+    area: readonly [number, number, number, number] | readonly (readonly [number, number])[],
+    signal?: AbortSignal,
+    name?: string,
+  ): Promise<ImportJob> {
+    const shape = area.length > 0 && Array.isArray(area[0]) ? { polygon: area } : { bbox: area };
+    const body = name ? { ...shape, name } : shape;
     return this.sendJson<ImportJob>('POST', '/api/v1/networks/import', body, signal);
   }
 
@@ -84,6 +91,17 @@ export class ApiClient {
   /** Raw network package JSON; validate with `parseNetworkPackage`. */
   async getPackage(baselineId: string, signal?: AbortSignal): Promise<unknown> {
     return this.getJson<unknown>(`/api/v1/networks/${encodeURIComponent(baselineId)}/package`, signal);
+  }
+
+  /** Renames an import (#114). */
+  async renameNetwork(id: string, name: string, signal?: AbortSignal): Promise<NetworkSummary> {
+    return this.sendJson<NetworkSummary>('PATCH', `/api/v1/networks/${encodeURIComponent(id)}`, { name }, signal);
+  }
+
+  /** Deletes an import with its scenarios and runs (#114). */
+  async deleteNetwork(id: string, signal?: AbortSignal): Promise<void> {
+    const response = await this.fetchFn(`${this.baseUrl}/api/v1/networks/${encodeURIComponent(id)}`, { method: 'DELETE', ...(signal ? { signal } : {}) });
+    if (!response.ok && response.status !== 404) throw new ApiError(response.status, `Deleting failed (HTTP ${response.status}).`);
   }
 
   async listNetworks(limit = 20, signal?: AbortSignal): Promise<NetworkSummary[]> {

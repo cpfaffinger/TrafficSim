@@ -30,6 +30,20 @@ describe('ApiClient', () => {
     expect(fetchFn.mock.calls[0]?.[0]).toBe('/api/v1/geocode?q=Wien&limit=5&lang=de');
   });
 
+  it('renames and deletes imports (#114)', async () => {
+    const fetchFn = vi.fn().mockImplementation((_url: string, init: RequestInit) =>
+      Promise.resolve(init.method === 'DELETE' ? new Response(null, { status: 204 }) : json({ id: 'b1', name: 'New' })),
+    );
+    const client = new ApiClient(fetchFn);
+    expect(await client.renameNetwork('b1', 'New')).toMatchObject({ name: 'New' });
+    expect(fetchFn.mock.calls[0]).toEqual(['/api/v1/networks/b1', expect.objectContaining({ method: 'PATCH' })]);
+    await client.deleteNetwork('b1');
+    expect(fetchFn.mock.calls[1]![1]).toMatchObject({ method: 'DELETE' });
+    const failing = new ApiClient(vi.fn().mockResolvedValue(new Response(null, { status: 500 })));
+    await expect(failing.deleteNetwork('x')).rejects.toBeInstanceOf(ApiError);
+    await new ApiClient(vi.fn().mockResolvedValue(new Response(null, { status: 404 }))).deleteNetwork('gone');
+  });
+
   it('starts imports with a JSON body', async () => {
     const fetchFn = vi.fn().mockImplementation(() => Promise.resolve(json({ jobId: 'j1', status: 'queued', baselineId: null }, 202)));
     const job = await new ApiClient(fetchFn).startImport([16.37, 48.2, 16.38, 48.21]);

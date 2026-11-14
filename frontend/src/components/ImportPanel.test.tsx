@@ -70,12 +70,14 @@ describe('ImportPanel', () => {
       [16.37, 48.21],
     ] as const) {
       draw!(p);
-      await waitFor(() => expect(onArea).toHaveBeenLastCalledWith(expect.arrayContaining([p]), false));
+      await waitFor(() => expect(onArea).toHaveBeenLastCalledWith(expect.arrayContaining([p]), expect.any(Boolean)));
     }
-    fireEvent.click(screen.getByText('Finish shape'));
-    await waitFor(() => expect(onDraw).toHaveBeenLastCalledWith(null));
+    // three corners close the outline automatically
+    expect(onArea).toHaveBeenLastCalledWith(expect.any(Array), true);
+    fireEvent.change(screen.getByLabelText('Name of the import'), { target: { value: 'Canal' } });
     fireEvent.click(screen.getByText('Import this area'));
     await waitFor(() => expect(api.startImport).toHaveBeenCalled());
+    expect(api.startImport.mock.calls[0]![2]).toBe('Canal');
     expect(api.startImport.mock.calls[0]![0]).toEqual([
       [16.36, 48.2],
       [16.38, 48.2],

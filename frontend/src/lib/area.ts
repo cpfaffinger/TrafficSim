@@ -68,3 +68,10 @@ export function roundBbox(b: BBox): BBox {
   const r = (v: number) => Math.round(v * 1e6) / 1e6;
   return [r(b[0]), r(b[1]), r(b[2]), r(b[3])];
 }
+
+/** The box scaled by `factor` around its centre (e.g. basemap room around a proposed area). */
+export function expandBbox(b: BBox, factor: number): BBox {
+  const c = bboxCentre(b);
+  const { widthKm, heightKm } = bboxSizeKm(b);
+  return boxAround(c.lat, c.lon, widthKm * factor, heightKm * factor);
+}

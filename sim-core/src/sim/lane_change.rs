@@ -200,7 +200,10 @@ impl Simulation {
         let v = &self.vehicles[i];
         let list = &self.seg_vehicles[v.seg as usize];
         let at = |k: usize| list.get(k).map(|&j| (j, self.vehicles[j as usize].pos));
-        let regular = ((v.rank as usize).checked_sub(1).and_then(at), at(v.rank as usize + 1));
+        let regular = (
+            (v.rank as usize).checked_sub(1).and_then(at),
+            at(v.rank as usize + 1),
+        );
         self.with_shadows(regular, self.shadows_around(v.seg, v.pos, v.id))
     }
 

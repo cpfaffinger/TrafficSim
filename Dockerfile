@@ -19,7 +19,7 @@ FROM rust-base AS sim-core
 COPY sim-core/ ./
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/sim-core/target \
-    cargo build --release --target wasm32-unknown-unknown \
+    cargo build --release --lib --target wasm32-unknown-unknown \
  && wasm-bindgen --target web --out-dir /out target/wasm32-unknown-unknown/release/trafficsim_sim_core.wasm
 
 # ---------- Frontend: Vite build ----------

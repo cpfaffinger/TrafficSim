@@ -12,6 +12,6 @@ const wasm = path.join(crateDir, 'target/wasm32-unknown-unknown/release/traffics
 
 const run = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, stdio: 'inherit' });
 
-run('cargo', ['build', '--release', '--target', 'wasm32-unknown-unknown'], crateDir);
+run('cargo', ['build', '--release', '--lib', '--target', 'wasm32-unknown-unknown'], crateDir);
 run('wasm-bindgen', ['--target', 'web', '--out-dir', outDir, wasm], crateDir);
 console.log(`WASM bindings written to ${outDir}`);

@@ -2,7 +2,8 @@ use super::junction::Decision;
 use super::*;
 use crate::package::{NodeControl, Priority};
 use crate::synth::{
-    FIXTURE, NetBuilder, corridor, crossroads, fixture_network, grid, roundabout, t_junction,
+    FIXTURE, NetBuilder, corridor, crossroads, fixture_network, grid, grid_with_spacing, roundabout,
+    t_junction,
 };
 
 fn quiet() -> SimConfig {
@@ -1718,6 +1719,50 @@ fn busy_roundabout_flows_without_conflicts() {
     assert!(stats.arrived > 150, "{stats:?}");
     assert!(stats.mean_travel_time < 70.0, "{stats:?}");
     assert_eq!(stats.stranded, 0);
+}
+
+/// #116: OSM splits roads at every node, so exit lanes of a few metres are common. A yielding
+/// merge may enter such a lane while it is empty, even though the lane cannot also hold the
+/// prioritised vehicle about to merge; once the lane is occupied, the merge waits.
+#[test]
+fn yielding_merge_may_enter_a_short_empty_exit_lane() {
+    let mut b = NetBuilder::new();
+    let v = 13.889;
+    // The exit link "je" is 11 m long (junction trim 8 m).
+    b.node("J", 0.0, 0.0, NodeControl::Priority)
+        .node("W", -300.0, 0.0, NodeControl::Boundary)
+        .node("E", 19.0, 0.0, NodeControl::Boundary)
+        .node("S", 0.0, -300.0, NodeControl::Boundary)
+        .link("we", "W", "J", 1, v)
+        .link("je", "J", "E", 1, v)
+        .link("sj", "S", "J", 1, v)
+        .connect("we_e", "we", 0, "je", 0, Priority::Major)
+        .connect("sj_e", "sj", 0, "je", 0, Priority::Minor)
+        .conflict("sj_e", "we_e");
+    let mut s = sim(&b, quiet());
+    let minor = s.place_vehicle("sj", 0, 289.5, 0.0, "je", car()).unwrap();
+    // A major vehicle queued 20 m before its line: the merge keeps room for it.
+    s.place_vehicle("we", 0, 272.0, 0.0, "je", car()).unwrap();
+    let c = s.network().connector_index("sj_e").unwrap();
+    let i = prepare(&mut s, minor);
+    assert!(s.exit_space_ok(c, i), "an empty lane always has room");
+    s.place_vehicle("je", 0, 8.0, 0.0, "je", car()).unwrap();
+    let i = prepare(&mut s, minor);
+    assert!(!s.exit_space_ok(c, i), "the merge must not fill an occupied lane");
+}
+
+/// #116: dense grids, deterministic per seed. Blocks of 28 m leave exit lanes of 12 m that cannot
+/// hold a merging car and the reserved space for a prioritised one: yielding merges must still
+/// enter them while they are empty (c598e2b: 72 arrivals). Blocks of 60 m: yielding merges never
+/// fill an occupied exit lane, which keeps the grid from locking up (without that rule: 664).
+#[test]
+fn congested_short_block_grids_keep_their_throughput() {
+    let mut s = sim(&grid_with_spacing(3, 1, 28.0), with_demand(200.0));
+    run_checked(&mut s, 9000);
+    assert!(s.stats().arrived > 250, "{:?}", s.stats());
+    let mut s = sim(&grid_with_spacing(3, 2, 60.0), with_demand(600.0));
+    run_checked(&mut s, 9000);
+    assert!(s.stats().arrived > 800, "{:?}", s.stats());
 }
 
 #[test]

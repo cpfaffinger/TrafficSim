@@ -332,8 +332,12 @@ pub fn crossroads(control: NodeControl, ew: Priority, ns: Priority) -> NetBuilde
 /// `n × n` grid of priority junctions (spacing 250 m) with two-way links of `lanes` lanes,
 /// boundary nodes around it. East-west movements are major, north-south minor.
 pub fn grid(n: usize, lanes: u32) -> NetBuilder {
+    grid_with_spacing(n, lanes, 250.0)
+}
+
+/// [`grid`] with junctions `s` metres apart (short blocks as in an old town centre, #116).
+pub fn grid_with_spacing(n: usize, lanes: u32, s: f64) -> NetBuilder {
     let mut b = NetBuilder::new();
-    let s = 250.0;
     let id = |i: i64, j: i64| format!("g{i}_{j}");
     for i in -1..=n as i64 {
         for j in -1..=n as i64 {

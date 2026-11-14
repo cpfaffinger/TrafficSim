@@ -25,7 +25,8 @@
 //!   follower rolling up, or one arriving at speed) adds how much later than a standing vehicle
 //!   it reaches its own zone. A higher-ranked stream that is queued at its line offers no gap.
 //! - a yielding merge leaves room on the exit lane for the prioritised vehicles about to merge
-//!   and never fills the exit lane completely (no gridlock on a congested roundabout ring).
+//!   and never fills the exit lane completely (no gridlock on a congested roundabout ring); off
+//!   the ring an empty exit lane always admits, however short it is (#116).
 //!
 //! Physical safety net, computed sequentially here and applied by the IDM: a committed vehicle
 //! stops before a crossing zone while its counterpart is occupied, before a merge zone until the
@@ -622,7 +623,9 @@ impl Simulation {
     /// vehicles already on the connector, or traffic there is moving. A yielding movement also
     /// leaves room for the prioritised vehicles merging into the same lane that are on their
     /// connector or about to reach it (#109; a roundabout entry does not take the space the
-    /// circulating traffic needs, which would lock up a congested ring).
+    /// circulating traffic needs, which would lock up a congested ring). Off the ring, an empty
+    /// exit lane always has room, however short it is (#116: OSM splits roads at every node, so
+    /// lanes of a few metres are common, and a merge into one would otherwise wait forever).
     pub(super) fn exit_space_ok(&self, c: u32, i: usize) -> bool {
         let net = &self.net;
         let info = &net.connectors[c as usize];
@@ -630,12 +633,13 @@ impl Simulation {
         for &j in &self.seg_vehicles[net.connector_segment(c) as usize] {
             needed += self.vehicles[j as usize].params.length + 2.0;
         }
-        let mut yielding_merge = false;
+        let (mut yielding_merge, mut ring) = (false, false);
         for &k in net.conflicts(c) {
             if !net.merges(c, k) || !self.yields(c, k) {
                 continue;
             }
             yielding_merge = true;
+            ring |= net.connectors[k as usize].priority == Priority::RoundaboutRing;
             for &j in &self.seg_vehicles[net.connector_segment(k) as usize] {
                 needed += self.vehicles[j as usize].params.length + 2.0;
             }
@@ -650,13 +654,13 @@ impl Simulation {
             }
         }
         // A yielding merge never fills its exit lane completely, so the prioritised stream can
-        // always move on (no gridlock on a congested roundabout).
+        // always move on (no gridlock on a congested roundabout or in a dense grid).
         if yielding_merge {
             let occupied: f64 = self.seg_vehicles[info.to_lane as usize]
                 .iter()
                 .map(|&j| self.vehicles[j as usize].params.length + 2.0)
                 .sum();
-            if occupied + needed > net.seg_length[info.to_lane as usize] {
+            if (occupied > 0.0 || ring) && occupied + needed > net.seg_length[info.to_lane as usize] {
                 return false;
             }
         }

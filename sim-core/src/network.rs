@@ -126,6 +126,10 @@ pub struct Network {
     geom_range: Vec<(u32, u32)>,
     points: Vec<Point>,
     cumulative: Vec<f64>,
+    /// Per point: clamped grade of the piece starting there (see [`crate::grade`]).
+    piece_grade: Vec<f64>,
+    /// Some piece has a non-zero grade.
+    relief: bool,
     lane_out: Vec<u32>,
     lane_in: Vec<u32>,
     conflict_list: Vec<u32>,
@@ -207,6 +211,8 @@ impl Network {
             geom_range: Vec::new(),
             points: Vec::new(),
             cumulative: Vec::new(),
+            piece_grade: Vec::new(),
+            relief: false,
             lane_out: Vec::new(),
             lane_in: Vec::new(),
             conflict_list: Vec::new(),
@@ -504,8 +510,13 @@ impl Network {
             if i > 0 {
                 acc += distance(&geometry[i - 1], p);
             }
+            let grade = geometry
+                .get(i + 1)
+                .map_or(0.0, |q| crate::grade::piece_grade(p, q));
+            self.relief |= grade != 0.0;
             self.points.push(*p);
             self.cumulative.push(acc);
+            self.piece_grade.push(grade);
         }
         self.geom_range.push((start, self.points.len() as u32));
     }
@@ -662,6 +673,25 @@ impl Network {
     fn segment_points(&self, seg: u32) -> &[Point] {
         let (a, b) = self.geom_range[seg as usize];
         &self.points[a as usize..b as usize]
+    }
+
+    /// True when some segment is not level (terrain or grade-separation ramps).
+    pub fn has_relief(&self) -> bool {
+        self.relief
+    }
+
+    /// Clamped road grade (rise over run) at distance `s` along a segment (#87); `s` is mapped
+    /// like in [`Self::point_at`].
+    pub fn grade_at(&self, seg: u32, s: f64) -> f64 {
+        if !self.relief {
+            return 0.0;
+        }
+        let (a, b) = self.geom_range[seg as usize];
+        let cum = &self.cumulative[a as usize..b as usize];
+        let total = cum[cum.len() - 1];
+        let t = (s * total / self.seg_length[seg as usize]).clamp(0.0, total);
+        let i = cum.partition_point(|&c| c <= t).clamp(1, cum.len() - 1);
+        self.piece_grade[a as usize + i - 1]
     }
 
     /// Point and unit direction (x, y) at distance `s` along a segment. `s` is measured in the

@@ -11,9 +11,10 @@ use crate::demand::{
 use crate::driver::{DriverProfilePatch, Fleet};
 use crate::vehicle::VehicleTypePatch;
 
-/// Gap acceptance at junctions (#45). Critical gaps are the minimum time (s) between the
-/// moment the yielding vehicle reaches its stop line and the arrival of the next prioritised
-/// vehicle at its own stop line.
+/// Gap acceptance at junctions (#45, #109). Critical gaps are the minimum time (s) between the
+/// departure of the yielding vehicle from its stop line and the arrival of the next prioritised
+/// vehicle at the conflict zone of both movements (HCM definition; a vehicle that is still
+/// approaching accounts for how much later than a standing one it reaches the zone).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct JunctionConfig {
@@ -28,6 +29,9 @@ pub struct JunctionConfig {
     /// After waiting this long (s) at an unsignalised stop line, a vehicle ignores approaching
     /// traffic and only waits for the junction to be physically clear (deadlock breaker).
     pub max_wait: f64,
+    /// Minimum time (s) between one vehicle leaving a conflict zone and a conflicting vehicle
+    /// entering it (post-encroachment time, #109).
+    pub clearance_time: f64,
 }
 
 impl Default for JunctionConfig {
@@ -40,6 +44,7 @@ impl Default for JunctionConfig {
             critical_gap_permissive: 4.0,
             follow_up_time: 2.0,
             max_wait: 45.0,
+            clearance_time: 1.0,
         }
     }
 }
@@ -396,6 +401,7 @@ impl SimConfig {
             j.critical_gap_permissive,
             j.follow_up_time,
             j.max_wait,
+            j.clearance_time,
             self.lane_change.keep_right_bias,
             self.lane_change.cooldown,
             self.lane_change.urgency_distance,
@@ -554,6 +560,7 @@ mod tests {
             (r#"{"vehicleMix": {"car": 0}}"#, "all be zero"),
             (r#"{"heterogeneity": 0.9}"#, "heterogeneity"),
             (r#"{"junction": {"maxWait": -1}}"#, "non-negative"),
+            (r#"{"junction": {"clearanceTime": -1}}"#, "non-negative"),
             (r#"{"laneChange": {"interval": 0}}"#, "interval"),
             (r#"{"laneChange": {"duration": -1}}"#, "non-negative"),
             (r#"{"laneChange": {"minDuration": -1}}"#, "non-negative"),

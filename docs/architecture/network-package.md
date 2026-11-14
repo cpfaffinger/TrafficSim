@@ -115,7 +115,7 @@ A movement from the end of one lane to the start of another through a node.
 | `signalGroup` | string \| null | Signal group id when `priority = signal`. |
 | `geometry` | `[x,y,z][]` | Curve from the incoming lane end to the outgoing lane start. |
 | `length` | number | Metres. |
-| `conflicts` | string[] | Connectors of the **same node** whose paths cross or merge with this one. Connectors at different nodes never conflict (grade separation, ADR-0016). |
+| `conflicts` | string[] | Connectors of the **same node** whose paths cross or merge with this one. Connectors at different nodes never conflict (grade separation, ADR-0016). The sim core derives a conflict zone per pair from the connector geometries and lane widths (#109). |
 
 ## SignalController
 

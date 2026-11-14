@@ -19,7 +19,10 @@ behaviour, plus heterogeneity (vehicle types, attentiveness, reaction times).
   duration (default 3 s, shorter at low speed) during which the vehicle occupies source and target lane;
   it is reversed if a conflict appears in its first half (#108).
 - **Junctions:** conflict zones between lane connectors; gap acceptance for priority / yield / stop;
-  fixed-time signal plans first, actuated control later.
+  fixed-time signal plans first, actuated control later. Decisions compare zone occupancy times
+  (crossings exclusive with a clearance time, merges ordered and then car-following); critical gaps
+  follow the HCM definition (departure at the line to arrival of the prioritised vehicle at the
+  conflict zone) (#109).
 - **Integration:** fixed time step `Δt = 0.1 s` (configurable), ballistic position update, speeds clamped at ≥ 0.
 - **Determinism:** a seeded PCG32 PRNG owned by each simulation; stable iteration order; single-threaded
   core per run (no parallel floating-point reductions).

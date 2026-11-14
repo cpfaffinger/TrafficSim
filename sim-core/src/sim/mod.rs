@@ -8,8 +8,10 @@
 //!    phenomena detection (`observe`),
 //! 3. signal aspects for the current time (fixed time, then `actuated` controllers),
 //! 4. arrivals (one RNG stream per process, `demand`) and insertion when the gap is safe,
-//! 5. lane changes (MOBIL + mandatory route changes + merging courtesy), applied sequentially,
-//! 6. junction decisions (signals, priority, gap acceptance), claims applied sequentially,
+//! 5. lane changes (MOBIL + mandatory route changes + merging courtesy; continuous lateral motion
+//!    with the vehicle on both lanes, aborts), applied sequentially,
+//! 6. junction decisions (signals, priority, gap acceptance on conflict zones), claims and the
+//!    conflict-zone safety net applied sequentially,
 //! 7. distraction lapses, then accelerations for all vehicles from the same state (IDM with
 //!    perception delay, `perception`; cooperative yielding to mergers),
 //! 8. ballistic integration, segment transitions, arrivals at exits, travel-time reports and
@@ -52,11 +54,12 @@ pub mod flags {
     pub const BRAKING: u8 = 1;
     /// Slower than 0.5 m/s.
     pub const WAITING: u8 = 2;
-    /// Visual lateral transition of a lane change in progress.
+    /// Lane change in progress (#108).
     pub const CHANGING_LANE: u8 = 4;
     /// On a connector (inside a junction).
     pub const IN_JUNCTION: u8 = 8;
-    /// Holding at a stop line (red signal, stop sign or yielding).
+    /// Holding at a stop line (red signal, stop sign or yielding) or before an occupied conflict
+    /// zone (#109).
     pub const YIELDING: u8 = 16;
 }
 
@@ -86,6 +89,9 @@ pub struct Vehicle {
     pub claimed: u32,
     /// Distance to a stop line the vehicle must hold at, `INFINITY` if none.
     pub stop_dist: f64,
+    /// Distance to the entry of a conflict zone the vehicle must hold at because a conflicting
+    /// vehicle occupies it (#109), `INFINITY` if none.
+    pub zone_hold: f64,
     /// Time spent waiting at the current stop line (s).
     pub wait: f64,
     /// Full stop at a stop sign completed.
@@ -130,6 +136,11 @@ pub struct Vehicle {
 }
 
 impl Vehicle {
+    /// Holding at a stop line (or before an occupied conflict zone) at (nearly) standstill.
+    fn holding(&self) -> bool {
+        (self.stop_dist.is_finite() || self.zone_hold.is_finite()) && self.speed < 0.5
+    }
+
     /// Completes a lane change in progress (#108): the vehicle leaves its source lane.
     fn end_lane_change(&mut self) {
         if self.lc_from != NONE {
@@ -484,6 +495,7 @@ impl Simulation {
             next_conn: NONE,
             claimed: NONE,
             stop_dist: f64::INFINITY,
+            zone_hold: f64::INFINITY,
             wait: 0.0,
             stop_done: false,
             lc_timer: 0.0,
@@ -671,6 +683,9 @@ impl Simulation {
         if v.stop_dist.is_finite() {
             Self::stop_at(&mut a, &idm, speed, v.stop_dist);
         }
+        if v.zone_hold.is_finite() {
+            Self::stop_at(&mut a, &idm, speed, v.zone_hold);
+        }
         let mut dist = net.seg_length[v.seg as usize] - v.pos;
         if net.is_lane(v.seg) {
             // Vehicles that left this lane through another connector but still overlap it.
@@ -690,6 +705,12 @@ impl Simulation {
             }
         }
         let horizon = (30.0 + speed * 7.0).min(250.0);
+        // Vehicles ahead on connectors merging with ours (#109).
+        if let Some(c) = net.segment_connector(v.seg)
+            && let Some((j, gap)) = self.merging_leader(c, dist, i as u32)
+        {
+            self.follow_vehicle(&mut a, &idm, speed, gap, j, delay);
+        }
         let route = &self.routes[v.route as usize];
         let mask = p.class.mask();
         let mut rp = v.route_pos as usize;
@@ -716,6 +737,11 @@ impl Simulation {
             } else {
                 net.connectors[net.segment_connector(cur).unwrap_or(0) as usize].to_lane
             };
+            if let Some(c) = net.segment_connector(next)
+                && let Some((j, gap)) = self.merging_leader(c, dist + net.seg_length[next as usize], i as u32)
+            {
+                self.follow_vehicle(&mut a, &idm, speed, gap, j, delay);
+            }
             let target = p.desired_speed(net.seg_speed_limit[next as usize]);
             if speed > target {
                 let needed = (speed * speed - target * target) / (2.0 * dist.max(0.1));
@@ -877,7 +903,7 @@ impl Simulation {
             if !net.is_lane(v.seg) {
                 f |= flags::IN_JUNCTION;
             }
-            if v.stop_dist.is_finite() {
+            if v.stop_dist.is_finite() || v.zone_hold.is_finite() {
                 f |= flags::YIELDING;
             }
             v.flags = f;

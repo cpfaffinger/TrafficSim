@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aggregate, formatStat, RUN_KPIS, stat } from './runStats';
+import { aggregate, formatStat, RUN_KPIS, stat, visibleKpis } from './runStats';
 
 const run = (meanSpeed: number, delayHours: number, tailbacks?: number) => ({
   network: { meanSpeed, delayHours, arrived: 100, meanTravelTime: 120, vehicleKm: 50, stops: 9 },
@@ -25,5 +25,19 @@ describe('aggregate', () => {
     expect(formatStat(agg.get('meanSpeed')!, speed)).toBe('39.6 ± 5.1');
     expect(formatStat(agg.get('tailbacks')!, RUN_KPIS.find((k) => k.key === 'tailbacks')!)).toBe('2');
     expect(formatStat(null, speed)).toBe('–');
+  });
+});
+
+describe('pedestrian KPIs', () => {
+  it('are shown only for runs with pedestrians', () => {
+    const plain = run(10, 1);
+    const withPeds = { ...run(9, 2), pedestrians: { served: 120, meanDelay: 14.5, vehicleDelayHours: 0.4 } };
+    expect(visibleKpis([plain]).some((k) => k.optional)).toBe(false);
+    const keys = visibleKpis([plain, withPeds]).map((k) => k.key);
+    expect(keys).toContain('pedestriansServed');
+    expect(keys).toContain('crossingVehicleDelay');
+    const agg = aggregate([withPeds]);
+    expect(agg.get('pedestrianDelay')).toEqual({ n: 1, mean: 14.5, sd: 0 });
+    expect(agg.get('pedestriansServed')!.mean).toBe(120);
   });
 });

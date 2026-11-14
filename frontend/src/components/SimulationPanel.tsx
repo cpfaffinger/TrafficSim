@@ -121,6 +121,16 @@ export function SimulationPanel(props: SimulationPanelProps) {
             <dd>{(stats.meanSpeed * 3.6).toFixed(1)} km/h</dd>
             <dt>Mean travel time</dt>
             <dd>{stats.meanTravelTime.toFixed(0)} s</dd>
+            {stats.pedestrians && (
+              <>
+                <dt>Pedestrians crossed / waiting</dt>
+                <dd>
+                  {stats.pedestrians.served} / {stats.pedestrians.waiting}
+                </dd>
+                <dt>Pedestrian delay</dt>
+                <dd>{stats.pedestrians.meanDelay.toFixed(0)} s</dd>
+              </>
+            )}
           </>
         )}
       </dl>

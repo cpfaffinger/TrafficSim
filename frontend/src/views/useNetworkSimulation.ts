@@ -55,6 +55,7 @@ export function useNetworkSimulation(
         case 'frame': {
           const snapshot = message.snapshot ?? shared?.read();
           if (snapshot) sceneRef.current?.updateSimulation(snapshot, message.signals);
+          if (message.pedestrians) sceneRef.current?.updatePedestrians(message.pedestrians);
           setTime(message.time);
           setTimeOfDay(message.timeOfDay);
           setVehicles(message.vehicles);

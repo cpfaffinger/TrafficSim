@@ -19,6 +19,8 @@ let lastStats = 0;
 let ready: Promise<unknown> | null = null;
 let shared: SnapshotBuffer | null = null;
 let sentBuckets = 0;
+/** The package has pedestrian crossings (ADR-0020): frames carry the pedestrian snapshot. */
+let hasCrossings = false;
 
 function postCells(): void {
   if (!sim) return;
@@ -42,16 +44,18 @@ function postFrame(forceStats = false): void {
   const signals = sim.signalStates();
   const stats = withStats ? (JSON.parse(sim.statsJson()) as SimStats) : null;
   const vehicles = snapshot.length / NETWORK_SNAPSHOT_STRIDE;
+  const pedestrians = hasCrossings ? sim.pedestrianSnapshot() : undefined;
+  const extra: Transferable[] = pedestrians ? [pedestrians.buffer as ArrayBuffer] : [];
   if (useShared) {
     if (!shared || !shared.fits(snapshot)) {
       shared = SnapshotBuffer.allocate(Math.max(4096, vehicles * 2), NETWORK_SNAPSHOT_STRIDE, true);
       post({ type: 'buffer', buffer: shared.buffer as SharedArrayBuffer });
     }
     shared.publish(snapshot);
-    post({ type: 'frame', time: sim.time, timeOfDay: sim.timeOfDay, snapshot: null, vehicles, signals, stats }, [signals.buffer]);
+    post({ type: 'frame', time: sim.time, timeOfDay: sim.timeOfDay, snapshot: null, vehicles, signals, stats, pedestrians }, [signals.buffer, ...extra]);
     return;
   }
-  post({ type: 'frame', time: sim.time, timeOfDay: sim.timeOfDay, snapshot, vehicles, signals, stats }, [snapshot.buffer, signals.buffer]);
+  post({ type: 'frame', time: sim.time, timeOfDay: sim.timeOfDay, snapshot, vehicles, signals, stats, pedestrians }, [snapshot.buffer, signals.buffer, ...extra]);
 }
 
 function tick(): void {
@@ -88,7 +92,8 @@ self.onmessage = async (event: MessageEvent<ToNetworkWorker>) => {
         sentBuckets = 0;
         carry = 0;
         const groups = JSON.parse(sim.signalGroupIdsJson()) as string[];
-        const pkg = JSON.parse(packageJson) as { nodes: { id: string; control: string }[]; links: { from: string }[] };
+        const pkg = JSON.parse(packageJson) as { nodes: { id: string; control: string }[]; links: { from: string }[]; crossings?: unknown[] };
+        hasCrossings = (pkg.crossings?.length ?? 0) > 0;
         const from = new Set(pkg.links.map((l) => l.from));
         const entries = pkg.nodes.filter((n) => n.control === 'boundary' && from.has(n.id)).map((n) => n.id);
         post({ type: 'ready', timeStep: sim.timeStep, signalGroupIds: groups, entries });

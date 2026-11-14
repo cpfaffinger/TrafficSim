@@ -1,3 +1,4 @@
+import { parseCrossings } from './crossings';
 import {
   BOUNDARY_MARKINGS,
   CONNECTOR_TURNS,
@@ -351,5 +352,6 @@ export function parseNetworkPackage(input: unknown): NetworkPackage {
   };
   const pkg: NetworkPackage = { ...base, stats: stats(o.stats, base) };
   checkReferences(pkg);
+  if (o.crossings !== undefined && o.crossings !== null) pkg.crossings = parseCrossings(o.crossings, pkg, fail);
   return pkg;
 }

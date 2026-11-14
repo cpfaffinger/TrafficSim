@@ -10,15 +10,19 @@ export interface RunKpi {
   digits: number;
   higherIsBetter: boolean;
   get: (summary: SummaryLike) => number | null;
+  /** Shown only when a run has it (pedestrian KPIs, ADR-0020). */
+  optional?: boolean;
 }
 
 export interface SummaryLike {
   network?: Record<string, unknown>;
   events?: Record<string, unknown>;
   links?: unknown[];
+  pedestrians?: Record<string, unknown>;
 }
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const ped = (key: string) => (s: SummaryLike) => num(s.pedestrians?.[key]);
 const net = (key: string, scale = 1) => (s: SummaryLike) => {
   const v = num(s.network?.[key]);
   return v === null ? null : v * scale;
@@ -32,7 +36,15 @@ export const RUN_KPIS: readonly RunKpi[] = [
   { key: 'delayHours', label: 'Delay', unit: 'veh·h', digits: 1, higherIsBetter: false, get: net('delayHours') },
   { key: 'stops', label: 'Stops', unit: '', digits: 0, higherIsBetter: false, get: net('stops') },
   { key: 'tailbacks', label: 'Tailbacks', unit: '', digits: 0, higherIsBetter: false, get: (s) => num(s.events?.tailbacks) },
+  { key: 'pedestriansServed', label: 'Pedestrians crossed', unit: 'ped', digits: 0, higherIsBetter: true, get: ped('served'), optional: true },
+  { key: 'pedestrianDelay', label: 'Pedestrian delay', unit: 's', digits: 1, higherIsBetter: false, get: ped('meanDelay'), optional: true },
+  { key: 'crossingVehicleDelay', label: 'Vehicle delay at crossings', unit: 'veh·h', digits: 2, higherIsBetter: false, get: ped('vehicleDelayHours'), optional: true },
 ];
+
+/** KPIs to show for these summaries: optional ones only when at least one run has them. */
+export function visibleKpis(summaries: readonly unknown[]): RunKpi[] {
+  return RUN_KPIS.filter((k) => !k.optional || summaries.some((s) => k.get(asSummary(s)) !== null));
+}
 
 export interface Stat {
   n: number;

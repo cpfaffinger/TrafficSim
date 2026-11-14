@@ -35,6 +35,10 @@ congestion, queue and speed **heatmaps**.
   MOBIL lane changes with continuous lateral motion, signals incl. actuated control, priority and
   gap acceptance, conflict areas, rerouting, heterogeneous vehicles and drivers, deterministic per
   seed.
+- **Pedestrians at crossings** ([ADR-0020](docs/adr/0020-pedestrian-crossings.md)): zebra,
+  signalised, uncontrolled and unmarked crossings from OSM plus implicit crosswalks at signalised
+  junctions; pedestrian demand estimated from the activity around each crossing; vehicles stop at
+  zebras, pedestrians accept gaps, push-button signals interrupt the green, turning vehicles yield.
 - **Lane-accurate heatmaps** (speed ratio, density, queues, delay, flow, stops) with a timeline and
   replay of 30 s buckets.
 - **Stored runs**: save the browser run or run several seeds on the server with the native sim

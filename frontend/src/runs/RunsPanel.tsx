@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import type { BatchJob, RunSummary, Scenario, ScenarioClient } from '../api/scenarioClient';
-import { aggregate, asSummary, formatStat, formatValue, RUN_KPIS } from './runStats';
+import { aggregate, asSummary, formatStat, formatValue, RUN_KPIS, visibleKpis } from './runStats';
 
 export type RunsApi = Pick<ScenarioClient, 'listRuns' | 'saveRun' | 'batchRunner' | 'startBatch' | 'getBatch'>;
 
@@ -170,7 +170,7 @@ export function RunsPanel({ api, scenario, seed, collectResults, onRunsChanged, 
               Mean{runs.length > 1 ? ' ± sd' : ''} over {runs.length} run{runs.length === 1 ? '' : 's'}
             </caption>
             <tbody>
-              {RUN_KPIS.map((k) => (
+              {visibleKpis(runs.map((r) => r.summary)).map((k) => (
                 <tr key={k.key}>
                   <th scope="row">{k.label}</th>
                   <td>

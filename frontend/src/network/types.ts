@@ -202,6 +202,41 @@ export interface NetworkPackage {
   connectors: Connector[];
   signals: SignalController[];
   stats: PackageStats;
+  /** Pedestrian crossings (ADR-0020, #86); absent in older packages. */
+  crossings?: Crossing[];
+}
+
+export const CROSSING_KINDS = ['zebra', 'signal', 'uncontrolled', 'unmarked'] as const;
+export type CrossingKind = (typeof CROSSING_KINDS)[number];
+
+export const CROSSING_SIGNAL_MODES = ['parallel', 'request'] as const;
+export type CrossingSignalMode = (typeof CROSSING_SIGNAL_MODES)[number];
+
+/** A directional link crossed by a crossing: centre position along the link, lane span along the crossing. */
+export interface CrossingLink {
+  link: string;
+  position: number;
+  span: readonly [number, number];
+}
+
+/** A pedestrian crossing (docs/architecture/network-package.md "Crossing"). */
+export interface Crossing {
+  id: string;
+  osmId: number | null;
+  kind: CrossingKind;
+  node: string | null;
+  signalGroup: string | null;
+  signalMode: CrossingSignalMode | null;
+  implicit: boolean;
+  /** Kerb-to-kerb walking distance (m). */
+  width: number;
+  /** Extent along the road (m). */
+  depth: number;
+  /** Estimated pedestrians per hour. */
+  demand: number;
+  /** First kerb → second kerb. */
+  geometry: readonly [Vec3, Vec3];
+  links: CrossingLink[];
 }
 
 export const END_SIGNS = ['none', 'stop', 'give_way', 'priority_road'] as const;

@@ -179,6 +179,34 @@ impl NetworkSim {
         self.sim.demand(node_id)
     }
 
+    /// Changes the rate of OD matrix entry `index` (vehicles per hour at time-of-day factor 1).
+    #[wasm_bindgen(js_name = setOdDemand)]
+    pub fn set_od_demand(&mut self, index: u32, vehicles_per_hour: f64) -> Result<(), JsError> {
+        self.sim
+            .set_od_demand(index as usize, vehicles_per_hour)
+            .map_err(|e| JsError::new(&e))
+    }
+
+    /// Current rate of OD entry `index` (base rate × time-of-day factor, vehicles per hour),
+    /// `undefined` if it does not exist.
+    #[wasm_bindgen(js_name = odDemand)]
+    pub fn od_demand(&self, index: u32) -> Option<f64> {
+        self.sim.od_demand(index as usize).map(|(vph, f)| vph * f)
+    }
+
+    /// Arrival processes as JSON: `[{kind, node, od, vph, factor, origins}]` (`kind`: boundary,
+    /// od, residentialOut, residentialIn; `vph` at curve factor 1, `factor` = current factor).
+    #[wasm_bindgen(js_name = demandJson)]
+    pub fn demand_json(&self) -> String {
+        self.sim.demand_json()
+    }
+
+    /// Time of day in seconds since midnight (`startTime` + simulated time, wrapping daily).
+    #[wasm_bindgen(getter, js_name = timeOfDay)]
+    pub fn time_of_day(&self) -> f64 {
+        self.sim.time_of_day()
+    }
+
     /// Overrides the routing travel time of a link (seconds) for vehicles generated from now on.
     #[wasm_bindgen(js_name = setLinkTravelTime)]
     pub fn set_link_travel_time(&mut self, link_id: &str, seconds: f64) -> Result<(), JsError> {
@@ -192,12 +220,91 @@ impl NetworkSim {
     pub fn state_checksum(&self) -> String {
         format!("{:016x}", self.sim.state_checksum())
     }
+
+    /// Finished lane-cell buckets in the run (index of the next bucket).
+    #[wasm_bindgen(getter, js_name = laneCellBuckets)]
+    pub fn lane_cell_buckets(&self) -> f64 {
+        self.sim.lane_cell_buckets() as f64
+    }
+
+    /// `lane-cells-v1` blob (`Uint8Array`) with the latest finished bucket (none before the
+    /// first bucket ends; empty array when metrics are disabled).
+    #[wasm_bindgen(js_name = laneCellsLatest)]
+    pub fn lane_cells_latest(&self) -> Vec<u8> {
+        self.sim.lane_cells_latest()
+    }
+
+    /// `lane-cells-v1` blob with all retained buckets (`metrics.maxBuckets`).
+    #[wasm_bindgen(js_name = laneCellsHistory)]
+    pub fn lane_cells_history(&self) -> Vec<u8> {
+        self.sim.lane_cells_since(0)
+    }
+
+    /// `lane-cells-v1` blob with the retained buckets whose index is ≥ `from`.
+    #[wasm_bindgen(js_name = laneCellsSince)]
+    pub fn lane_cells_since(&self, from: u32) -> Vec<u8> {
+        self.sim.lane_cells_since(u64::from(from))
+    }
+
+    /// Run summary as JSON: network KPIs, per-link metrics, junctions and event counts.
+    #[wasm_bindgen(js_name = summaryJson)]
+    pub fn summary_json(&self) -> String {
+        self.sim.summary_json()
+    }
+
+    /// Junction metrics as JSON (queues per approach, delay and LOS per movement).
+    #[wasm_bindgen(js_name = junctionsJson)]
+    pub fn junctions_json(&self) -> String {
+        self.sim.junctions_json()
+    }
+
+    /// Detected tailbacks and stop-and-go waves as JSON.
+    #[wasm_bindgen(js_name = eventsJson)]
+    pub fn events_json(&self) -> String {
+        self.sim.events_json()
+    }
+
+    /// Restarts the metric totals now (e.g. after a warm-up); buckets and events are kept.
+    #[wasm_bindgen(js_name = resetMetrics)]
+    pub fn reset_metrics(&mut self) {
+        self.sim.reset_metrics();
+    }
+
+    /// Vehicle type catalogue of this run (built-in types plus `vehicleTypes` overrides) as JSON.
+    #[wasm_bindgen(js_name = vehicleTypesJson)]
+    pub fn vehicle_types_json(&self) -> String {
+        self.sim.fleet().catalogue.to_json()
+    }
+
+    /// Driver profiles of this run (built-in plus `driverProfiles` overrides) as JSON.
+    #[wasm_bindgen(js_name = driverProfilesJson)]
+    pub fn driver_profiles_json(&self) -> String {
+        self.sim.fleet().profiles.to_json()
+    }
+}
+
+/// The built-in vehicle type catalogue as JSON (`{name: type}`), e.g. for a demand editor.
+#[wasm_bindgen(js_name = builtinVehicleTypesJson)]
+pub fn builtin_vehicle_types_json() -> String {
+    crate::vehicle::VehicleCatalogue::builtin().to_json()
+}
+
+/// The built-in road-class demand profiles as JSON (`{class: {volumePerLane, curve}}`).
+#[wasm_bindgen(js_name = builtinRoadClassProfilesJson)]
+pub fn builtin_road_class_profiles_json() -> String {
+    crate::demand::RoadClassProfiles::builtin().to_json()
+}
+
+/// The built-in driver profiles as JSON (`{name: profile}`).
+#[wasm_bindgen(js_name = builtinDriverProfilesJson)]
+pub fn builtin_driver_profiles_json() -> String {
+    crate::driver::DriverProfiles::builtin().to_json()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testnet::FIXTURE;
+    use crate::synth::FIXTURE;
 
     #[test]
     fn network_sim_exposes_the_simulation() {
@@ -232,6 +339,35 @@ mod tests {
             .unwrap();
         reference.step(300);
         assert_eq!(reference.state_checksum(), again);
+        assert!((sim.time_of_day() - (7.0 * 3600.0 + 30.0)).abs() < 1e-6);
+        assert_eq!(sim.od_demand(0), None);
+        let mut od = NetworkSim::new(
+            FIXTURE,
+            r#"{"zones": {"a": {"nodes": ["n1"]}, "b": {"nodes": ["n2"]}},
+                "od": [{"from": "a", "to": "b", "vph": 100, "curve": "weekday"}]}"#,
+            1,
+        )
+        .ok()
+        .unwrap();
+        assert!(od.set_od_demand(0, 200.0).is_ok());
+        assert!(
+            (od.od_demand(0).unwrap() - 200.0 * 0.88).abs() < 1e-9,
+            "07:00-08:00 factor"
+        );
+        assert!(od.demand_json().contains(r#""kind":"od""#));
+        assert_eq!(sim.lane_cell_buckets(), 1.0);
+        let latest = crate::metrics::cells::LaneCells::decode(&sim.lane_cells_latest()).unwrap();
+        assert_eq!(latest.buckets.len(), 1);
+        assert_eq!(sim.lane_cells_history(), sim.lane_cells_since(0));
+        assert!(sim.summary_json().contains(r#""formatVersion":1"#));
+        assert!(sim.junctions_json().starts_with(r#"[{"id":"n0""#));
+        assert!(sim.events_json().starts_with(r#"{"tailbacks":"#));
+        sim.reset_metrics();
+        assert!(builtin_road_class_profiles_json().contains(r#""motorway":{"volumePerLane":1400.0"#));
+        assert!(sim.vehicle_types_json().contains("\"articulatedTruck\""));
+        assert!(sim.driver_profiles_json().contains("\"distracted\""));
+        assert_eq!(builtin_vehicle_types_json(), sim.vehicle_types_json());
+        assert_eq!(builtin_driver_profiles_json(), sim.driver_profiles_json());
     }
 
     #[test]

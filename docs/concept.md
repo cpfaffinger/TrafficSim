@@ -127,26 +127,39 @@ Details: [ADR-0007](adr/0007-microscopic-traffic-model.md).
 - **Car following:** Intelligent Driver Model (IDM) per vehicle with parameters from vehicle
   type × driver profile (`v0, T, a, b, s0, δ`).
 - **Reaction time:** drivers perceive the leader state with a per-driver delay (ring buffer of
-  past states); inattentive drivers additionally get stochastic perception lapses.
+  past states, extrapolated with the old speed as in the Human Driver Model); inattentive drivers
+  additionally get stochastic perception lapses. An emergency reflex on the true state keeps the
+  model collision-free.
 - **Lane changing:** MOBIL (politeness factor, safety criterion, keep-right bias for motorways);
-  mandatory lane changes for routing (target lane before junction) with urgency ramp. Lane
-  boundaries (solid lines) restrict which changes are allowed.
+  mandatory lane changes for routing (target lane before junction) with urgency ramp, strategic
+  lane choice two links ahead (weaving). Lane boundaries (solid lines) restrict which changes are
+  allowed. At on-ramps and lane drops, drivers next to the ending lane let mergers in (zipper)
+  and mergers wait at the end of the acceleration lane for a gap.
 - **Junctions:** lane connectors with conflict zones (same level only — bridges and tunnels never
   conflict); gap acceptance for priority / yield / stop / roundabout entries;
-  signals as phase plans (fixed-time first, actuated later).
-- **Routing:** time-dependent shortest path on the lane graph; periodic re-routing for a share of
-  drivers (commuters "know" alternatives).
-- **Demand:** OD matrices between zones + boundary sources, time-of-day curves
-  (commuter peaks), vehicle mix (car, van, truck, bus, motorcycle).
-- **Vehicle diversity:** length/acceleration/braking per type; driver profiles
-  (*attentive*, *average*, *distracted*, *aggressive*) with distributions, not constants.
+  signals as phase plans (fixed-time by default, vehicle-actuated per controller: detectors,
+  min/max green, gap-out).
+- **Routing:** shortest path on the link graph; familiar drivers (commuters) route on experienced,
+  exponentially smoothed link travel times and re-plan en route periodically.
+- **Demand:** boundary entries default to a road-class profile (volume per lane × lanes, 24 h
+  curve), OD matrices between zones, residential trip generation inside the network
+  (residential / living-street / service links, commuter curves), time-of-day curves, vehicle
+  and driver mix per OD pair and time of day. The demand configuration shape is documented in
+  `sim-core/README.md` (the backend generates a default per imported network).
+- **Vehicle diversity:** vehicle type catalogue as data (car, van, rigid and articulated truck,
+  bus, motorcycle); driver profiles (*attentive*, *average*, *distracted*, *aggressive*,
+  *commuter*) with truncated-normal distributions, not constants.
 
 ### 4.1 Metrics and heatmaps
 
 Each lane is split into cells (default 10 m). Per cell and time bucket (default 30 s) the core
 accumulates: occupancy/density, mean speed, speed ratio (`v / v_limit`), stops, queue presence,
-throughput at cell boundaries, delay vs. free-flow. Junction metrics: queue length per approach,
-wait time per turn, level of service.
+throughput at cell boundaries, delay vs. free-flow. Buckets are exchanged in the compact binary
+format `lane-cells-v1` (header, lane index table, Float32/Uint16 arrays; specified in
+`sim-core/README.md`), which the frontend renders and the backend stores opaque. Junction
+metrics: queue length per approach, wait time and delay per turn, HCM level of service. Run
+summaries carry network KPIs and per-link metrics (mean speed, flow, density, delay, maximum
+queue); tailbacks and stop-and-go waves are detected and reported as events.
 
 Heatmaps are rendered as coloured lane ribbons (lane-accurate) and as a smoothed screen-space
 density layer (overview). Phenomena we expect to reproduce and test against:

@@ -84,6 +84,29 @@ pub enum RoadClass {
 }
 
 impl RoadClass {
+    /// The package key of the class (`motorway`, `living_street`, …).
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Motorway => "motorway",
+            Self::MotorwayLink => "motorway_link",
+            Self::Trunk => "trunk",
+            Self::TrunkLink => "trunk_link",
+            Self::Primary => "primary",
+            Self::PrimaryLink => "primary_link",
+            Self::Secondary => "secondary",
+            Self::SecondaryLink => "secondary_link",
+            Self::Tertiary => "tertiary",
+            Self::TertiaryLink => "tertiary_link",
+            Self::Unclassified => "unclassified",
+            Self::Residential => "residential",
+            Self::LivingStreet => "living_street",
+            Self::Service => "service",
+            Self::Road => "road",
+            Self::Busway => "busway",
+            Self::Unknown => "unknown",
+        }
+    }
+
     /// Roads on which the keep-right rule applies to lane changes (MOBIL bias).
     pub fn keep_right(self) -> bool {
         matches!(
@@ -237,7 +260,7 @@ pub struct SignalGroup {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testnet::FIXTURE;
+    use crate::synth::FIXTURE;
 
     #[test]
     fn parses_the_golden_fixture() {

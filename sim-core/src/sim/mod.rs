@@ -4,26 +4,39 @@
 //! order (insertion order, compacted with `retain`):
 //!
 //! 1. rebuild the per-segment occupant lists (sorted by position, ties by vehicle id),
-//! 2. signal aspects for the current time,
-//! 3. arrivals (Poisson per entry, per-entry RNG stream) and insertion when the gap is safe,
-//! 4. lane changes (MOBIL + mandatory route changes), applied sequentially,
-//! 5. junction decisions (signals, priority, gap acceptance), claims applied sequentially,
-//! 6. IDM accelerations for all vehicles from the same state (parallel update),
-//! 7. ballistic integration, segment transitions, arrivals at exits.
+//! 2. periodic travel-time update and commuter re-routing (`reroute`), queue sampling and
+//!    phenomena detection (`observe`),
+//! 3. signal aspects for the current time (fixed time, then `actuated` controllers),
+//! 4. arrivals (one RNG stream per process, `demand`) and insertion when the gap is safe,
+//! 5. lane changes (MOBIL + mandatory route changes + merging courtesy), applied sequentially,
+//! 6. junction decisions (signals, priority, gap acceptance), claims applied sequentially,
+//! 7. distraction lapses, then accelerations for all vehicles from the same state (IDM with
+//!    perception delay, `perception`; cooperative yielding to mergers),
+//! 8. ballistic integration, segment transitions, arrivals at exits, travel-time reports and
+//!    metric accumulation; perception history; lane-cell bucket flush.
 //!
 //! The core has no I/O, no wall clock and no global RNG; identical package, config and seed
 //! give bit-identical states (see [`Simulation::state_checksum`]).
 
+mod actuated;
+mod demand;
 mod junction;
+pub use demand::DemandSource;
 mod lane_change;
+mod observe;
+mod perception;
+mod reroute;
+pub use observe::{
+    ApproachMetrics, EventCounts, JunctionMetrics, LinkMetrics, MovementMetrics, NetworkKpis, Summary,
+};
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
 
 use serde::Serialize;
 
 use crate::config::SimConfig;
-use crate::detmath;
-use crate::idm::MAX_EMERGENCY_DECELERATION;
+use crate::driver::Fleet;
+use crate::metrics::{Metrics, cells};
 use crate::network::{NONE, Network};
 use crate::rng::Pcg32;
 use crate::routing::Router;
@@ -88,28 +101,24 @@ pub struct Vehicle {
     pub flags: u8,
     /// Re-routing found no way to the destination; removed at the end of its lane.
     pub lost: bool,
+    /// Distance travelled since insertion (m).
+    pub odo: f64,
+    /// Time the vehicle entered its current link (s).
+    pub link_enter: f64,
+    /// Seconds below 0.5 m/s and seconds lost against the speed limit on the current link
+    /// (junction movement metrics, #58).
+    pub link_wait: f64,
+    pub link_delay: f64,
+    /// End of the current distraction lapse (s); in the past when attentive.
+    pub lapse_until: f64,
+    /// Start of the next distraction lapse (s).
+    pub next_lapse: f64,
     /// Step phase of the staggered discretionary lane-change evaluation (set at insertion, so it
     /// does not depend on other sources' traffic).
     lc_phase: u32,
-    alive: bool,
-}
-
-#[derive(Debug, Clone)]
-struct Pending {
-    params: VehicleParams,
-    link: u32,
-    route: u32,
-}
-
-#[derive(Debug, Clone)]
-struct Source {
-    node: u32,
-    links: Vec<u32>,
-    /// Vehicles per second.
-    rate: f64,
-    next_arrival: f64,
+    /// Per-vehicle random stream (distraction lapses).
     rng: Pcg32,
-    queue: VecDeque<Pending>,
+    alive: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -121,6 +130,8 @@ struct Counters {
     unroutable: u64,
     lane_changes: u64,
     forced_entries: u64,
+    lapses: u64,
+    commuter_reroutes: u64,
     travel_time_sum: f64,
 }
 
@@ -146,6 +157,10 @@ pub struct Stats {
     pub lane_changes: u64,
     /// Junction entries forced by the deadlock breaker (`junction.maxWait`).
     pub forced_entries: u64,
+    /// Distraction lapses started (#52).
+    pub lapses: u64,
+    /// Route changes of familiar drivers en route on experienced travel times (#55).
+    pub commuter_reroutes: u64,
     /// Mean travel time of arrived vehicles (s).
     pub mean_travel_time: f64,
     /// Mean speed of active vehicles (m/s).
@@ -178,6 +193,9 @@ pub struct EntryEvent {
 pub struct Simulation {
     net: Network,
     router: Router,
+    /// Router on experienced travel times (familiar drivers).
+    informed: Router,
+    travel_times: reroute::TravelTimes,
     config: SimConfig,
     dt: f64,
     time: f64,
@@ -191,12 +209,20 @@ pub struct Simulation {
     conn_claims: Vec<u32>,
     conn_last_claim: Vec<f64>,
     signal_state: Vec<SignalState>,
-    sources: Vec<Source>,
-    dest_weight: Vec<f64>,
+    demand: demand::Demand,
     routes: Vec<Vec<u32>>,
     route_cache: BTreeMap<(u32, u32, u8), u32>,
-    dest_cache: BTreeMap<(u32, u8), Vec<(u32, f64)>>,
+    /// Reachable destinations per (entry link, class, destination set): (route, cumulative weight).
+    dest_cache: BTreeMap<(u32, u8, u32), Vec<(u32, f64)>>,
     counters: Counters,
+    fleet: Fleet,
+    seed: u64,
+    /// Perception history per vehicle (same order as `vehicles`).
+    history: Vec<perception::History>,
+    /// Run metrics (#57, #58, #62), `None` when disabled.
+    metrics: Option<Box<Metrics>>,
+    /// Vehicle-actuated signal controllers (#82).
+    actuated: Vec<actuated::Controller>,
     scratch_acc: Vec<f64>,
     log_events: bool,
     lane_change_log: Vec<LaneChangeEvent>,
@@ -212,9 +238,22 @@ fn ballistic(speed: f64, acc: f64, dt: f64) -> (f64, f64) {
     }
 }
 
-/// Exponentially distributed inter-arrival time for `rate` events per second.
-fn exponential(rng: &mut Pcg32, rate: f64) -> f64 {
-    -detmath::ln(1.0 - rng.next_f64()) / rate
+use perception::exponential;
+
+/// Route cache flag of routes for familiar drivers (bit above the class id).
+const INFORMED: u8 = 0x80;
+
+fn cache_class(class: VehicleClass, informed: bool) -> u8 {
+    class.id() | if informed { INFORMED } else { 0 }
+}
+
+/// Uniform index into a list of `n` items (no random number drawn for a single item).
+fn pick_index(rng: &mut Pcg32, n: usize) -> usize {
+    if n <= 1 {
+        0
+    } else {
+        ((rng.next_f64() * n as f64) as usize).min(n - 1)
+    }
 }
 
 impl Simulation {
@@ -227,45 +266,29 @@ impl Simulation {
 
     pub fn new(net: Network, config: SimConfig, seed: u64) -> Result<Self, String> {
         config.validate()?;
-        let mut by_node: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
-        for link in net.entry_links() {
-            by_node
-                .entry(net.links[link as usize].from)
-                .or_default()
-                .push(link);
-        }
-        for id in config.demand.keys() {
-            match net.node_index(id) {
-                Some(n) if by_node.contains_key(&n) => {}
-                _ => return Err(format!("demand references '{id}', which is not an entry node")),
+        let fleet = config.fleet()?;
+        let demand = demand::Demand::build(&net, &config, &fleet, seed)?;
+        let metrics = if config.metrics.enabled {
+            let m = Metrics::new(&net, &config.metrics, config.time_step, demand.start_time)?;
+            Some(Box::new(m))
+        } else {
+            None
+        };
+        if let crate::config::ActuatedSelection::Nodes(nodes) = &config.signal_control.actuated {
+            for id in nodes {
+                let node = net.node_index(id);
+                if !net.signals.controllers.iter().any(|c| Some(c.node) == node) {
+                    return Err(format!("signalControl.actuated: '{id}' has no signal controller"));
+                }
             }
         }
-        let mut sources = Vec::with_capacity(by_node.len());
-        for (node, links) in by_node {
-            let mut src = Source {
-                node,
-                links,
-                rate: 0.0,
-                next_arrival: f64::INFINITY,
-                rng: Pcg32::new(seed, 0x1000 + u64::from(node)),
-                queue: VecDeque::new(),
-            };
-            let vph = *config
-                .demand
-                .get(&net.nodes[node as usize].id)
-                .unwrap_or(&config.default_demand);
-            set_rate(&mut src, vph, 0.0);
-            sources.push(src);
-        }
-        let mut dest_weight = vec![0.0; net.links.len()];
-        for exit in net.exit_links() {
-            let node = &net.nodes[net.links[exit as usize].to as usize].id;
-            dest_weight[exit as usize] = *config.destination_weights.get(node).unwrap_or(&1.0);
-        }
+        let actuated = actuated::Controller::build(&net, |id| config.signal_control.actuated.includes(id));
         let segments = net.segment_count();
         let connectors = net.connectors.len();
         Ok(Self {
             router: Router::new(&net),
+            informed: Router::new(&net),
+            travel_times: reroute::TravelTimes::new(&net, &config),
             dt: config.time_step,
             config,
             time: 0.0,
@@ -277,12 +300,16 @@ impl Simulation {
             conn_claims: vec![0; connectors],
             conn_last_claim: vec![f64::NEG_INFINITY; connectors],
             signal_state: Vec::new(),
-            sources,
-            dest_weight,
+            demand,
             routes: Vec::new(),
             route_cache: BTreeMap::new(),
             dest_cache: BTreeMap::new(),
             counters: Counters::default(),
+            fleet,
+            seed,
+            history: Vec::new(),
+            metrics,
+            actuated,
             scratch_acc: Vec::new(),
             log_events: false,
             lane_change_log: Vec::new(),
@@ -297,6 +324,11 @@ impl Simulation {
 
     pub fn config(&self) -> &SimConfig {
         &self.config
+    }
+
+    /// Vehicle types and driver profiles of this run.
+    pub fn fleet(&self) -> &Fleet {
+        &self.fleet
     }
 
     pub fn time(&self) -> f64 {
@@ -342,30 +374,6 @@ impl Simulation {
         &self.entry_log
     }
 
-    /// Changes the arrival rate (vehicles per hour) of an entry node at runtime.
-    pub fn set_demand(&mut self, node_id: &str, vehicles_per_hour: f64) -> Result<(), String> {
-        if !(vehicles_per_hour.is_finite() && vehicles_per_hour >= 0.0) {
-            return Err("demand must be finite and non-negative".into());
-        }
-        let node = self.net.node_index(node_id);
-        let src = self
-            .sources
-            .iter_mut()
-            .find(|s| Some(s.node) == node)
-            .ok_or_else(|| format!("'{node_id}' is not an entry node"))?;
-        set_rate(src, vehicles_per_hour, self.time);
-        Ok(())
-    }
-
-    /// Current arrival rate (vehicles per hour) of an entry node.
-    pub fn demand(&self, node_id: &str) -> Option<f64> {
-        let node = self.net.node_index(node_id)?;
-        self.sources
-            .iter()
-            .find(|s| s.node == node)
-            .map(|s| s.rate * 3600.0)
-    }
-
     /// Sets the travel time used for routing new vehicles (Phase 5 hook). Cached routes are
     /// dropped; vehicles already on their way keep their routes.
     pub fn set_link_travel_time(&mut self, link_id: &str, seconds: f64) -> Result<(), String> {
@@ -374,22 +382,38 @@ impl Simulation {
             .link_index(link_id)
             .ok_or_else(|| format!("unknown link '{link_id}'"))?;
         self.router.set_link_travel_time(link, seconds);
-        self.route_cache.clear();
-        self.dest_cache.clear();
+        self.route_cache.retain(|k, _| k.2 & INFORMED != 0);
+        self.dest_cache.retain(|k, _| k.1 & INFORMED != 0);
         Ok(())
     }
 
+    /// Router of drivers that do not know the network (free-flow times and
+    /// [`Self::set_link_travel_time`] overrides).
     pub fn router(&self) -> &Router {
         &self.router
     }
 
+    /// Router of familiar drivers (commuters): experienced travel times (#55).
+    pub fn informed_router(&self) -> &Router {
+        &self.informed
+    }
+
+    fn router_for(&self, informed: bool) -> &Router {
+        if informed { &self.informed } else { &self.router }
+    }
+
+    /// Whether a driver routes on experienced travel times.
+    fn is_informed(&self, p: &VehicleParams) -> bool {
+        p.familiar && self.config.re_routing.enabled
+    }
+
     /// Cached route id from `from` to `to` for `class`.
-    fn route_id(&mut self, from: u32, to: u32, class: VehicleClass) -> Option<u32> {
-        let key = (from, to, class.id());
+    fn route_id(&mut self, from: u32, to: u32, class: VehicleClass, informed: bool) -> Option<u32> {
+        let key = (from, to, cache_class(class, informed));
         if let Some(&id) = self.route_cache.get(&key) {
             return (id != NONE).then_some(id);
         }
-        let id = match self.router.route(from, to, class) {
+        let id = match self.router_for(informed).route(from, to, class) {
             Some(route) => {
                 self.routes.push(route);
                 (self.routes.len() - 1) as u32
@@ -398,28 +422,6 @@ impl Simulation {
         };
         self.route_cache.insert(key, id);
         (id != NONE).then_some(id)
-    }
-
-    /// Reachable destinations from an entry link: (route id, cumulative weight).
-    fn destinations(&mut self, entry: u32, class: VehicleClass) -> Vec<(u32, f64)> {
-        if let Some(d) = self.dest_cache.get(&(entry, class.id())) {
-            return d.clone();
-        }
-        let origin = self.net.links[entry as usize].from;
-        let mut list = Vec::new();
-        let mut acc = 0.0;
-        for exit in 0..self.net.links.len() as u32 {
-            let w = self.dest_weight[exit as usize];
-            if w <= 0.0 || self.net.links[exit as usize].to == origin {
-                continue;
-            }
-            if let Some(route) = self.route_id(entry, exit, class) {
-                acc += w;
-                list.push((route, acc));
-            }
-        }
-        self.dest_cache.insert((entry, class.id()), list.clone());
-        list
     }
 
     /// Next connector of a vehicle on (or about to enter) `lane`, following its route.
@@ -435,6 +437,12 @@ impl Simulation {
     }
 
     fn new_vehicle(&mut self, params: VehicleParams, lane: u32, pos: f64, speed: f64, route: u32) -> usize {
+        let mut rng = Pcg32::new(self.seed, 0x5000_0000 + u64::from(self.next_id));
+        let next_lapse = if params.lapse_rate > 0.0 && self.config.perception.enabled {
+            self.time + exponential(&mut rng, params.lapse_rate)
+        } else {
+            f64::INFINITY
+        };
         let mut v = Vehicle {
             id: self.next_id,
             params,
@@ -456,12 +464,21 @@ impl Simulation {
             rank: 0,
             flags: 0,
             lost: false,
+            odo: 0.0,
+            link_enter: self.time - pos / self.net.seg_speed_limit[lane as usize],
+            link_wait: 0.0,
+            link_delay: 0.0,
+            lapse_until: f64::NEG_INFINITY,
+            next_lapse,
             lc_phase: (self.steps % u64::from(self.config.lane_change.interval)) as u32,
+            rng,
             alive: true,
         };
         v.next_conn = self.connector_on_route(&v, lane);
         self.next_id += 1;
         self.vehicles.push(v);
+        self.history
+            .push(perception::History::new(self.steps, 0.0, speed, self.dt));
         self.vehicles.len() - 1
     }
 
@@ -486,7 +503,7 @@ impl Simulation {
             .ok_or_else(|| format!("unknown link '{dest_link_id}'"))?;
         let lane = self.net.link_lane(link, lane_index).ok_or("unknown lane")?;
         let route = self
-            .route_id(link, dest, params.class)
+            .route_id(link, dest, params.class, false)
             .ok_or("destination not reachable")?;
         let i = self.new_vehicle(params, lane, pos, speed, route);
         self.counters.spawned += 1;
@@ -503,14 +520,26 @@ impl Simulation {
     /// Advances the simulation by one time step.
     pub fn step(&mut self) {
         self.rebuild_lists();
+        self.update_travel_times();
+        self.sample_metrics();
         self.net.signals.states_into(self.time, &mut self.signal_state);
+        self.update_actuated();
         self.spawn();
         self.lane_change_phase();
         self.junction_phase();
+        if self.config.perception.enabled {
+            self.update_lapses();
+        }
         self.compute_accelerations();
         self.integrate();
         self.steps += 1;
         self.time = self.steps as f64 * self.dt;
+        self.record_history();
+        if let Some(m) = self.metrics.as_deref_mut()
+            && self.steps.is_multiple_of(m.bucket_steps)
+        {
+            m.flush();
+        }
     }
 
     fn rebuild_lists(&mut self) {
@@ -538,110 +567,6 @@ impl Simulation {
         }
     }
 
-    fn spawn(&mut self) {
-        for si in 0..self.sources.len() {
-            while self.sources[si].next_arrival <= self.time {
-                self.generate(si);
-            }
-            if self.vehicles.len() < self.config.max_vehicles as usize
-                && let Some(pending) = self.sources[si].queue.front().cloned()
-                && self.try_insert(&pending)
-            {
-                self.sources[si].queue.pop_front();
-            }
-        }
-    }
-
-    /// One arrival at source `si`: class, parameters, entry link and destination are drawn
-    /// from the source's own RNG stream.
-    fn generate(&mut self, si: usize) {
-        let mut rng = self.sources[si].rng.clone();
-        let u = rng.next_f64();
-        let class = self
-            .config
-            .class_cdf()
-            .iter()
-            .find(|(_, cum)| u < *cum)
-            .map_or(VehicleClass::Car, |(c, _)| *c);
-        let params = VehicleParams::sample(class, self.config.heterogeneity, &mut rng);
-        let links = &self.sources[si].links;
-        let link = if links.len() == 1 {
-            links[0]
-        } else {
-            links[((rng.next_f64() * links.len() as f64) as usize).min(links.len() - 1)]
-        };
-        let u_dest = rng.next_f64();
-        let rate = self.sources[si].rate;
-        let gap = exponential(&mut rng, rate);
-        let src = &mut self.sources[si];
-        src.next_arrival += gap;
-        src.rng = rng;
-        let dests = self.destinations(link, class);
-        match dests.last() {
-            Some(&(_, total)) => {
-                let target = u_dest * total;
-                let route = dests
-                    .iter()
-                    .find(|(_, cum)| target < *cum)
-                    .unwrap_or(&dests[dests.len() - 1])
-                    .0;
-                self.sources[si].queue.push_back(Pending { params, link, route });
-            }
-            None => self.counters.unroutable += 1,
-        }
-    }
-
-    /// Inserts a pending vehicle at the start of its entry link if a lane has a safe gap.
-    fn try_insert(&mut self, p: &Pending) -> bool {
-        let link = &self.net.links[p.link as usize];
-        let mask = p.params.class.mask();
-        let route = &self.routes[p.route as usize];
-        let next = route.get(1).copied();
-        let lanes = link.first_lane..link.first_lane + link.lane_count;
-        let allowed = |l: &u32| self.net.lanes[*l as usize].class_mask & mask != 0;
-        let on_route = |l: &u32| next.is_none_or(|n| self.net.choose_connector(*l, n, mask) != NONE);
-        let candidates: Vec<u32> = if lanes.clone().any(|l| allowed(&l) && on_route(&l)) {
-            lanes.filter(|l| allowed(l) && on_route(l)).collect()
-        } else {
-            lanes.filter(allowed).collect()
-        };
-        // Lane with the largest free space at its start (ties: rightmost).
-        let mut best: Option<(u32, f64, f64)> = None;
-        for lane in candidates {
-            let (gap, leader_speed) = match self.seg_vehicles[lane as usize].last() {
-                Some(&j) => {
-                    let l = &self.vehicles[j as usize];
-                    (l.pos - l.params.length, l.speed)
-                }
-                None => (f64::INFINITY, f64::INFINITY),
-            };
-            if best.is_none_or(|(_, g, _)| gap > g) {
-                best = Some((lane, gap, leader_speed));
-            }
-        }
-        let Some((lane, gap, leader_speed)) = best else {
-            return false;
-        };
-        // Insert at the leader's speed (capped by the desired speed) once the equilibrium gap
-        // for that speed is available.
-        let pr = &p.params;
-        let speed = pr
-            .desired_speed(self.net.seg_speed_limit[lane as usize])
-            .min(leader_speed);
-        if gap < (pr.minimum_gap + speed * pr.time_headway).max(pr.minimum_gap + 0.5) {
-            return false;
-        }
-        let i = self.new_vehicle(p.params, lane, 0.0, speed, p.route);
-        let list = &mut self.seg_vehicles[lane as usize];
-        if list.is_empty() {
-            self.occupied.push(lane);
-        }
-        self.vehicles[i].rank = list.len() as u32;
-        list.push(i as u32);
-        self.counters.spawned += 1;
-        true
-    }
-
     fn compute_accelerations(&mut self) {
         let mut acc = std::mem::take(&mut self.scratch_acc);
         acc.clear();
@@ -660,18 +585,23 @@ impl Simulation {
         let p = &v.params;
         let speed = v.speed;
         let idm = p.idm(net.seg_speed_limit[v.seg as usize]);
-        let mut a = idm.acceleration(speed, f64::INFINITY, 0.0);
-        let follow =
-            |a: f64, gap: f64, leader_speed: f64| a.min(idm.acceleration(speed, gap, speed - leader_speed));
+        let perceive = self.config.perception.enabled;
+        let delay = if perceive {
+            perception::Delay::new(p.reaction_time, self.dt)
+        } else {
+            None
+        };
+        let mut a = perception::Accel::new(idm.acceleration(speed, f64::INFINITY, 0.0));
 
         let mut leader_found = false;
         if v.rank > 0 {
-            let l = &self.vehicles[self.seg_vehicles[v.seg as usize][v.rank as usize - 1] as usize];
-            a = follow(a, l.pos - l.params.length - v.pos, l.speed);
+            let j = self.seg_vehicles[v.seg as usize][v.rank as usize - 1];
+            let l = &self.vehicles[j as usize];
+            self.follow_vehicle(&mut a, &idm, speed, l.pos - l.params.length - v.pos, j, delay);
             leader_found = true;
         }
         if v.stop_dist.is_finite() {
-            a = follow(a, v.stop_dist - STOP_LINE_MARGIN, 0.0);
+            Self::stop_at(&mut a, &idm, speed, v.stop_dist);
         }
         let mut dist = net.seg_length[v.seg as usize] - v.pos;
         if net.is_lane(v.seg) {
@@ -683,12 +613,12 @@ impl Simulation {
                 if let Some(&j) = self.seg_vehicles[net.connector_segment(c) as usize].last() {
                     let l = &self.vehicles[j as usize];
                     if l.pos < l.params.length {
-                        a = follow(a, dist + l.pos - l.params.length, l.speed);
+                        self.follow_vehicle(&mut a, &idm, speed, dist + l.pos - l.params.length, j, delay);
                     }
                 }
             }
             if v.next_conn == NONE && self.has_next_link(v) && net.lane_outgoing(v.seg).is_empty() {
-                a = follow(a, dist - STOP_LINE_MARGIN, 0.0);
+                Self::stop_at(&mut a, &idm, speed, dist);
             }
         }
         let horizon = (30.0 + speed * 7.0).min(250.0);
@@ -722,18 +652,42 @@ impl Simulation {
             if speed > target {
                 let needed = (speed * speed - target * target) / (2.0 * dist.max(0.1));
                 if needed > 0.5 * p.comfortable_deceleration {
-                    a = a.min(-needed);
+                    a.limit(-needed);
                 }
             }
             if !leader_found && let Some(&j) = self.seg_vehicles[next as usize].last() {
                 let l = &self.vehicles[j as usize];
-                a = follow(a, dist + l.pos - l.params.length, l.speed);
+                self.follow_vehicle(&mut a, &idm, speed, dist + l.pos - l.params.length, j, delay);
                 leader_found = true;
             }
             dist += net.seg_length[next as usize];
             cur = next;
         }
-        a.max(-MAX_EMERGENCY_DECELERATION)
+        // Cooperative yielding (#81): let a merger slightly ahead on the ending lane to the right
+        // in front of us, unless our own leader is between us and it or it would take harder
+        // braking than `maxCooperativeDeceleration`.
+        let merging = &self.config.merging;
+        if merging.cooperation
+            && let Some((j, m_pos)) = self.merger_near(i, 60.0, 5.0)
+        {
+            let own_leader_ahead = v.rank > 0 && {
+                let l = self.seg_vehicles[v.seg as usize][v.rank as usize - 1];
+                self.vehicles[l as usize].pos < m_pos
+            };
+            if !own_leader_ahead {
+                let m = &self.vehicles[j as usize];
+                let gap = m_pos - m.params.length - v.pos;
+                let yield_acc = idm.acceleration(speed, gap, speed - m.speed);
+                if yield_acc >= -merging.max_cooperative_deceleration {
+                    a.limit(yield_acc);
+                }
+            }
+        }
+        let lapse = (perceive && self.time < v.lapse_until).then_some(v.acc);
+        a.resolve(
+            lapse,
+            self.config.perception.emergency_factor * p.comfortable_deceleration,
+        )
     }
 
     fn integrate(&mut self) {
@@ -742,12 +696,18 @@ impl Simulation {
         let routes = &self.routes;
         let claims = &mut self.conn_claims;
         let counters = &mut self.counters;
+        let travel_times = &mut self.travel_times;
         let lateral_rate = 3.25 / self.config.lane_change.visual_duration.max(dt);
         let arrival_time = self.time + dt;
+        let mut metrics = self.metrics.as_deref_mut();
+        let lane_count = net.lane_count() as u32;
+        let step = self.steps;
         for v in &mut self.vehicles {
+            let old = (v.seg, v.pos, v.speed);
             let (dist, speed) = ballistic(v.speed, v.acc, dt);
             v.speed = speed;
             v.pos += dist;
+            v.odo += dist;
             v.lc_timer = (v.lc_timer - dt).max(0.0);
             let lateral = lateral_rate * dt;
             v.lat_offset = if v.lat_offset.abs() <= lateral {
@@ -768,6 +728,8 @@ impl Simulation {
                             if v.route_pos as usize + 1 >= route.len() && !v.lost {
                                 counters.arrived += 1;
                                 counters.travel_time_sum += arrival_time - v.depart;
+                                travel_times
+                                    .record(net.lanes[v.seg as usize].link, arrival_time - v.link_enter);
                             } else {
                                 counters.stranded += 1;
                             }
@@ -783,6 +745,13 @@ impl Simulation {
                         }
                         if v.claimed == c {
                             claims[c as usize] -= 1;
+                        }
+                        travel_times.record(info.from_link, arrival_time - v.link_enter);
+                        if let Some(m) = &mut metrics {
+                            let mv = &mut m.movements[c as usize];
+                            mv.count += 1;
+                            mv.wait += v.link_wait;
+                            mv.delay += v.link_delay;
                         }
                         v.claimed = NONE;
                         v.pos -= len;
@@ -800,8 +769,20 @@ impl Simulation {
                         v.pos -= len;
                         v.prev_seg = v.seg;
                         v.seg = net.connectors[c as usize].to_lane;
+                        v.link_enter = arrival_time;
+                        v.link_wait = 0.0;
+                        v.link_delay = 0.0;
                     }
                 }
+            }
+            if v.seg < lane_count {
+                v.link_delay += dt * (1.0 - v.speed / net.seg_speed_limit[v.seg as usize]).max(0.0);
+                if v.speed < cells::STOP_SPEED {
+                    v.link_wait += dt;
+                }
+            }
+            if let Some(m) = &mut metrics {
+                m.observe(lane_count, old, (v.seg, v.pos, v.speed), v.alive, dt, step);
             }
             let mut f = 0;
             if v.acc < -1.0 {
@@ -824,7 +805,23 @@ impl Simulation {
                 claims[v.claimed as usize] -= 1;
             }
         }
-        self.vehicles.retain(|v| v.alive);
+        self.remove_departed();
+    }
+
+    /// Drops departed vehicles, keeping the order of the others (and their histories).
+    fn remove_departed(&mut self) {
+        let mut w = 0;
+        for r in 0..self.vehicles.len() {
+            if self.vehicles[r].alive {
+                if w != r {
+                    self.vehicles.swap(w, r);
+                    self.history.swap(w, r);
+                }
+                w += 1;
+            }
+        }
+        self.vehicles.truncate(w);
+        self.history.truncate(w);
     }
 
     /// Current statistics.
@@ -836,12 +833,14 @@ impl Simulation {
             spawned: c.spawned,
             arrived: c.arrived,
             active: n as u64,
-            waiting_to_enter: self.sources.iter().map(|s| s.queue.len() as u64).sum(),
+            waiting_to_enter: self.demand.waiting(),
             rerouted: c.rerouted,
             stranded: c.stranded,
             unroutable: c.unroutable,
             lane_changes: c.lane_changes,
             forced_entries: c.forced_entries,
+            lapses: c.lapses,
+            commuter_reroutes: c.commuter_reroutes,
             mean_travel_time: if c.arrived > 0 {
                 c.travel_time_sum / c.arrived as f64
             } else {
@@ -862,9 +861,12 @@ impl Simulation {
     /// Aspect of every signal group, in package order (controllers, then groups):
     /// 0 = red, 1 = amber, 2 = green.
     pub fn signal_states(&self) -> Vec<u8> {
-        (0..self.net.signals.group_count())
-            .map(|g| self.net.signals.state(g, self.time) as u8)
-            .collect()
+        let mut states = Vec::new();
+        self.net.signals.states_into(self.time, &mut states);
+        for c in &self.actuated {
+            c.write_states(&mut states);
+        }
+        states.into_iter().map(|s| s as u8).collect()
     }
 
     /// Ids of the signal groups in the order of [`Self::signal_states`].
@@ -924,13 +926,17 @@ impl Simulation {
             h.u64(u64::from(v.claimed));
             h.f64(v.lat_offset);
             h.f64(v.params.speed_factor);
+            h.f64(v.odo);
+            h.f64(v.lapse_until);
         }
         for &l in &self.conn_claims {
             h.u64(u64::from(l));
         }
-        for s in &self.sources {
+        for s in &self.demand.sources {
             h.f64(s.next_arrival);
-            h.u64(s.queue.len() as u64);
+        }
+        for q in &self.demand.queues {
+            h.u64(q.queue.len() as u64);
         }
         let c = &self.counters;
         for x in [
@@ -941,21 +947,21 @@ impl Simulation {
             c.unroutable,
             c.lane_changes,
             c.forced_entries,
+            c.lapses,
+            c.commuter_reroutes,
         ] {
             h.u64(x);
+        }
+        for &t in &self.travel_times.smoothed {
+            h.f64(t);
+        }
+        for c in &self.actuated {
+            h.u64(c.phase as u64);
+            h.f64(c.since);
         }
         h.f64(c.travel_time_sum);
         h.0
     }
-}
-
-fn set_rate(src: &mut Source, vehicles_per_hour: f64, now: f64) {
-    src.rate = vehicles_per_hour / 3600.0;
-    src.next_arrival = if src.rate > 0.0 {
-        now + exponential(&mut src.rng, src.rate)
-    } else {
-        f64::INFINITY
-    };
 }
 
 struct Fnv(u64);

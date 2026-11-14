@@ -1,5 +1,6 @@
-//! Test support: the golden fixture and a builder for small synthetic networks that follow the
-//! network package v1 spec (straight lanes, Bézier connectors, explicit conflicts).
+//! Synthetic networks for tests, benchmarks and the batch runner: the golden fixture and a
+//! builder for small networks that follow the network package v1 spec (straight lanes, Bézier
+//! connectors, explicit conflicts).
 
 use crate::network::Network;
 use crate::package::{
@@ -436,6 +437,123 @@ fn inside_axis(i: i64, n: usize) -> bool {
     (0..n as i64).contains(&i)
 }
 
+/// [`grid`] with every junction signalised (90 s cycle, east-west green 0–42 s, north-south
+/// 45–87 s, 3 s amber, offsets for a green wave towards the east): a city benchmark network.
+pub fn signal_grid(n: usize, lanes: u32) -> NetBuilder {
+    let mut b = grid(n, lanes);
+    let junctions: Vec<(String, f64)> = b
+        .package
+        .nodes
+        .iter_mut()
+        .filter(|node| node.control == NodeControl::Priority)
+        .map(|node| {
+            node.control = NodeControl::Signal;
+            (node.id.clone(), node.x)
+        })
+        .collect();
+    for (node, x) in junctions {
+        b.package.signals.push(SignalController {
+            node: node.clone(),
+            cycle: 90.0,
+            offset: (x / 13.889).rem_euclid(90.0),
+            groups: [("ew", 0.0, 42.0), ("ns", 45.0, 87.0)]
+                .iter()
+                .map(|&(g, start, end)| SignalGroup {
+                    id: format!("{node}:{g}"),
+                    green: vec![[start, end]],
+                    amber: 3.0,
+                })
+                .collect(),
+        });
+        for c in b.package.connectors.iter_mut().filter(|c| c.node == node) {
+            let group = if c.priority == Priority::Major { "ew" } else { "ns" };
+            c.priority = Priority::Signal;
+            c.signal_group = Some(format!("{node}:{group}"));
+        }
+    }
+    b
+}
+
+/// A motorway of `units` weaving units: two-lane mainline (1000 m) followed by a 300 m section
+/// whose auxiliary lane 0 starts at an on-ramp and ends at an off-ramp.
+pub fn motorway_chain(units: usize) -> NetBuilder {
+    let mut b = NetBuilder::new();
+    let unit = 1300.0;
+    b.node("A0", 0.0, 0.0, NodeControl::Boundary);
+    for u in 0..units {
+        let x = u as f64 * unit;
+        let (a, m, next) = (format!("A{u}"), format!("M{u}"), format!("A{}", u + 1));
+        b.node(&m, x + 1000.0, 0.0, NodeControl::None)
+            .node(&next, x + unit, 0.0, NodeControl::None)
+            .node(&format!("R{u}"), x + 700.0, -100.0, NodeControl::Boundary)
+            .node(&format!("X{u}"), x + unit + 300.0, -100.0, NodeControl::Boundary)
+            .link(&format!("main{u}"), &a, &m, 2, MOTORWAY_SPEED)
+            .link(&format!("aux{u}"), &m, &next, 3, MOTORWAY_SPEED)
+            .link(&format!("on{u}"), &format!("R{u}"), &m, 1, RAMP_SPEED)
+            .link(&format!("off{u}"), &next, &format!("X{u}"), 1, RAMP_SPEED)
+            .connect(
+                &format!("m{u}a"),
+                &format!("main{u}"),
+                0,
+                &format!("aux{u}"),
+                1,
+                Priority::Major,
+            )
+            .connect(
+                &format!("m{u}b"),
+                &format!("main{u}"),
+                1,
+                &format!("aux{u}"),
+                2,
+                Priority::Major,
+            )
+            .connect(
+                &format!("r{u}"),
+                &format!("on{u}"),
+                0,
+                &format!("aux{u}"),
+                0,
+                Priority::Major,
+            )
+            .connect(
+                &format!("x{u}"),
+                &format!("aux{u}"),
+                0,
+                &format!("off{u}"),
+                0,
+                Priority::Major,
+            )
+            .class(&[&format!("main{u}"), &format!("aux{u}")], RoadClass::Motorway)
+            .class(&[&format!("on{u}"), &format!("off{u}")], RoadClass::MotorwayLink);
+        if u > 0 {
+            let prev = format!("aux{}", u - 1);
+            b.connect(
+                &format!("d{u}a"),
+                &prev,
+                1,
+                &format!("main{u}"),
+                0,
+                Priority::Major,
+            )
+            .connect(
+                &format!("d{u}b"),
+                &prev,
+                2,
+                &format!("main{u}"),
+                1,
+                Priority::Major,
+            );
+        }
+    }
+    let last = format!("aux{}", units.max(1) - 1);
+    b.node("B", units as f64 * unit + 1000.0, 0.0, NodeControl::Boundary)
+        .link("exit", &format!("A{units}"), "B", 2, MOTORWAY_SPEED)
+        .connect("e0", &last, 1, "exit", 0, Priority::Major)
+        .connect("e1", &last, 2, "exit", 1, Priority::Major)
+        .class(&["exit"], RoadClass::Motorway);
+    b
+}
+
 fn unit(a: &Point, b: &Point) -> [f64; 2] {
     let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
     let l = (dx * dx + dy * dy).sqrt();
@@ -454,6 +572,87 @@ pub fn corridor(lanes: u32, length: f64, speed: f64) -> NetBuilder {
     for i in 0..lanes {
         b.connect(&format!("c{i}"), "up", i, "down", i, Priority::Major);
     }
+    b
+}
+
+const MOTORWAY_SPEED: f64 = 33.333;
+const RAMP_SPEED: f64 = 22.222;
+
+impl NetBuilder {
+    fn class(&mut self, links: &[&str], class: RoadClass) -> &mut Self {
+        for l in links {
+            self.link_mut(l).road_class = class;
+        }
+        self
+    }
+}
+
+/// Motorway on-ramp: two-lane mainline A → M1 (1000 m), a 300 m section M1 → M2 with an
+/// acceleration lane (lane 0) fed by the ramp R → M1, and the two-lane mainline M2 → B where
+/// the acceleration lane ends (lane drop).
+pub fn motorway_merge() -> NetBuilder {
+    let mut b = NetBuilder::new();
+    b.node("A", 0.0, 0.0, NodeControl::Boundary)
+        .node("M1", 1000.0, 0.0, NodeControl::None)
+        .node("M2", 1300.0, 0.0, NodeControl::None)
+        .node("B", 2000.0, 0.0, NodeControl::Boundary)
+        .node("R", 700.0, -100.0, NodeControl::Boundary)
+        .link("main_in", "A", "M1", 2, MOTORWAY_SPEED)
+        .link("accel", "M1", "M2", 3, MOTORWAY_SPEED)
+        .link("main_out", "M2", "B", 2, MOTORWAY_SPEED)
+        .link("ramp", "R", "M1", 1, RAMP_SPEED)
+        .connect("m0", "main_in", 0, "accel", 1, Priority::Major)
+        .connect("m1", "main_in", 1, "accel", 2, Priority::Major)
+        .connect("r0", "ramp", 0, "accel", 0, Priority::Major)
+        .connect("d0", "accel", 1, "main_out", 0, Priority::Major)
+        .connect("d1", "accel", 2, "main_out", 1, Priority::Major)
+        .class(&["main_in", "accel", "main_out"], RoadClass::Motorway)
+        .class(&["ramp"], RoadClass::MotorwayLink);
+    b
+}
+
+/// Lane drop: three lanes A → U → M (2 × 500 m), two lanes M → B (800 m); lane 0 ends at M.
+pub fn lane_drop() -> NetBuilder {
+    let mut b = NetBuilder::new();
+    b.node("A", 0.0, 0.0, NodeControl::Boundary)
+        .node("U", 500.0, 0.0, NodeControl::None)
+        .node("M", 1000.0, 0.0, NodeControl::None)
+        .node("B", 1800.0, 0.0, NodeControl::Boundary)
+        .link("approach", "A", "U", 3, MOTORWAY_SPEED)
+        .link("wide", "U", "M", 3, MOTORWAY_SPEED)
+        .link("narrow", "M", "B", 2, MOTORWAY_SPEED)
+        .connect("u0", "approach", 0, "wide", 0, Priority::Major)
+        .connect("u1", "approach", 1, "wide", 1, Priority::Major)
+        .connect("u2", "approach", 2, "wide", 2, Priority::Major)
+        .connect("c1", "wide", 1, "narrow", 0, Priority::Major)
+        .connect("c2", "wide", 2, "narrow", 1, Priority::Major)
+        .class(&["approach", "wide", "narrow"], RoadClass::Motorway);
+    b
+}
+
+/// Weaving section: on-ramp R joins A → W1 as auxiliary lane 0 of the 400 m section W1 → W2,
+/// which ends in the off-ramp W2 → X; the mainline continues W2 → B with two lanes.
+pub fn weaving() -> NetBuilder {
+    let mut b = NetBuilder::new();
+    b.node("A", 0.0, 0.0, NodeControl::Boundary)
+        .node("W1", 1000.0, 0.0, NodeControl::None)
+        .node("W2", 1400.0, 0.0, NodeControl::None)
+        .node("B", 2400.0, 0.0, NodeControl::Boundary)
+        .node("R", 700.0, -100.0, NodeControl::Boundary)
+        .node("X", 1700.0, -100.0, NodeControl::Boundary)
+        .link("main_in", "A", "W1", 2, MOTORWAY_SPEED)
+        .link("weave", "W1", "W2", 3, MOTORWAY_SPEED)
+        .link("main_out", "W2", "B", 2, MOTORWAY_SPEED)
+        .link("on_ramp", "R", "W1", 1, RAMP_SPEED)
+        .link("off_ramp", "W2", "X", 1, RAMP_SPEED)
+        .connect("m0", "main_in", 0, "weave", 1, Priority::Major)
+        .connect("m1", "main_in", 1, "weave", 2, Priority::Major)
+        .connect("r0", "on_ramp", 0, "weave", 0, Priority::Major)
+        .connect("o0", "weave", 0, "off_ramp", 0, Priority::Major)
+        .connect("d0", "weave", 1, "main_out", 0, Priority::Major)
+        .connect("d1", "weave", 2, "main_out", 1, Priority::Major)
+        .class(&["main_in", "weave", "main_out"], RoadClass::Motorway)
+        .class(&["on_ramp", "off_ramp"], RoadClass::MotorwayLink);
     b
 }
 

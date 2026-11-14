@@ -554,6 +554,13 @@ impl Network {
             .map(|i| self.conflict_pos[a as usize + i])
     }
 
+    /// Whether `lane` ends inside the network without a connector (acceleration lane, lane drop):
+    /// vehicles on it have to change lanes.
+    pub fn lane_ends(&self, lane: u32) -> bool {
+        let to = self.links[self.lanes[lane as usize].link as usize].to;
+        self.lane_outgoing(lane).is_empty() && self.nodes[to as usize].control != NodeControl::Boundary
+    }
+
     /// Global lane index of lane `index` of `link`, if it exists.
     pub fn link_lane(&self, link: u32, index: u32) -> Option<u32> {
         let l = &self.links[link as usize];
@@ -658,7 +665,7 @@ fn lane_geometries_end(net: &Network, lane: u32) -> (Point, Point) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testnet::{FIXTURE, NetBuilder, fixture_network, fixture_package};
+    use crate::synth::{FIXTURE, NetBuilder, fixture_network, fixture_package};
 
     fn fixture() -> Network {
         fixture_network()

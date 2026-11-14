@@ -10,7 +10,7 @@ public sealed class EfNetworkBaselineStore(TrafficSimDbContext db) : INetworkBas
 {
     private static readonly GeometryFactory Factory = new(new PrecisionModel(), 4326);
 
-    public async Task SaveAsync(NetworkBaselineInfo info, byte[] gzipPackage, CancellationToken cancellationToken)
+    public async Task SaveAsync(NetworkBaselineInfo info, byte[] gzipPackage, byte[]? gzipOsmData, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(info);
         var a = info.Area;
@@ -32,6 +32,7 @@ public sealed class EfNetworkBaselineStore(TrafficSimDbContext db) : INetworkBas
             Signals = info.Stats.Signals,
             Attribution = info.Attribution.ToList(),
             Package = gzipPackage,
+            OsmData = gzipOsmData,
         });
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -44,6 +45,9 @@ public sealed class EfNetworkBaselineStore(TrafficSimDbContext db) : INetworkBas
 
     public Task<byte[]?> GetPackageAsync(Guid id, CancellationToken cancellationToken) =>
         db.Set<NetworkBaselineEntity>().AsNoTracking().Where(b => b.Id == id).Select(b => (byte[]?)b.Package).FirstOrDefaultAsync(cancellationToken);
+
+    public Task<byte[]?> GetOsmDataAsync(Guid id, CancellationToken cancellationToken) =>
+        db.Set<NetworkBaselineEntity>().AsNoTracking().Where(b => b.Id == id).Select(b => b.OsmData).FirstOrDefaultAsync(cancellationToken);
 
     public async Task<IReadOnlyList<NetworkBaselineInfo>> ListAsync(int limit, CancellationToken cancellationToken)
     {

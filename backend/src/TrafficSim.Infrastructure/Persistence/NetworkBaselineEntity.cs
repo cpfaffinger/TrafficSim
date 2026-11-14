@@ -38,6 +38,9 @@ public sealed class NetworkBaselineEntity
     public List<string> Attribution { get; set; } = [];
 
     public required byte[] Package { get; set; }
+
+    /// <summary>Raw OSM data (gzip JSON) used to re-apply changesets.</summary>
+    public byte[]? OsmData { get; set; }
 }
 
 internal sealed class NetworkBaselineConfiguration : IEntityTypeConfiguration<NetworkBaselineEntity>

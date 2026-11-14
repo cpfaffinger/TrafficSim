@@ -105,7 +105,7 @@ public sealed partial class NetworkImportService(
             var attribution = new[] { OsmAttribution, answer.Attribution }.Distinct(StringComparer.Ordinal).ToList();
             var package = NetworkPackageWriter.ToPackage(network, baselineId, attribution);
             var info = new NetworkBaselineInfo(baselineId, job.Area, time.GetUtcNow(), answer.Provider, answer.Value.DataTimestamp, package.Stats, attribution);
-            await baselines.SaveAsync(info, NetworkPackageWriter.SerializeGzip(package), cancellationToken).ConfigureAwait(false);
+            await baselines.SaveAsync(info, NetworkPackageWriter.SerializeGzip(package), OsmDataCodec.Encode(answer.Value), cancellationToken).ConfigureAwait(false);
 
             await jobs.SaveAsync(job with { Status = ImportStatus.Completed, BaselineId = baselineId, UpdatedAt = time.GetUtcNow() }, cancellationToken).ConfigureAwait(false);
             LogImported(job.Id, baselineId, package.Stats.Links, answer.Provider);

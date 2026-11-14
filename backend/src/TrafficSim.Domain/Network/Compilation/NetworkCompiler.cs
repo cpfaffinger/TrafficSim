@@ -10,11 +10,11 @@ namespace TrafficSim.Domain.Network.Compilation;
 /// </summary>
 public static class NetworkCompiler
 {
-    public static RoadNetwork Compile(OsmDataSet data, BoundingBox area, CompilerOptions? options = null)
+    public static RoadNetwork Compile(OsmDataSet data, BoundingBox area, CompilerOptions? options = null, CompilerOverrides? overrides = null)
     {
         ArgumentNullException.ThrowIfNull(data);
         ArgumentNullException.ThrowIfNull(area);
-        return new Compilation(data, area, options ?? new CompilerOptions()).Run();
+        return new Compilation(data, area, options ?? new CompilerOptions(), overrides ?? new CompilerOverrides()).Run();
     }
 
     private enum Sign
@@ -51,8 +51,9 @@ public static class NetworkCompiler
         public double TrimRadius { get; set; }
     }
 
-    private sealed class Compilation(OsmDataSet data, BoundingBox area, CompilerOptions options)
+    private sealed class Compilation(OsmDataSet data, BoundingBox area, CompilerOptions options, CompilerOverrides overrides)
     {
+        private readonly Dictionary<Link, (long? Start, long? End)> _neighbours = [];
         private readonly LocalTangentPlane _plane = new(area.Center);
         private readonly Dictionary<string, GraphNode> _nodes = new(StringComparer.Ordinal);
         private readonly Dictionary<string, GraphNode> _byNodeId = new(StringComparer.Ordinal);
@@ -397,6 +398,9 @@ public static class NetworkCompiler
             _linkById[id] = link;
             _pieceOf[link] = piece;
             _bothWaysGap[link] = layout.OneWay == OneWay.No ? layout.BothWays * defaultWidth / 2 : -1;
+            _neighbours[link] = direction == TravelDirection.Forward
+                ? (piece.NodeIds[1], piece.NodeIds[^2])
+                : (piece.NodeIds[^2], piece.NodeIds[1]);
             var startKey = direction == TravelDirection.Forward ? piece.StartKey : piece.EndKey;
             var endKey = direction == TravelDirection.Forward ? piece.EndKey : piece.StartKey;
             _nodes[startKey].Outgoing.Add(link);
@@ -612,7 +616,19 @@ public static class NetworkCompiler
                     foreach (var (outgoing, angle) in movements)
                     {
                         var turn = TurnLanesParser.Classify(angle);
-                        foreach (var (fromLane, toLane) in MapLanes(incoming, outgoing, turn, movements.Count))
+                        var key = g.OsmId is { } osm && _neighbours[incoming].End is { } from && _neighbours[outgoing].Start is { } to
+                            ? new MovementKey(osm, from, to)
+                            : (MovementKey?)null;
+                        if (key is { } banned && overrides.BannedMovements.Contains(banned))
+                        {
+                            continue;
+                        }
+
+                        var pairs = key is { } k && overrides.LaneConnections.TryGetValue(k, out var map)
+                            ? map.Where(kv => kv.Key < incoming.Lanes.Count)
+                                .SelectMany(kv => kv.Value.Where(t => t < outgoing.Lanes.Count).Select(t => (kv.Key, t)))
+                            : MapLanes(incoming, outgoing, turn, movements.Count);
+                        foreach (var (fromLane, toLane) in pairs.ToList())
                         {
                             AddConnector(g, incoming, fromLane, outgoing, toLane, turn, majorPieces);
                         }
@@ -788,7 +804,24 @@ public static class NetworkCompiler
                 var cycle = options.SignalCycleSeconds;
                 var groups = new List<SignalGroup>();
                 var used = groupOf.Values.Distinct().Order().ToList();
-                if (used.Count == 1)
+                if (g.OsmId is { } osmId && overrides.SignalPlans.TryGetValue(osmId, out var plan))
+                {
+                    cycle = plan.Cycle;
+                    var start = 0.0;
+                    for (var p = 0; p < plan.PhaseGreen.Count; p++)
+                    {
+                        groups.Add(new SignalGroup($"{node.Id}:g{p.ToString(System.Globalization.CultureInfo.InvariantCulture)}", [new GreenInterval(start, Math.Min(cycle, start + plan.PhaseGreen[p]))], options.AmberSeconds));
+                        start += plan.PhaseGreen[p] + options.AmberSeconds + options.AllRedSeconds;
+                    }
+
+                    foreach (var approach in approaches)
+                    {
+                        groupOf[approach.Id] = _neighbours[approach].End is { } n && plan.ApproachPhase.TryGetValue(n, out var phase)
+                            ? Math.Clamp(phase, 0, plan.PhaseGreen.Count - 1)
+                            : Math.Min(groupOf[approach.Id], plan.PhaseGreen.Count - 1);
+                    }
+                }
+                else if (used.Count == 1)
                 {
                     groups.Add(new SignalGroup($"{node.Id}:g0", [new GreenInterval(0, cycle * 2 / 3)], options.AmberSeconds));
                     foreach (var key in groupOf.Keys)
@@ -809,7 +842,8 @@ public static class NetworkCompiler
                     c.SignalGroup = $"{node.Id}:g{groupOf.GetValueOrDefault(c.FromLink).ToString(System.Globalization.CultureInfo.InvariantCulture)}";
                 }
 
-                _signals.Add(new SignalController(node.Id, cycle, 0, groups));
+                var offset = g.OsmId is { } oid && overrides.SignalPlans.TryGetValue(oid, out var p2) ? p2.Offset : 0;
+                _signals.Add(new SignalController(node.Id, cycle, offset, groups));
             }
         }
     }

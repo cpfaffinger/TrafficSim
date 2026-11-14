@@ -40,14 +40,17 @@ public sealed class ChannelImportQueue : IImportQueue
 /// <summary>Baseline store for development and tests without a database.</summary>
 public sealed class InMemoryNetworkBaselineStore : INetworkBaselineStore
 {
-    private readonly ConcurrentDictionary<Guid, (NetworkBaselineInfo Info, byte[] Package)> _items = new();
+    private readonly ConcurrentDictionary<Guid, (NetworkBaselineInfo Info, byte[] Package, byte[]? Osm)> _items = new();
 
-    public Task SaveAsync(NetworkBaselineInfo info, byte[] gzipPackage, CancellationToken cancellationToken)
+    public Task SaveAsync(NetworkBaselineInfo info, byte[] gzipPackage, byte[]? gzipOsmData, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(info);
-        _items[info.Id] = (info, gzipPackage);
+        _items[info.Id] = (info, gzipPackage, gzipOsmData);
         return Task.CompletedTask;
     }
+
+    public Task<byte[]?> GetOsmDataAsync(Guid id, CancellationToken cancellationToken) =>
+        Task.FromResult(_items.TryGetValue(id, out var item) ? item.Osm : null);
 
     public Task<NetworkBaselineInfo?> GetAsync(Guid id, CancellationToken cancellationToken) =>
         Task.FromResult(_items.TryGetValue(id, out var item) ? item.Info : null);

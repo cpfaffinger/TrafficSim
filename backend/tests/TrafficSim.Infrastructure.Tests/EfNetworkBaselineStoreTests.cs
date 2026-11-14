@@ -24,7 +24,7 @@ public class EfNetworkBaselineStoreTests(PostGisFixture db)
 
         await using (var context = db.CreateContext())
         {
-            await new EfNetworkBaselineStore(context).SaveAsync(info, package, Ct);
+            await new EfNetworkBaselineStore(context).SaveAsync(info, package, [9, 9], Ct);
         }
 
         await using var read = db.CreateContext();
@@ -36,6 +36,7 @@ public class EfNetworkBaselineStoreTests(PostGisFixture db)
         Assert.Equal(info.Attribution, loaded.Attribution);
         Assert.Equal(package, await store.GetPackageAsync(info.Id, Ct));
         Assert.Null(await store.GetPackageAsync(Guid.NewGuid(), Ct));
+        Assert.Equal([9, 9], await store.GetOsmDataAsync(info.Id, Ct));
         Assert.Null(await store.GetAsync(Guid.NewGuid(), Ct));
         Assert.Contains(await store.ListAsync(10, Ct), i => i.Id == info.Id);
         Assert.Equal(info.Id, (await store.FindRecentAsync(area, now.AddMinutes(-1), Ct))?.Id);

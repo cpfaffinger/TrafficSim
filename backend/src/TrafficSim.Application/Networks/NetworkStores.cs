@@ -15,7 +15,10 @@ public sealed record NetworkBaselineInfo(
 /// <summary>Port: persistent store of baselines and their network packages.</summary>
 public interface INetworkBaselineStore
 {
-    Task SaveAsync(NetworkBaselineInfo info, byte[] gzipPackage, CancellationToken cancellationToken);
+    Task SaveAsync(NetworkBaselineInfo info, byte[] gzipPackage, byte[]? gzipOsmData, CancellationToken cancellationToken);
+
+    /// <summary>The raw OSM data of the baseline (gzip JSON, <see cref="OsmDataCodec"/>), needed to apply changesets.</summary>
+    Task<byte[]?> GetOsmDataAsync(Guid id, CancellationToken cancellationToken);
 
     Task<NetworkBaselineInfo?> GetAsync(Guid id, CancellationToken cancellationToken);
 

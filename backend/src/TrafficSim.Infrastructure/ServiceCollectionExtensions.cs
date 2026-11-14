@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Npgsql;
 using TrafficSim.Application.Networks;
+using TrafficSim.Application.Scenarios;
 using TrafficSim.Infrastructure.Health;
 using TrafficSim.Infrastructure.Imports;
 using TrafficSim.Infrastructure.Persistence;
@@ -25,12 +26,16 @@ public static class ServiceCollectionExtensions
             services.AddDbContext<TrafficSimDbContext>(options => PersistenceRegistration.Configure(options, connectionString));
             services.AddHostedService<DatabaseMigrator>();
             services.AddScoped<INetworkBaselineStore, EfNetworkBaselineStore>();
+            services.AddScoped<IScenarioStore, EfScenarioStore>();
+            services.AddScoped<IRunStore, EfRunStore>();
             healthChecks.AddCheck<PostGisHealthCheck>("postgis", tags: [ReadyTag]);
         }
         else
         {
             // Development and tests without a database.
             services.TryAddSingleton<INetworkBaselineStore, InMemoryNetworkBaselineStore>();
+            services.TryAddSingleton<IScenarioStore, InMemoryScenarioStore>();
+            services.TryAddSingleton<IRunStore, InMemoryRunStore>();
         }
 
         services.AddHostedService<ImportWorker>();

@@ -12,4 +12,7 @@
     <PackageReference Include="EFCore.NamingConventions" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="TrafficSim.Infrastructure.Tests" />
+  </ItemGroup>
 </Project>

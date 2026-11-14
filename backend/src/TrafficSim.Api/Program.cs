@@ -48,6 +48,7 @@ api.MapMetaEndpoints();
 api.MapGeocodingEndpoints();
 api.MapProviderEndpoints();
 api.MapNetworkEndpoints();
+api.MapScenarioEndpoints();
 
 // SPA fallback: unknown non-API routes serve index.html (client-side routing).
 app.MapFallbackToFile("{*path:nonfile}", "index.html").Add(endpoint =>

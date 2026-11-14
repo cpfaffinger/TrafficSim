@@ -97,10 +97,16 @@ internal static class NetworkEndpoints
 
         // Baselines are immutable: cache aggressively.
         context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+        return await GzipJsonAsync(context, gzip, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Serves gzip JSON as-is when the client accepts gzip, otherwise decompressed.</summary>
+    internal static async Task<IResult> GzipJsonAsync(HttpContext context, byte[] gzip, CancellationToken cancellationToken)
+    {
+        context.Response.Headers.Vary = "Accept-Encoding";
         if (context.Request.Headers.AcceptEncoding.ToString().Contains("gzip", StringComparison.OrdinalIgnoreCase))
         {
             context.Response.Headers.ContentEncoding = "gzip";
-            context.Response.Headers.Vary = "Accept-Encoding";
             return TypedResults.Bytes(gzip, "application/json");
         }
 

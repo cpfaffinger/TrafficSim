@@ -61,8 +61,9 @@ export function AboutDialog({ open, version, attributions, onClose }: AboutDialo
           <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
             openstreetmap.org/copyright
           </a>
-          . Imported networks are derivative databases and remain under the ODbL; the simulation results you produce
-          from them are yours.
+          . Imported networks are derived databases and remain under the ODbL; images and other works produced from
+          them must credit “© OpenStreetMap contributors”. The basemap is rendered from OpenFreeMap vector tiles
+          (OpenMapTiles schema, OpenStreetMap data).
         </p>
         <h3>Data sources in use</h3>
         <ul>

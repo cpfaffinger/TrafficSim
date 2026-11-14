@@ -159,11 +159,9 @@ export class NetworkScene {
     fill.rotation.x = -Math.PI / 2;
     fill.position.set((w + e) / 2, 0.5, -(s + n) / 2);
     this.overlayGroup.add(outline, fill);
-    if (!this.meshes) {
-      this.controls.limits = { ...this.controls.limits, bounds: [w - 3000, -n - 3000, e + 3000, -s + 3000] };
-      this.controls.setState(frameRect([w, -n, e, -s], (this.camera.fov * Math.PI) / 180, this.camera.aspect, this.controls.limits));
-      this.loadBasemapFor(bbox, this.origin!);
-    }
+    this.controls.limits = { ...this.controls.limits, bounds: [w - 3000, -n - 3000, e + 3000, -s + 3000] };
+    this.controls.setState(frameRect([w, -n, e, -s], (this.camera.fov * Math.PI) / 180, this.camera.aspect, this.controls.limits));
+    if (!this.meshes) this.loadBasemapFor(bbox, this.origin!);
   }
 
   setTunnelsVisible(visible: boolean): void {

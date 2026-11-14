@@ -34,8 +34,17 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text-summary', 'cobertura', 'html'],
       include: ['src/**/*.{ts,tsx}'],
-      // Rendering and bootstrap glue are smoke-tested only (ADR-0013).
-      exclude: ['src/**/*.test.{ts,tsx}', 'src/generated/**', 'src/scene/**', 'src/main.tsx', 'src/App.tsx', 'src/sim/sim.worker.ts'],
+      // Rendering and bootstrap glue are smoke-tested only (ADR-0013); src/test holds test support code.
+      exclude: [
+        'src/**/*.test.{ts,tsx}',
+        'src/test/**',
+        'src/generated/**',
+        'src/scene/**',
+        'src/views/**',
+        'src/main.tsx',
+        'src/App.tsx',
+        'src/sim/sim.worker.ts',
+      ],
       thresholds: { lines: 70, functions: 70, branches: 60, statements: 70 },
     },
   },

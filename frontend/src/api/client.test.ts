@@ -24,6 +24,44 @@ describe('ApiClient', () => {
     expect(fetchFn.mock.calls[0]?.[0]).toBe('https://example.test/api/v1/geocode?q=Ring+Stra%C3%9Fe+%26+Co&limit=3');
   });
 
+  it('passes the language to the geocoder', async () => {
+    const fetchFn = vi.fn().mockResolvedValue(json({ results: [], provider: 'photon', attribution: 'x' }));
+    await new ApiClient(fetchFn).geocode('Wien', 5, undefined, 'de');
+    expect(fetchFn.mock.calls[0]?.[0]).toBe('/api/v1/geocode?q=Wien&limit=5&lang=de');
+  });
+
+  it('starts imports with a JSON body', async () => {
+    const fetchFn = vi.fn().mockResolvedValue(json({ jobId: 'j1', status: 'queued', baselineId: null }, 202));
+    const job = await new ApiClient(fetchFn).startImport([16.37, 48.2, 16.38, 48.21]);
+    expect(job).toEqual({ jobId: 'j1', status: 'queued', baselineId: null });
+    const [url, init] = fetchFn.mock.calls[0]! as [string, RequestInit];
+    expect(url).toBe('/api/v1/networks/import');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ bbox: [16.37, 48.2, 16.38, 48.21] });
+  });
+
+  it('reports a too-large area from problem details', async () => {
+    const fetchFn = vi.fn().mockResolvedValue(json({ title: 'Area too large', detail: 'The area must not exceed 25 km².' }, 422));
+    await expect(new ApiClient(fetchFn).startImport([0, 0, 1, 1])).rejects.toEqual(new ApiError(422, 'The area must not exceed 25 km².'));
+  });
+
+  it('polls jobs, loads packages and lists recent networks', async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(json({ jobId: 'a/b', status: 'fetching', baselineId: null, error: null }))
+      .mockResolvedValueOnce(json({ formatVersion: 1 }))
+      .mockResolvedValueOnce(json([{ id: 'b1' }]));
+    const client = new ApiClient(fetchFn);
+    expect((await client.getImportJob('a/b')).status).toBe('fetching');
+    expect(await client.getPackage('b 1')).toEqual({ formatVersion: 1 });
+    expect(await client.listNetworks(5)).toEqual([{ id: 'b1' }]);
+    expect(fetchFn.mock.calls.map((c) => c[0])).toEqual([
+      '/api/v1/networks/import/a%2Fb',
+      '/api/v1/networks/b%201/package',
+      '/api/v1/networks?limit=5',
+    ]);
+  });
+
   it('turns problem details into ApiError', async () => {
     const fetchFn = vi.fn().mockResolvedValue(json({ title: 'Invalid', detail: 'Query text must not be empty.' }, 400));
     const client = new ApiClient(fetchFn);

@@ -88,7 +88,7 @@ configuration.
 | 4 | `speed` | m/s |
 | 5 | `length` | m (from the vehicle type) |
 | 6 | `classId` | 0 car, 1 van, 2 truck (rigid and articulated), 3 bus, 4 motorcycle |
-| 7 | `flags` | bit 0 braking (< −1 m/s²), bit 1 waiting (< 0.5 m/s), bit 2 lane change in progress, bit 3 inside a junction (on a connector), bit 4 holding at a stop line (red / stop sign / yielding) or before an occupied conflict zone |
+| 7 | `flags` | bit 0 braking (< −1 m/s²), bit 1 waiting (< 0.5 m/s), bit 2 lane change in progress, bit 3 inside a junction (on a connector), bit 4 holding at a stop line (red / stop sign / yielding) or before an occupied conflict zone, bit 5 bus dwelling at a stop (#85) |
 | 8 | `vehicleId` | stable id, unique per run (exact up to 2²⁴) |
 
 Vehicles appear in insertion order; the order changes when vehicles leave, so match by `vehicleId`
@@ -154,6 +154,17 @@ catch typos).
   },
   "merging": { "cooperation": true, "cooperationDistance": 200, "maxCooperativeDeceleration": 2.0,
                "courtesyBias": 0.5 },
+
+  // ---- Public transport (#85): buses on the package's transitLines (no effect without lines)
+  "transit": {
+    "enabled": true,
+    "defaultHeadway": 600,            // s, lines without an OSM interval
+    "headwayFactor": 1.0,             // multiplies every headway (0.5 = twice the service)
+    "headways": { "t0": 300 },        // s per line id, overrides the package; 0 = line out of service
+    "dwellTime": 15,                  // s base dwell per stop
+    "dwellTimeRandom": 10,            // s, plus uniform [0, dwellTimeRandom) from the line's stream
+    "vehicleType": "bus"              // catalogue type of the buses
+  },
 
   // ---- Routing (#55) and metrics (#57, #58, #62)
   "reRouting": { "enabled": true, "interval": 60, "smoothing": 0.3, "threshold": 0.1, "enRoute": true },
@@ -321,8 +332,30 @@ opaque with `bucketFormat = "lane-cells-v1"`; `metrics::cells::LaneCells::decode
             "queueMax": 96, "queueMean": 31,  // m, sampled every second from the link end
             "stops": 140, "travelTime": 21.2, "freeFlowTime": 10.1}],
  "junctions": [/* as junctionsJson */],
- "events": {"tailbacks": 3, "stopAndGoWaves": 1}}
+ "events": {"tailbacks": 3, "stopAndGoWaves": 1},
+ // only with transit lines (#85); whole run, not reset by resetMetrics; also transitJson()
+ "transit": [{"id": "t0", "label": "13A", "headway": 300, "buses": 12, "completed": 11, "active": 1,
+              "waitingToDepart": 0, "meanTravelTime": 142.5, "stops": 6, "stopsServed": 66,
+              "stopsMissed": 0, "meanDwell": 19.8,
+              "observedHeadway": 301.2,  // mean gap between consecutive buses at the stops (s)
+              "headwayCv": 0.08}]}       // its coefficient of variation (bunching raises it)
 ```
+
+## Public transport (#85, ADR-0019)
+
+Each line of the package (`transitLines`, see the network package spec) dispatches buses
+(`transit.vehicleType`) at the start of its first link: the first departure at a phase drawn
+from the line's own PCG32 stream, then one per headway (`transit.headways` > package `headway` >
+`defaultHeadway`, times `headwayFactor`); departures that cannot be inserted yet wait in a FIFO.
+Buses follow the line's links as a fixed route (no router). Before a stop on the current link a
+bus changes to the kerb lane (mandatory change, it holds the kerb lane until the stop) and brakes
+for a standing obstacle at the stop position (stops are moved at least 20 m into a link). Within
+3 m of the stop and below 0.5 m/s it dwells `dwellTime` plus the seeded random part. A dwelling
+bus blocks its lane, so followers queue or overtake by MOBIL on multi-lane links; at a **bay** it
+leaves the lane (out of the occupant lists, drawn 3 m to the right) and pulls out once the
+follower can brake comfortably. A bus pushed past a stop, or re-routed off its line after a
+missed mandatory lane change, counts the stop as missed. Without lines nothing changes: no
+random numbers are drawn and runs stay bit-identical.
 
 ### Junctions (`junctionsJson`, #58)
 
@@ -529,3 +562,5 @@ message on stderr for bad arguments, files or configurations.
 - Wave and tailback detection works per lane; a wave crossing a link boundary is reported as two
   events.
 - Junction delay is measured over the whole approach link, not a fixed distance.
+- Buses run on headways, not timetables (no schedule adherence or holding), with one dwell-time
+  distribution for all stops (no passenger demand); bays have unlimited capacity.

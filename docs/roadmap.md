@@ -175,14 +175,14 @@ Traffic signs end to end (OSM sign tags, signed priority roads, 3D sign models) 
 
 Epic: [#99](https://github.com/cpfaffinger/TrafficSim/issues/99)
 
-- [ ] [#100](https://github.com/cpfaffinger/TrafficSim/issues/100) Signed priority roads: priority_road=designated and priority sign tags
-- [ ] [#101](https://github.com/cpfaffinger/TrafficSim/issues/101) traffic_sign=* tags for stop, give way and priority (DE/AT/CH codes and human-readable values)
-- [ ] [#102](https://github.com/cpfaffinger/TrafficSim/issues/102) Signs on mid-block nodes: capture to the downstream junction or report
-- [ ] [#103](https://github.com/cpfaffinger/TrafficSim/issues/103) 3D traffic sign models: stop, give way, priority road, signal masts
-- [ ] [#104](https://github.com/cpfaffinger/TrafficSim/issues/104) Package: signs per approach for rendering and inspection
-- [ ] [#105](https://github.com/cpfaffinger/TrafficSim/issues/105) Editor: attach new roads to any segment of a link
-- [ ] [#106](https://github.com/cpfaffinger/TrafficSim/issues/106) Editor: removing inferred signals when control is set to automatic or none
-- [ ] [#107](https://github.com/cpfaffinger/TrafficSim/issues/107) Editor: warn before discarding unsaved edits when loading another network
+- [x] [#100](https://github.com/cpfaffinger/TrafficSim/issues/100) Signed priority roads: priority_road=designated and priority sign tags
+- [x] [#101](https://github.com/cpfaffinger/TrafficSim/issues/101) traffic_sign=* tags for stop, give way and priority (DE/AT/CH codes and human-readable values)
+- [x] [#102](https://github.com/cpfaffinger/TrafficSim/issues/102) Signs on mid-block nodes: capture to the downstream junction or report
+- [x] [#103](https://github.com/cpfaffinger/TrafficSim/issues/103) 3D traffic sign models: stop, give way, priority road, signal masts
+- [x] [#104](https://github.com/cpfaffinger/TrafficSim/issues/104) Package: signs per approach for rendering and inspection
+- [x] [#105](https://github.com/cpfaffinger/TrafficSim/issues/105) Editor: attach new roads to any segment of a link
+- [x] [#106](https://github.com/cpfaffinger/TrafficSim/issues/106) Editor: removing inferred signals when control is set to automatic or none
+- [x] [#107](https://github.com/cpfaffinger/TrafficSim/issues/107) Editor: warn before discarding unsaved edits when loading another network
 - [ ] [#108](https://github.com/cpfaffinger/TrafficSim/issues/108) Sim: continuous lateral lane-change motion
 - [ ] [#109](https://github.com/cpfaffinger/TrafficSim/issues/109) Sim: conflict areas instead of single conflict points
 

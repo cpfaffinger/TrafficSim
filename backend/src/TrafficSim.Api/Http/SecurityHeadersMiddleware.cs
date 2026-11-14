@@ -16,6 +16,7 @@ internal sealed class SecurityHeadersMiddleware(RequestDelegate next)
             headers["Cross-Origin-Resource-Policy"] = "same-origin";
             headers["X-Content-Type-Options"] = "nosniff";
             headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+            CacheHeaders.EnsureHtmlRevalidates(context.Response);
             return Task.CompletedTask;
         });
         return next(context);

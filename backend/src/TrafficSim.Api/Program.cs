@@ -52,7 +52,10 @@ api.MapScenarioEndpoints();
 api.MapExportEndpoints();
 
 // SPA fallback: unknown non-API routes serve index.html (client-side routing).
-app.MapFallbackToFile("{*path:nonfile}", "index.html").Add(endpoint =>
+app.MapFallbackToFile("{*path:nonfile}", "index.html", new StaticFileOptions
+{
+    OnPrepareResponse = ctx => CacheHeaders.Apply(ctx.Context, ctx.File.Name),
+}).Add(endpoint =>
     ((RouteEndpointBuilder)endpoint).Order = int.MaxValue);
 app.MapFallback("/api/{**rest}", () => Results.Problem(statusCode: StatusCodes.Status404NotFound, title: "Unknown API route"));
 

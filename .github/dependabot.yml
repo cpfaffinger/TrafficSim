@@ -9,6 +9,10 @@ updates:
     directory: /frontend
     schedule: { interval: monthly }
     groups: { npm: { patterns: ['*'] } }
+    ignore:
+      # typescript-eslint supports TypeScript < 6.1 only; lift together with typescript-eslint.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
   - package-ecosystem: cargo
     directory: /sim-core
     schedule: { interval: monthly }

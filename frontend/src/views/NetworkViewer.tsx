@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScenarioClient } from '../api/scenarioClient';
+import { ScenarioClient, type Scenario } from '../api/scenarioClient';
 import { ImportPanel, type ViewerApi } from '../components/ImportPanel';
 import { InspectorPanel } from '../components/InspectorPanel';
 import { NetworkSummaryPanel } from '../components/NetworkSummaryPanel';
 import { SimulationPanel, type SimulationSettings } from '../components/SimulationPanel';
 import { DataBasisPanel, type ActivityAnalysis } from '../components/DataBasisPanel';
+import { DemandEditorHost } from '../demand/DemandEditorHost';
 import { ViewToolbar } from '../components/ViewToolbar';
 import { DrawRoadPanel } from '../editor/components/DrawRoadPanel';
 import { EditorPanel } from '../editor/components/EditorPanel';
@@ -49,6 +50,8 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
   const [showBasemap, setShowBasemap] = useState(true);
   const [simSettings, setSimSettings] = useState<SimulationSettings>({ demandScale: 100, truckShare: 0.08, seed: 1 });
   const [analysis, setAnalysis] = useState<ActivityAnalysis | null>(null);
+  const [demandOpen, setDemandOpen] = useState(false);
+  const [sharedScenario, setSharedScenario] = useState<Scenario | null>(null);
   const readOnly = shareToken !== null;
   const scenarios = useMemo(() => scenarioClient ?? new ScenarioClient(), [scenarioClient]);
 
@@ -120,6 +123,21 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
   const [runsVersion, setRunsVersion] = useState(0);
   const onRunsChanged = useCallback(() => setRunsVersion((v) => v + 1), []);
 
+  // Demand editor (#54): the open scenario, or the shared one read-only.
+  const demandScenario = readOnly ? sharedScenario : openScenario;
+  const openScenarioId = openScenario?.id;
+  const { setScenario } = editor.session;
+  const saveDemand = useCallback(
+    async (demand: Record<string, unknown>) => {
+      if (openScenarioId) setScenario(await scenarios.updateScenario(openScenarioId, { demand }));
+    },
+    [openScenarioId, scenarios, setScenario],
+  );
+  const showSharedDemand = useCallback((s: Scenario) => {
+    setSharedScenario(s);
+    setDemandOpen(true);
+  }, []);
+
   // Data basis of the generated scenarios (#115).
   const baselineForAnalysis = pkg?.baselineId ?? null;
   useEffect(() => {
@@ -168,7 +186,7 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
     <div className="viewer">
       <aside className="panel">
         {readOnly ? (
-          <SharedScenarioPanel api={scenarios} token={shareToken} onPackage={onSharedPackage} />
+          <SharedScenarioPanel api={scenarios} token={shareToken} onPackage={onSharedPackage} onShowDemand={showSharedDemand} />
         ) : (
           <ImportPanel
             api={api}
@@ -223,7 +241,7 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
         {editing && (
           <>
             <EditorToolbar session={editor.session} mode={editor.mode} onMode={editor.setMode} onSave={() => void editor.session.save()} />
-            <ScenarioPanel api={scenarios} session={editor.session} />
+            <ScenarioPanel api={scenarios} session={editor.session} onEditDemand={() => setDemandOpen(true)} />
             {openScenario && (
               <RunsPanel
                 api={scenarios}
@@ -250,6 +268,17 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
           onShowTunnels={setShowTunnels}
           onReset={() => sceneRef.current?.resetView()}
         />
+        {pkg && demandOpen && demandScenario && (
+          <DemandEditorHost
+            scenario={demandScenario}
+            pkg={pkg}
+            sceneRef={sceneRef}
+            target={target}
+            readOnly={readOnly}
+            onSave={readOnly ? undefined : saveDemand}
+            onClose={() => setDemandOpen(false)}
+          />
+        )}
         {!pkg && !readOnly && (
           <p className="scene-hint">Search a place to import its road network, or load a recent import.</p>
         )}

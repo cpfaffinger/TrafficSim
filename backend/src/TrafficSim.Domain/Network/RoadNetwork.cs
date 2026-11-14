@@ -54,6 +54,18 @@ public sealed record LaneBoundary(int RightLane, bool AllowLeft, bool AllowRight
     };
 }
 
+/// <summary>Sign at the end of a link's approach (#104).</summary>
+public enum EndSign
+{
+    None,
+    Stop,
+    GiveWay,
+    PriorityRoad,
+}
+
+/// <summary>An OSM node along a link (null id for points created by clipping at the area border).</summary>
+public readonly record struct OsmNodeRef(long? Id, Vec3 Position);
+
 /// <summary>A directed road segment between two nodes.</summary>
 public sealed class Link
 {
@@ -63,6 +75,12 @@ public sealed class Link
 
     /// <summary>True when the link runs in the OSM way's node order (false: against it).</summary>
     public bool OsmForward { get; set; } = true;
+
+    /// <summary>OSM nodes of the link in travel direction (untrimmed positions), for editing (#105).</summary>
+    public IReadOnlyList<OsmNodeRef> OsmNodes { get; set; } = [];
+
+    /// <summary>Sign governing this link's approach at <see cref="To"/>.</summary>
+    public EndSign EndSign { get; set; }
 
     /// <summary>OSM node following <see cref="From"/> along the way (identifies movements for edits, ADR-0010).</summary>
     public long? OsmAfterFrom { get; set; }
@@ -163,4 +181,7 @@ public sealed class RoadNetwork
     public IReadOnlyList<SignalController> Signals { get; init; } = [];
 
     public int LaneCount => Links.Sum(l => l.Lanes.Count);
+
+    /// <summary>Stop/give-way signs that could not be attached to a junction approach.</summary>
+    public int IgnoredSigns { get; init; }
 }

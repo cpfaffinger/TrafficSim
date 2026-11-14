@@ -51,6 +51,16 @@ OSM models all three explicitly, but in different ways.
 - The renderer draws markings from the same boundaries (plus edge lines, stop lines and turn arrows
   from `turn:lanes`), so what users see is what vehicles obey.
 
+**Right-of-way signs** (Phase 10)
+
+- Stop/give-way signs come from `highway=stop|give_way` or `traffic_sign=*` (DE/AT/CH/FR/IT/NL/GB codes
+  and `stop`/`give_way` values). They apply to the next junction in their direction, following the
+  road across plain joints up to 60 m; unattributable signs are counted (`stats.ignoredSigns`).
+- Signed priority roads (`priority_road=designated|yes_unposted`, `traffic_sign=DE:306` …) outrank
+  road-class priority and disable right-before-left at their junctions.
+- The editor suppresses signals inferred from approach nodes with the TrafficSim-specific node tag
+  `trafficsim:signals=no` (never written back to OSM).
+
 ## Consequences
 
 - The network package gains `layer`, `structure`, `boundaries[]` and the junction controls

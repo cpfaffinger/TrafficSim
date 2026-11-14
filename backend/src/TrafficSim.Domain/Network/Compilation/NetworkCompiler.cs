@@ -65,6 +65,7 @@ public static class NetworkCompiler
         private readonly List<Link> _links = [];
         private readonly List<Connector> _connectors = [];
         private readonly List<SignalController> _signals = [];
+        private int _ignoredSigns;
         private (double MinX, double MinY, double MaxX, double MaxY) _rect;
 
         public RoadNetwork Run()
@@ -86,6 +87,7 @@ public static class NetworkCompiler
             BuildConnectors();
             BuildConflicts();
             BuildSignalPlans();
+            AssignEndSigns();
 
             return new RoadNetwork
             {
@@ -96,6 +98,7 @@ public static class NetworkCompiler
                 Links = _links,
                 Connectors = _connectors,
                 Signals = _signals,
+                IgnoredSigns = _ignoredSigns,
             };
         }
 
@@ -403,6 +406,8 @@ public static class NetworkCompiler
                 : (piece.NodeIds[^2], piece.NodeIds[1]);
             link.OsmAfterFrom = _neighbours[link].Start;
             link.OsmForward = direction == TravelDirection.Forward;
+            var nodes = piece.NodeIds.Zip(piece.Points, (id, p) => new OsmNodeRef(id, p)).ToList();
+            link.OsmNodes = direction == TravelDirection.Forward ? nodes : Enumerable.Reverse(nodes).ToList();
             link.OsmBeforeTo = _neighbours[link].End;
             var startKey = direction == TravelDirection.Forward ? piece.StartKey : piece.EndKey;
             var endKey = direction == TravelDirection.Forward ? piece.EndKey : piece.StartKey;
@@ -441,43 +446,69 @@ public static class NetworkCompiler
                     var highway = Tags.Get(tags, "highway");
                     var toStart = cumulative;
                     var toEnd = total - cumulative;
+                    var signs = SignRule.NodeSigns(tags);
                     if (highway == "traffic_signals")
                     {
-                        if (toEnd <= options.SignalCaptureMetres)
+                        if (toEnd <= options.SignalCaptureMetres && !SignalsSuppressed(NodeByKey(piece.EndKey)))
                         {
                             NodeByKey(piece.EndKey).SignalNearby = true;
                         }
 
-                        if (toStart <= options.SignalCaptureMetres)
+                        if (toStart <= options.SignalCaptureMetres && !SignalsSuppressed(NodeByKey(piece.StartKey)))
                         {
                             NodeByKey(piece.StartKey).SignalNearby = true;
                         }
                     }
-                    else if (highway is "stop" or "give_way")
+                    else if ((signs & (SignKinds.Stop | SignKinds.GiveWay)) != 0)
                     {
-                        var sign = highway == "stop" ? Sign.Stop : Sign.GiveWay;
-                        var dir = Tags.Get(tags, "direction");
-                        var towardsEnd = dir switch
+                        var sign = (signs & SignKinds.Stop) != 0 ? Sign.Stop : Sign.GiveWay;
+                        var towardsEnd = SignRule.Direction(tags) ?? (toEnd <= toStart);
+                        if (!AttachSign(piece, towardsEnd, towardsEnd ? toEnd : toStart, sign))
                         {
-                            "forward" => true,
-                            "backward" => false,
-                            _ => toEnd <= toStart,
-                        };
-                        var distance = towardsEnd ? toEnd : toStart;
-                        if (distance > options.SignCaptureMetres)
-                        {
-                            continue;
-                        }
-
-                        var target = towardsEnd ? piece.EndKey : piece.StartKey;
-                        foreach (var link in NodeByKey(target).Incoming.Where(l => _pieceOf[l] == piece))
-                        {
-                            _approachSigns[link] = sign;
+                            _ignoredSigns++;
                         }
                     }
                 }
             }
         }
+
+        /// <summary>
+        /// Attaches a stop/give-way sign to the approach of the next junction in travel direction, following
+        /// the road across plain joints (#102). False when no junction lies within the capture distance.
+        /// </summary>
+        private bool AttachSign(Piece piece, bool towardsEnd, double distance, Sign sign)
+        {
+            var current = piece;
+            var forward = towardsEnd;
+            for (var hops = 0; hops < 20 && distance <= options.SignCaptureMetres; hops++)
+            {
+                var target = NodeByKey(forward ? current.EndKey : current.StartKey);
+                if (target.Pieces.Count >= 3 || target.Node!.Control == NodeControl.Boundary || target.Pieces.Count == 1)
+                {
+                    if (target.Pieces.Count < 3)
+                    {
+                        return false;
+                    }
+
+                    var piece2 = current;
+                    foreach (var link in target.Incoming.Where(l => _pieceOf[l] == piece2))
+                    {
+                        _approachSigns[link] = sign;
+                    }
+
+                    return true;
+                }
+
+                var next = target.Pieces.First(p => p != current);
+                forward = next.StartKey == target.Key;
+                distance += Polyline.PlanarLength(next.Points);
+                current = next;
+            }
+
+            return false;
+        }
+
+        private static bool SignalsSuppressed(GraphNode g) => Tags.Get(g.Tags, "trafficsim:signals") == "no";
 
         private void DecideControls()
         {
@@ -493,7 +524,9 @@ public static class NetworkCompiler
                 var highway = Tags.Get(tags, "highway");
                 var degree = g.Pieces.Count;
                 var ring = g.Pieces.Count(p => IsRoundabout(p));
-                if (highway == "traffic_signals" || g.SignalNearby)
+                var nodeSigns = SignRule.NodeSigns(tags);
+                var priorityRoad = g.Pieces.Any(p => SignRule.IsPriorityRoad(p.Way.Tags));
+                if ((highway == "traffic_signals" && !SignalsSuppressed(g)) || g.SignalNearby)
                 {
                     node.Control = NodeControl.Signal;
                 }
@@ -509,12 +542,13 @@ public static class NetworkCompiler
                 {
                     node.Control = NodeControl.None;
                 }
-                else if (highway == "stop" && Tags.Get(tags, "stop") == "all")
+                else if ((nodeSigns & SignKinds.Stop) != 0 && Tags.Get(tags, "stop") == "all")
                 {
                     node.Control = NodeControl.AllWayStop;
                 }
                 else if (g.Pieces.All(p => RoadClasses.IsMinorStreet(p.RoadClass))
-                         && highway is not ("stop" or "give_way")
+                         && (nodeSigns & (SignKinds.Stop | SignKinds.GiveWay)) == 0
+                         && !priorityRoad
                          && g.Incoming.All(l => _approachSigns.GetValueOrDefault(l) == Sign.None))
                 {
                     node.Control = NodeControl.RightBeforeLeft;
@@ -778,14 +812,15 @@ public static class NetworkCompiler
                 return [];
             }
 
-            var first = unsigned.OrderByDescending(p => RoadClasses.Rank(p.RoadClass)).ThenBy(p => p.Index).First();
+            static int Rank(Piece p) => SignRule.Rank(p.RoadClass, SignRule.IsPriorityRoad(p.Way.Tags));
+            var first = unsigned.OrderByDescending(Rank).ThenBy(p => p.Index).First();
             var firstDir = OutwardDirection(g, first);
             var second = unsigned.Where(p => p != first)
-                .OrderByDescending(p => RoadClasses.Rank(p.RoadClass))
+                .OrderByDescending(Rank)
                 .ThenByDescending(p => Math.Abs(Polyline.SignedAngle(firstDir, OutwardDirection(g, p))))
                 .FirstOrDefault();
-            var explicitMinor = Tags.Get(g.Tags, "highway") is "stop" or "give_way";
-            if (explicitMinor && second is not null && RoadClasses.Rank(second.RoadClass) < RoadClasses.Rank(first.RoadClass))
+            var explicitMinor = (SignRule.NodeSigns(g.Tags) & (SignKinds.Stop | SignKinds.GiveWay)) != 0;
+            if (explicitMinor && second is not null && Rank(second) < Rank(first))
             {
                 second = null;
             }
@@ -797,6 +832,27 @@ public static class NetworkCompiler
         {
             var points = p.StartKey == g.Key ? p.Points : Polyline.Reverse(p.Points);
             return Polyline.Direction(points, atEnd: false);
+        }
+
+        /// <summary>The sign governing each link's approach to its end node, for rendering and inspection (#104).</summary>
+        private void AssignEndSigns()
+        {
+            var byLink = _connectors.ToLookup(c => c.FromLink, StringComparer.Ordinal);
+            foreach (var link in _links)
+            {
+                var end = _byNodeId[link.To];
+                var connectors = byLink[link.Id].ToList();
+                link.EndSign = end.Node!.Control switch
+                {
+                    NodeControl.AllWayStop or NodeControl.LevelCrossing => EndSign.Stop,
+                    NodeControl.Roundabout when !link.Roundabout => EndSign.GiveWay,
+                    NodeControl.Priority when _approachSigns.GetValueOrDefault(link) == Sign.Stop || connectors.Any(c => c.Priority == ConnectorPriority.Stop) => EndSign.Stop,
+                    NodeControl.Priority when _approachSigns.GetValueOrDefault(link) == Sign.GiveWay => EndSign.GiveWay,
+                    NodeControl.Priority when connectors.Count > 0 && connectors.All(c => c.Priority == ConnectorPriority.Minor) => EndSign.GiveWay,
+                    NodeControl.Priority when SignRule.IsPriorityRoad(_pieceOf[link].Way.Tags) => EndSign.PriorityRoad,
+                    _ => EndSign.None,
+                };
+            }
         }
 
         private void BuildConflicts()

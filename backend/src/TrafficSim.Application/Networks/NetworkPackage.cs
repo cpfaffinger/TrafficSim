@@ -44,7 +44,11 @@ public sealed record PackageLink(
     IReadOnlyList<string> Assumed,
     long? OsmAfterFrom = null,
     long? OsmBeforeTo = null,
-    bool OsmForward = true);
+    bool OsmForward = true,
+    string EndSign = "none",
+    IReadOnlyList<PackageOsmNode>? OsmNodes = null);
+
+public sealed record PackageOsmNode(long? Id, double X, double Y);
 
 public sealed record PackageConnector(
     string Id,
@@ -64,7 +68,7 @@ public sealed record PackageSignalGroup(string Id, IReadOnlyList<double[]> Green
 
 public sealed record PackageSignal(string Node, double Cycle, double Offset, IReadOnlyList<PackageSignalGroup> Groups);
 
-public sealed record PackageStats(int Nodes, int Links, int Lanes, int Connectors, int Signals);
+public sealed record PackageStats(int Nodes, int Links, int Lanes, int Connectors, int Signals, int IgnoredSigns = 0);
 
 public sealed record NetworkPackage(
     int FormatVersion,

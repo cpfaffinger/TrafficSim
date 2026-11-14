@@ -26,7 +26,7 @@ public static class NetworkPackageWriter
                 Points(c.Geometry), R(c.Length), c.Conflicts.ToList())).ToList(),
             network.Signals.Select(s => new PackageSignal(s.NodeId, s.Cycle, s.Offset,
                 s.Groups.Select(g => new PackageSignalGroup(g.Id, g.Green.Select(i => new[] { i.Start, i.End }).ToList(), g.Amber)).ToList())).ToList(),
-            new PackageStats(network.Nodes.Count, network.Links.Count, network.LaneCount, network.Connectors.Count, network.Signals.Count));
+            new PackageStats(network.Nodes.Count, network.Links.Count, network.LaneCount, network.Connectors.Count, network.Signals.Count, network.IgnoredSigns));
     }
 
     public static byte[] SerializeGzip(NetworkPackage package)
@@ -77,7 +77,9 @@ public static class NetworkPackageWriter
         l.Assumed.ToList(),
         l.OsmAfterFrom,
         l.OsmBeforeTo,
-        l.OsmForward);
+        l.OsmForward,
+        Snake(l.EndSign),
+        l.OsmNodes.Select(n => new PackageOsmNode(n.Id, R(n.Position.X), R(n.Position.Y))).ToList());
 
     private static List<double[]> Points(IReadOnlyList<Vec3> points) => points.Select(p => new[] { R(p.X), R(p.Y), R(p.Z) }).ToList();
 

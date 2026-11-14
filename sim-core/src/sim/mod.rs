@@ -87,6 +87,9 @@ pub struct Vehicle {
     pub next_conn: u32,
     /// Connector the vehicle has committed to enter (claimed), [`NONE`] otherwise.
     pub claimed: u32,
+    /// Connectors behind `claimed` claimed together with it because the lanes in between are too
+    /// short to stop on clear of the junctions (#117), [`NONE`]-padded.
+    pub ahead: [u32; junction::CHAIN],
     /// Distance to a stop line the vehicle must hold at, `INFINITY` if none.
     pub stop_dist: f64,
     /// Distance to the entry of a conflict zone the vehicle must hold at because a conflicting
@@ -494,6 +497,7 @@ impl Simulation {
             route_pos: 0,
             next_conn: NONE,
             claimed: NONE,
+            ahead: [NONE; junction::CHAIN],
             stop_dist: f64::INFINITY,
             zone_hold: f64::INFINITY,
             wait: 0.0,
@@ -860,6 +864,19 @@ impl Simulation {
                         };
                         v.stop_done = false;
                         v.wait = 0.0;
+                        // Chained junctions (#117): the claim moves on to the next connector.
+                        if v.ahead[0] != NONE {
+                            if v.ahead[0] == v.next_conn {
+                                v.claimed = v.ahead[0];
+                                v.ahead.copy_within(1.., 0);
+                                v.ahead[junction::CHAIN - 1] = NONE;
+                            } else {
+                                for a in v.ahead.iter_mut().filter(|a| **a != NONE) {
+                                    claims[*a as usize] -= 1;
+                                    *a = NONE;
+                                }
+                            }
+                        }
                     }
                     Some(c) => {
                         v.pos -= len;
@@ -907,8 +924,13 @@ impl Simulation {
                 f |= flags::YIELDING;
             }
             v.flags = f;
-            if !v.alive && v.claimed != NONE {
-                claims[v.claimed as usize] -= 1;
+            if !v.alive {
+                for &c in std::iter::once(&v.claimed)
+                    .chain(&v.ahead)
+                    .filter(|&&c| c != NONE)
+                {
+                    claims[c as usize] -= 1;
+                }
             }
         }
         self.remove_departed();
@@ -1039,6 +1061,10 @@ impl Simulation {
             h.f64(v.acc);
             h.u64(u64::from(v.route_pos));
             h.u64(u64::from(v.claimed));
+            // Only hashed when used, so states without chained junctions keep their checksums.
+            for &a in v.ahead.iter().filter(|&&a| a != NONE) {
+                h.u64(u64::from(a));
+            }
             h.f64(v.lat_offset);
             h.u64(u64::from(v.lc_from));
             h.f64(v.lc_progress);

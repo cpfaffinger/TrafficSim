@@ -1751,6 +1751,54 @@ fn yielding_merge_may_enter_a_short_empty_exit_lane() {
     assert!(!s.exit_space_ok(c, i), "the merge must not fill an occupied lane");
 }
 
+/// #117: two signal nodes 18 m apart leave a 2 m link between them (e.g. a side road crossing a
+/// dual carriageway). A vehicle that gets green at the first one but red at the second must wait
+/// at the first stop line, not inside the junction, and then pass both without stopping.
+#[test]
+fn chained_junctions_are_entered_only_when_all_can_be_passed() {
+    let mut b = NetBuilder::new();
+    let v = 13.889;
+    b.node("J1", 0.0, 0.0, NodeControl::Signal)
+        .node("J2", 18.0, 0.0, NodeControl::Signal)
+        .node("W", -300.0, 0.0, NodeControl::Boundary)
+        .node("E", 318.0, 0.0, NodeControl::Boundary)
+        .link("we", "W", "J1", 1, v)
+        .link("mid", "J1", "J2", 1, v)
+        .link("je", "J2", "E", 1, v)
+        .connect("c1", "we", 0, "mid", 0, Priority::Signal)
+        .connect("c2", "mid", 0, "je", 0, Priority::Signal)
+        .signal("J1", 60.0, &[("g1", 0.0, 60.0, 3.0)])
+        .signal("J2", 60.0, &[("g2", 30.0, 55.0, 3.0)]);
+    b.connector_mut("c1").signal_group = Some("g1".into());
+    b.connector_mut("c2").signal_group = Some("g2".into());
+    let mut s = sim(&b, quiet());
+    assert!(
+        s.network().seg_length[s
+            .network()
+            .link_lane(s.network().link_index("mid").unwrap(), 0)
+            .unwrap() as usize]
+            < 3.0
+    );
+    let id = s.place_vehicle("we", 0, 200.0, 10.0, "je", car()).unwrap();
+    while s.time < 29.0 {
+        s.step();
+        let v = vehicle(&s, id).unwrap();
+        assert_eq!(link_of(&s, v), "we", "t = {}", s.time);
+        assert!(s.network().is_lane(v.seg));
+    }
+    // Green at both: passes the two junctions without stopping in between.
+    while let Some(v) = vehicle(&s, id) {
+        if link_of(&s, v) == "je" {
+            break;
+        }
+        if !s.network().is_lane(v.seg) || link_of(&s, v) == "mid" {
+            assert!(v.speed > 1.0, "stopped inside the junction at t = {}", s.time);
+        }
+        s.step();
+        assert!(s.time < 60.0);
+    }
+}
+
 /// #116: dense grids, deterministic per seed. Blocks of 28 m leave exit lanes of 12 m that cannot
 /// hold a merging car and the reserved space for a prioritised one: yielding merges must still
 /// enter them while they are empty (c598e2b: 72 arrivals). Blocks of 60 m: yielding merges never

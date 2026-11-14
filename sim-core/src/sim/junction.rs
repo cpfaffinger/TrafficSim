@@ -54,6 +54,9 @@ const RESERVE_DISTANCE: f64 = 30.0;
 /// Vehicles behind a connector end overlap it with their rear up to this distance (m, longer
 /// than any vehicle).
 const MAX_OVERHANG: f64 = 30.0;
+/// Most connectors claimed together with the next one (#117: junction nodes a few metres apart,
+/// e.g. dual carriageways or slip roads joining near a junction).
+pub(super) const CHAIN: usize = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Decision {
@@ -135,7 +138,20 @@ impl Simulation {
                 self.vehicles[i].stop_done = true;
             }
             let forced = !signalised && self.vehicles[i].wait > max_wait;
-            let decision = self.decide(i, c, d, forced);
+            let mut decision = self.decide(i, c, d, forced);
+            // Chained junctions (#117): enter only if the vehicle may also pass the junctions
+            // right behind, whose stop lines it could not wait at clear of this one.
+            let mut chain = [NONE; CHAIN];
+            if decision != Decision::Stop {
+                let (next, n) = self.chain_after(i, c, d);
+                for (k, &(c2, d2)) in next[..n].iter().enumerate() {
+                    if self.decide_with(i, c2, d2, forced, true) == Decision::Stop {
+                        decision = Decision::Stop;
+                        break;
+                    }
+                    chain[k] = c2;
+                }
+            }
             let v = &self.vehicles[i];
             // Yielding movements commit at their point of no return; prioritised movements
             // claim only when about to cross the stop line, so they do not block others early.
@@ -146,8 +162,14 @@ impl Simulation {
                 v.speed * self.dt + 2.0
             };
             match decision {
-                Decision::EnterNow => self.claim(i, c, false),
-                Decision::Enter if d <= commit => self.claim(i, c, forced),
+                Decision::EnterNow => {
+                    self.claim(i, c, false);
+                    self.claim_ahead(i, chain);
+                }
+                Decision::Enter if d <= commit => {
+                    self.claim(i, c, forced);
+                    self.claim_ahead(i, chain);
+                }
                 Decision::Enter => {}
                 Decision::Stop => {
                     let v = &mut self.vehicles[i];
@@ -183,6 +205,60 @@ impl Simulation {
         (d <= horizon).then_some((c, d))
     }
 
+    /// Controlled connectors right behind `c` (with their distances from vehicle `i`, `d` metres
+    /// before `c`) that the vehicle has to pass without stopping: the lanes in between are too
+    /// short to hold it clear of the junctions (#117).
+    fn chain_after(&self, i: usize, c: u32, d: f64) -> ([(u32, f64); CHAIN], usize) {
+        let net = &self.net;
+        let v = &self.vehicles[i];
+        let route = &self.routes[v.route as usize];
+        let room = v.params.length + v.params.minimum_gap + STOP_LINE_MARGIN;
+        let mut out = [(NONE, 0.0); CHAIN];
+        let (mut n, mut cur, mut dist) = (0, c, d);
+        // `c` leads onto the route link after the current one (on a connector, `route_pos`
+        // already points at the link being entered).
+        let mut idx = v.route_pos as usize + 1;
+        for _ in 0..2 * CHAIN {
+            let lane = net.connectors[cur as usize].to_lane;
+            if n == CHAIN || net.seg_length[lane as usize] >= room {
+                break;
+            }
+            let Some(&link) = route.get(idx + 1) else {
+                break;
+            };
+            let next = net.choose_connector(lane, link, v.params.class.mask());
+            if next == NONE {
+                break;
+            }
+            dist += net.seg_length[net.connector_segment(cur) as usize] + net.seg_length[lane as usize];
+            if net.connectors[next as usize].needs_decision {
+                out[n] = (next, dist);
+                n += 1;
+            }
+            (cur, idx) = (next, idx + 1);
+        }
+        (out, n)
+    }
+
+    /// Claims the chained connectors behind the one just claimed (#117).
+    fn claim_ahead(&mut self, i: usize, chain: [u32; CHAIN]) {
+        for &c in chain.iter().filter(|&&c| c != NONE) {
+            self.conn_claims[c as usize] += 1;
+            self.conn_last_claim[c as usize] = self.time;
+            if self.log_events {
+                let group = self.net.connectors[c as usize].signal_group;
+                self.entry_log.push(EntryEvent {
+                    vehicle: self.vehicles[i].id,
+                    connector: c,
+                    time: self.time,
+                    signal: (group != NONE).then(|| self.signal_state[group as usize]),
+                    forced: false,
+                });
+            }
+        }
+        self.vehicles[i].ahead = chain;
+    }
+
     fn claim(&mut self, i: usize, c: u32, forced: bool) {
         self.conn_claims[c as usize] += 1;
         self.conn_last_claim[c as usize] = self.time;
@@ -205,6 +281,12 @@ impl Simulation {
     }
 
     pub(super) fn decide(&self, i: usize, c: u32, d: f64, forced: bool) -> Decision {
+        self.decide_with(i, c, d, forced, false)
+    }
+
+    /// [`Self::decide`]; `chained` decides about a connector right behind the next one (#117),
+    /// whose stop sign is served by the stop at the first line.
+    fn decide_with(&self, i: usize, c: u32, d: f64, forced: bool, chained: bool) -> Decision {
         let net = &self.net;
         let info = &net.connectors[c as usize];
         let v = &self.vehicles[i];
@@ -225,7 +307,7 @@ impl Simulation {
                 }
                 SignalState::Green => {}
             },
-            Priority::Stop if !v.stop_done => return Decision::Stop,
+            Priority::Stop if !v.stop_done && !chained => return Decision::Stop,
             _ => {}
         }
         if blocked() || !self.exit_space_ok(c, i) {

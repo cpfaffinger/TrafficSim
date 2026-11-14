@@ -195,5 +195,5 @@ Epic: [#99](https://github.com/cpfaffinger/TrafficSim/issues/99)
 ## Backlog (unscheduled)
 
 - [ ] [#85](https://github.com/cpfaffinger/TrafficSim/issues/85) Public transport vehicles and stops
-- [ ] [#86](https://github.com/cpfaffinger/TrafficSim/issues/86) Pedestrians and crossings
+- [x] [#86](https://github.com/cpfaffinger/TrafficSim/issues/86) Pedestrians and crossings ([ADR-0020](adr/0020-pedestrian-crossings.md))
 - [ ] [#87](https://github.com/cpfaffinger/TrafficSim/issues/87) Elevation and gradients

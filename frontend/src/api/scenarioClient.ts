@@ -1,4 +1,5 @@
 import { parseChangeset, type Changeset, type EditOperation } from '../editor/ops';
+import { bytesToBase64 } from '../lib/base64';
 import { ApiError } from './client';
 
 /** Scenarios, changeset previews, runs, sharing and exports (ADR-0010, #70, #72, #75, #76). */
@@ -36,6 +37,34 @@ export interface RunSummary {
   summary: unknown;
   bucketFormat: string;
   createdAt: string;
+}
+
+export interface RunInput {
+  seed: number;
+  simulatedSeconds: number;
+  summary: unknown;
+  /** `lane-cells-v1` history, or null to store the summary only. */
+  buckets: Uint8Array | null;
+}
+
+export type BatchStatus = 'queued' | 'running' | 'completed' | 'failed';
+
+/** Server-side multi-seed batch (#84). */
+export interface BatchJob {
+  jobId: string;
+  scenarioId: string;
+  status: BatchStatus;
+  seeds: number[];
+  durationSeconds: number;
+  runIds: string[];
+  mean: unknown;
+  error: string | null;
+}
+
+export interface BatchRequest {
+  seeds?: number;
+  durationSeconds?: number;
+  warmupSeconds?: number;
 }
 
 /** An edit the backend skipped (target missing, invalid value, …). */
@@ -168,6 +197,36 @@ export class ScenarioClient {
   async listRuns(scenarioId: string, signal?: AbortSignal): Promise<RunSummary[]> {
     const list = await this.json<RunSummary[]>('GET', `/api/v1/scenarios/${enc(scenarioId)}/runs`, undefined, signal);
     return Array.isArray(list) ? list : [];
+  }
+
+  async saveRun(scenarioId: string, run: RunInput, signal?: AbortSignal): Promise<RunSummary> {
+    const body = {
+      seed: run.seed,
+      simulatedSeconds: run.simulatedSeconds,
+      summary: run.summary,
+      bucketFormat: run.buckets ? 'lane-cells-v1' : '',
+      buckets: run.buckets ? bytesToBase64(run.buckets) : '',
+    };
+    return this.json<RunSummary>('POST', `/api/v1/scenarios/${enc(scenarioId)}/runs`, body, signal);
+  }
+
+  /** The stored `lane-cells-v1` history of a run (empty when it has none). */
+  async getRunBuckets(runId: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+    const response = await this.fetchFn(`${this.baseUrl}/api/v1/runs/${enc(runId)}/buckets`, { signal });
+    if (!response.ok) await this.fail(response);
+    return response.arrayBuffer();
+  }
+
+  async batchRunner(signal?: AbortSignal): Promise<{ available: boolean; maxSeeds: number }> {
+    return this.json('GET', '/api/v1/batch-runner', undefined, signal);
+  }
+
+  async startBatch(scenarioId: string, request: BatchRequest, signal?: AbortSignal): Promise<BatchJob> {
+    return this.json<BatchJob>('POST', `/api/v1/scenarios/${enc(scenarioId)}/batch`, request, signal);
+  }
+
+  async getBatch(jobId: string, signal?: AbortSignal): Promise<BatchJob> {
+    return this.json<BatchJob>('GET', `/api/v1/batches/${enc(jobId)}`, undefined, signal);
   }
 
   private async packageRequest(method: string, path: string, body: unknown, signal?: AbortSignal): Promise<PackageResult> {

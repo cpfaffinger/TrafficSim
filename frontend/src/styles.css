@@ -645,6 +645,58 @@ dl.stats dd {
   background: linear-gradient(to right, #30a46c, #f5a524, #e5484d);
 }
 
+.legend-bar.diverging {
+  background: linear-gradient(to right, #e5484d, #ffffff, #3e63dd);
+  border: 1px solid var(--border, #ccc);
+}
+
+.batch-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: end;
+  margin: 8px 0;
+}
+
+.batch-form input {
+  width: 4.5em;
+}
+
+.kpi-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin: 6px 0;
+}
+
+.kpi-table th {
+  text-align: left;
+  font-weight: normal;
+  padding: 2px 4px 2px 0;
+}
+
+.kpi-table td {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-table tr.better td {
+  color: #3e63dd;
+}
+
+.kpi-table tr.worse td {
+  color: #e5484d;
+}
+
+.compare-panel .field select {
+  max-width: 100%;
+}
+
+.run-list {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+
 .timeline input[type='range'] {
   width: 100%;
 }

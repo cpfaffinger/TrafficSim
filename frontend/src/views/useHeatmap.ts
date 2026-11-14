@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
-import { metricColor, metricValues, smoothAlongLanes, writeCellColors, type HeatmapMetric } from '../metrics/heatmapMetrics';
+import { diffColor, metricColor, metricValues, smoothAlongLanes, writeCellColors, type HeatmapMetric } from '../metrics/heatmapMetrics';
+import { cellDelta } from '../runs/compare';
+import type { CellDiff } from '../runs/ComparePanel';
 import { CellHistory, decodeLaneCells } from '../metrics/laneCells';
 import type { NetworkPackage } from '../network/types';
 import type { NetworkScene } from '../scene/NetworkScene';
@@ -16,6 +18,8 @@ export function useHeatmap(sceneRef: RefObject<NetworkScene | null>, pkg: Networ
   const [smooth, setSmooth] = useState(false);
   const [replaying, setReplaying] = useState(false);
   const [version, setVersion] = useState(0);
+  /** A/B comparison (#74): overrides the live / timeline view while set. */
+  const [diff, setDiff] = useState<CellDiff | null>(null);
   const bucketRef = useRef<number | null>(null);
   bucketRef.current = bucket;
 
@@ -35,9 +39,20 @@ export function useHeatmap(sceneRef: RefObject<NetworkScene | null>, pkg: Networ
     setVersion((v) => v + 1);
   }, []);
 
-  // Render the shown bucket.
+  // Render the A/B diff or the shown bucket.
   useEffect(() => {
     const scene = sceneRef.current;
+    if (diff) {
+      scene?.setHeatmapVisible(enabled);
+      if (!scene || !enabled) return;
+      const colors = scene.prepareHeatmap(diff.b.lanes, diff.b.cellCount, diff.b.cellLength);
+      if (!colors) return;
+      let values = cellDelta(diff.a, diff.b, metric);
+      if (smooth) values = smoothAlongLanes(values, diff.b.lanes);
+      writeCellColors(colors, values, (v) => diffColor(metric, v));
+      scene.commitHeatmap();
+      return;
+    }
     const h = history.current;
     scene?.setHeatmapVisible(enabled && range !== null);
     if (!scene || !enabled || !range || !h.layout) return;
@@ -49,7 +64,7 @@ export function useHeatmap(sceneRef: RefObject<NetworkScene | null>, pkg: Networ
     if (smooth) values = smoothAlongLanes(values, h.layout.lanes);
     writeCellColors(colors, values, (v) => metricColor(metric, v));
     scene.commitHeatmap();
-  }, [enabled, metric, smooth, bucket, range, version, sceneRef]);
+  }, [enabled, metric, smooth, bucket, range, version, sceneRef, diff]);
 
   // Replay: step through the retained buckets.
   useEffect(() => {
@@ -83,6 +98,8 @@ export function useHeatmap(sceneRef: RefObject<NetworkScene | null>, pkg: Networ
     smooth,
     replaying,
     onCells,
+    diff,
+    setDiff,
     setBucket: (b: number) => {
       setReplaying(false);
       setBucket(b);

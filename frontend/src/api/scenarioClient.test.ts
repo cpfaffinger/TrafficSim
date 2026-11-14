@@ -91,6 +91,38 @@ describe('ScenarioClient', () => {
     ]);
   });
 
+  it('saves runs, reads buckets and drives server batches (#73, #84)', async () => {
+    const job = { jobId: 'j1', scenarioId: 's1', status: 'queued', seeds: [7, 8], durationSeconds: 600, runIds: [], mean: null, error: null };
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(json({ id: 'r1' }, 201))
+      .mockResolvedValueOnce(json({ id: 'r2' }, 201))
+      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3])))
+      .mockResolvedValueOnce(json({ available: true, maxSeeds: 20 }))
+      .mockResolvedValueOnce(json(job, 202))
+      .mockResolvedValueOnce(json({ ...job, status: 'completed' }))
+      .mockResolvedValueOnce(json({ title: 'Not found' }, 404));
+    const c = new ScenarioClient(fetchFn);
+    await c.saveRun('s1', { seed: 7, simulatedSeconds: 60, summary: { a: 1 }, buckets: new Uint8Array([76, 67, 86, 49]) });
+    expect(JSON.parse(fetchFn.mock.calls[0]![1].body as string)).toEqual({ seed: 7, simulatedSeconds: 60, summary: { a: 1 }, bucketFormat: 'lane-cells-v1', buckets: 'TENWMQ==' });
+    await c.saveRun('s1', { seed: 7, simulatedSeconds: 60, summary: {}, buckets: null });
+    expect(JSON.parse(fetchFn.mock.calls[1]![1].body as string)).toMatchObject({ bucketFormat: '', buckets: '' });
+    expect(new Uint8Array(await c.getRunBuckets('r1'))).toEqual(new Uint8Array([1, 2, 3]));
+    expect(await c.batchRunner()).toEqual({ available: true, maxSeeds: 20 });
+    expect((await c.startBatch('s1', { seeds: 2, durationSeconds: 600 })).jobId).toBe('j1');
+    expect((await c.getBatch('j1')).status).toBe('completed');
+    await expect(c.getRunBuckets('nope')).rejects.toBeInstanceOf(ApiError);
+    expect(fetchFn.mock.calls.map((x) => x[0])).toEqual([
+      '/api/v1/scenarios/s1/runs',
+      '/api/v1/scenarios/s1/runs',
+      '/api/v1/runs/r1/buckets',
+      '/api/v1/batch-runner',
+      '/api/v1/scenarios/s1/batch',
+      '/api/v1/batches/j1',
+      '/api/v1/runs/nope/buckets',
+    ]);
+  });
+
   it('turns 422 problems into rejected changesets and other errors into ApiError', async () => {
     const problem = { title: 'Changeset cannot be applied', detail: '1 edit', issues: [{ operationIndex: 0, operation: 'BanMovement', message: 'node 1 not found' }] };
     const fetchFn = vi

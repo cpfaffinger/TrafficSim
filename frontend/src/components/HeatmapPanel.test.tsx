@@ -52,4 +52,13 @@ describe('HeatmapPanel', () => {
     expect(p.onReplay).toHaveBeenCalledWith(false);
     expect(screen.getByText('120 veh/km+')).toBeTruthy();
   });
+
+  it('shows the diverging legend and exit button while comparing runs (#74)', () => {
+    const p = props({ comparing: 'B vs A', onExitCompare: vi.fn() });
+    render(<HeatmapPanel {...p} />);
+    expect(screen.getByText(/Comparing B vs A/)).toBeTruthy();
+    expect(screen.queryByLabelText('Timeline')).toBeNull();
+    fireEvent.click(screen.getByText('Exit comparison'));
+    expect(p.onExitCompare).toHaveBeenCalled();
+  });
 });

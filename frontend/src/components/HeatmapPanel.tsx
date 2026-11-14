@@ -18,13 +18,13 @@ export interface HeatmapPanelProps {
   onBucket: (bucket: number) => void;
   onLive: () => void;
   onReplay: (replaying: boolean) => void;
+  /** Label of an active A/B comparison (#74); the panel then shows a diverging legend. */
+  comparing?: string | null;
+  onExitCompare?: () => void;
 }
 
 /** Heatmap controls (#59) and the timeline with replay of aggregated buckets (#60). */
 export function HeatmapPanel(props: HeatmapPanelProps) {
-  const { range } = props;
-  const shown = props.bucket ?? range?.[1] ?? null;
-  const info = METRIC_INFO[props.metric];
   return (
     <section aria-label="Heatmap" className="heatmap-panel">
       <h2>Heatmap</h2>
@@ -46,6 +46,31 @@ export function HeatmapPanel(props: HeatmapPanelProps) {
           <input type="checkbox" checked={props.smooth} onChange={(e) => props.onSmooth(e.target.checked)} /> Smooth
         </label>
       </div>
+      {props.comparing ? (
+        <>
+          <p className="small">Comparing {props.comparing} (mean over the run).</p>
+          <div className="legend" aria-label={`${METRIC_INFO[props.metric].label} difference legend`}>
+            <span>B worse</span>
+            <span className="legend-bar diverging" />
+            <span>B better</span>
+          </div>
+          <button type="button" onClick={props.onExitCompare}>
+            Exit comparison
+          </button>
+        </>
+      ) : (
+        <HeatmapTimeline {...props} />
+      )}
+    </section>
+  );
+}
+
+function HeatmapTimeline(props: HeatmapPanelProps) {
+  const { range } = props;
+  const shown = props.bucket ?? range?.[1] ?? null;
+  const info = METRIC_INFO[props.metric];
+  return (
+    <>
       <div className="legend" aria-label={`${info.label} legend`}>
         <span>{info.higherIsBetter ? 'low' : '0'}</span>
         <span className={`legend-bar ${info.higherIsBetter ? 'good-high' : 'good-low'}`} />
@@ -78,6 +103,6 @@ export function HeatmapPanel(props: HeatmapPanelProps) {
       ) : (
         <p className="muted">Play the simulation; the first 30 s bucket appears after 30 simulated seconds.</p>
       )}
-    </section>
+    </>
   );
 }

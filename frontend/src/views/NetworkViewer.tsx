@@ -20,6 +20,8 @@ import { useHeatmap } from './useHeatmap';
 import { HeatmapPanel } from '../components/HeatmapPanel';
 import { ScenarioPanel } from '../scenarios/ScenarioPanel';
 import { SharedScenarioPanel } from '../scenarios/SharedScenarioPanel';
+import { ComparePanel } from '../runs/ComparePanel';
+import { RunsPanel, type SimResults } from '../runs/RunsPanel';
 import { useNetworkEditor } from './useNetworkEditor';
 import { confirmDiscard } from '../editor/discard';
 import type { LonLat, Ring } from '../lib/polygonArea';
@@ -92,7 +94,31 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
   const editor = useNetworkEditor({ sceneRef, index, client: scenarios, enabled: !readOnly && index !== null, showPackage });
   const openScenario = editor.session.scenario;
   const heat = useHeatmap(sceneRef, pkg);
-  const sim = useNetworkSimulation(pkg, simSettings, sceneRef, openScenario?.demand ?? undefined, heat.onCells);
+  // Browser run results for saving (#73): the worker answers a `results` request once.
+  const pendingResults = useRef<((r: SimResults) => void) | null>(null);
+  const onResults = useCallback((r: SimResults) => {
+    pendingResults.current?.(r);
+    pendingResults.current = null;
+  }, []);
+  const sim = useNetworkSimulation(pkg, simSettings, sceneRef, openScenario?.demand ?? undefined, heat.onCells, onResults);
+  const { requestResults } = sim;
+  const collectResults = useCallback(
+    () =>
+      new Promise<SimResults>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          pendingResults.current = null;
+          reject(new Error('The simulation did not answer; play it first.'));
+        }, 10000);
+        pendingResults.current = (r) => {
+          clearTimeout(timer);
+          resolve(r);
+        };
+        requestResults();
+      }),
+    [requestResults],
+  );
+  const [runsVersion, setRunsVersion] = useState(0);
+  const onRunsChanged = useCallback(() => setRunsVersion((v) => v + 1), []);
 
   // Data basis of the generated scenarios (#115).
   const baselineForAnalysis = pkg?.baselineId ?? null;
@@ -190,12 +216,26 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
             onBucket={heat.setBucket}
             onLive={heat.goLive}
             onReplay={heat.replay}
+            comparing={heat.diff?.label ?? null}
+            onExitCompare={() => heat.setDiff(null)}
           />
         )}
         {editing && (
           <>
             <EditorToolbar session={editor.session} mode={editor.mode} onMode={editor.setMode} onSave={() => void editor.session.save()} />
             <ScenarioPanel api={scenarios} session={editor.session} />
+            {openScenario && (
+              <RunsPanel
+                api={scenarios}
+                scenario={openScenario}
+                seed={simSettings.seed}
+                collectResults={sim.ready ? collectResults : null}
+                onRunsChanged={onRunsChanged}
+              />
+            )}
+            {pkg && editor.session.baselineId && (
+              <ComparePanel api={scenarios} baselineId={editor.session.baselineId} pkg={pkg} onDiff={heat.setDiff} refreshKey={runsVersion} />
+            )}
           </>
         )}
       </aside>

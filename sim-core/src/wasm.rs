@@ -179,6 +179,27 @@ impl NetworkSim {
         self.sim.demand(node_id)
     }
 
+    /// Changes the rate of OD matrix entry `index` (vehicles per hour at time-of-day factor 1).
+    #[wasm_bindgen(js_name = setOdDemand)]
+    pub fn set_od_demand(&mut self, index: u32, vehicles_per_hour: f64) -> Result<(), JsError> {
+        self.sim
+            .set_od_demand(index as usize, vehicles_per_hour)
+            .map_err(|e| JsError::new(&e))
+    }
+
+    /// Current rate of OD entry `index` (base rate × time-of-day factor, vehicles per hour),
+    /// `undefined` if it does not exist.
+    #[wasm_bindgen(js_name = odDemand)]
+    pub fn od_demand(&self, index: u32) -> Option<f64> {
+        self.sim.od_demand(index as usize).map(|(vph, f)| vph * f)
+    }
+
+    /// Time of day in seconds since midnight (`startTime` + simulated time, wrapping daily).
+    #[wasm_bindgen(getter, js_name = timeOfDay)]
+    pub fn time_of_day(&self) -> f64 {
+        self.sim.time_of_day()
+    }
+
     /// Overrides the routing travel time of a link (seconds) for vehicles generated from now on.
     #[wasm_bindgen(js_name = setLinkTravelTime)]
     pub fn set_link_travel_time(&mut self, link_id: &str, seconds: f64) -> Result<(), JsError> {
@@ -256,6 +277,21 @@ mod tests {
             .unwrap();
         reference.step(300);
         assert_eq!(reference.state_checksum(), again);
+        assert!((sim.time_of_day() - (7.0 * 3600.0 + 30.0)).abs() < 1e-6);
+        assert_eq!(sim.od_demand(0), None);
+        let mut od = NetworkSim::new(
+            FIXTURE,
+            r#"{"zones": {"a": {"nodes": ["n1"]}, "b": {"nodes": ["n2"]}},
+                "od": [{"from": "a", "to": "b", "vph": 100, "profile": "weekday"}]}"#,
+            1,
+        )
+        .ok()
+        .unwrap();
+        assert!(od.set_od_demand(0, 200.0).is_ok());
+        assert!(
+            (od.od_demand(0).unwrap() - 200.0 * 0.88).abs() < 1e-9,
+            "07:00-08:00 factor"
+        );
         assert!(sim.vehicle_types_json().contains("\"articulatedTruck\""));
         assert!(sim.driver_profiles_json().contains("\"distracted\""));
         assert_eq!(builtin_vehicle_types_json(), sim.vehicle_types_json());

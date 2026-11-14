@@ -14,11 +14,12 @@
 //! The core has no I/O, no wall clock and no global RNG; identical package, config and seed
 //! give bit-identical states (see [`Simulation::state_checksum`]).
 
+mod demand;
 mod junction;
 mod lane_change;
 mod perception;
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
 
 use serde::Serialize;
 
@@ -100,24 +101,6 @@ pub struct Vehicle {
     /// Per-vehicle random stream (distraction lapses).
     rng: Pcg32,
     alive: bool,
-}
-
-#[derive(Debug, Clone)]
-struct Pending {
-    params: VehicleParams,
-    link: u32,
-    route: u32,
-}
-
-#[derive(Debug, Clone)]
-struct Source {
-    node: u32,
-    links: Vec<u32>,
-    /// Vehicles per second.
-    rate: f64,
-    next_arrival: f64,
-    rng: Pcg32,
-    queue: VecDeque<Pending>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -202,11 +185,11 @@ pub struct Simulation {
     conn_claims: Vec<u32>,
     conn_last_claim: Vec<f64>,
     signal_state: Vec<SignalState>,
-    sources: Vec<Source>,
-    dest_weight: Vec<f64>,
+    demand: demand::Demand,
     routes: Vec<Vec<u32>>,
     route_cache: BTreeMap<(u32, u32, u8), u32>,
-    dest_cache: BTreeMap<(u32, u8), Vec<(u32, f64)>>,
+    /// Reachable destinations per (entry link, class, destination set): (route, cumulative weight).
+    dest_cache: BTreeMap<(u32, u8, u32), Vec<(u32, f64)>>,
     counters: Counters,
     fleet: Fleet,
     seed: u64,
@@ -229,6 +212,15 @@ fn ballistic(speed: f64, acc: f64, dt: f64) -> (f64, f64) {
 
 use perception::exponential;
 
+/// Uniform index into a list of `n` items (no random number drawn for a single item).
+fn pick_index(rng: &mut Pcg32, n: usize) -> usize {
+    if n <= 1 {
+        0
+    } else {
+        ((rng.next_f64() * n as f64) as usize).min(n - 1)
+    }
+}
+
 impl Simulation {
     /// Builds a simulation from JSON inputs.
     pub fn from_json(package_json: &str, config_json: &str, seed: u64) -> Result<Self, String> {
@@ -240,41 +232,7 @@ impl Simulation {
     pub fn new(net: Network, config: SimConfig, seed: u64) -> Result<Self, String> {
         config.validate()?;
         let fleet = config.fleet()?;
-        let mut by_node: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
-        for link in net.entry_links() {
-            by_node
-                .entry(net.links[link as usize].from)
-                .or_default()
-                .push(link);
-        }
-        for id in config.demand.keys() {
-            match net.node_index(id) {
-                Some(n) if by_node.contains_key(&n) => {}
-                _ => return Err(format!("demand references '{id}', which is not an entry node")),
-            }
-        }
-        let mut sources = Vec::with_capacity(by_node.len());
-        for (node, links) in by_node {
-            let mut src = Source {
-                node,
-                links,
-                rate: 0.0,
-                next_arrival: f64::INFINITY,
-                rng: Pcg32::new(seed, 0x1000 + u64::from(node)),
-                queue: VecDeque::new(),
-            };
-            let vph = *config
-                .demand
-                .get(&net.nodes[node as usize].id)
-                .unwrap_or(&config.default_demand);
-            set_rate(&mut src, vph, 0.0);
-            sources.push(src);
-        }
-        let mut dest_weight = vec![0.0; net.links.len()];
-        for exit in net.exit_links() {
-            let node = &net.nodes[net.links[exit as usize].to as usize].id;
-            dest_weight[exit as usize] = *config.destination_weights.get(node).unwrap_or(&1.0);
-        }
+        let demand = demand::Demand::build(&net, &config, &fleet, seed)?;
         let segments = net.segment_count();
         let connectors = net.connectors.len();
         Ok(Self {
@@ -290,8 +248,7 @@ impl Simulation {
             conn_claims: vec![0; connectors],
             conn_last_claim: vec![f64::NEG_INFINITY; connectors],
             signal_state: Vec::new(),
-            sources,
-            dest_weight,
+            demand,
             routes: Vec::new(),
             route_cache: BTreeMap::new(),
             dest_cache: BTreeMap::new(),
@@ -363,30 +320,6 @@ impl Simulation {
         &self.entry_log
     }
 
-    /// Changes the arrival rate (vehicles per hour) of an entry node at runtime.
-    pub fn set_demand(&mut self, node_id: &str, vehicles_per_hour: f64) -> Result<(), String> {
-        if !(vehicles_per_hour.is_finite() && vehicles_per_hour >= 0.0) {
-            return Err("demand must be finite and non-negative".into());
-        }
-        let node = self.net.node_index(node_id);
-        let src = self
-            .sources
-            .iter_mut()
-            .find(|s| Some(s.node) == node)
-            .ok_or_else(|| format!("'{node_id}' is not an entry node"))?;
-        set_rate(src, vehicles_per_hour, self.time);
-        Ok(())
-    }
-
-    /// Current arrival rate (vehicles per hour) of an entry node.
-    pub fn demand(&self, node_id: &str) -> Option<f64> {
-        let node = self.net.node_index(node_id)?;
-        self.sources
-            .iter()
-            .find(|s| s.node == node)
-            .map(|s| s.rate * 3600.0)
-    }
-
     /// Sets the travel time used for routing new vehicles (Phase 5 hook). Cached routes are
     /// dropped; vehicles already on their way keep their routes.
     pub fn set_link_travel_time(&mut self, link_id: &str, seconds: f64) -> Result<(), String> {
@@ -419,28 +352,6 @@ impl Simulation {
         };
         self.route_cache.insert(key, id);
         (id != NONE).then_some(id)
-    }
-
-    /// Reachable destinations from an entry link: (route id, cumulative weight).
-    fn destinations(&mut self, entry: u32, class: VehicleClass) -> Vec<(u32, f64)> {
-        if let Some(d) = self.dest_cache.get(&(entry, class.id())) {
-            return d.clone();
-        }
-        let origin = self.net.links[entry as usize].from;
-        let mut list = Vec::new();
-        let mut acc = 0.0;
-        for exit in 0..self.net.links.len() as u32 {
-            let w = self.dest_weight[exit as usize];
-            if w <= 0.0 || self.net.links[exit as usize].to == origin {
-                continue;
-            }
-            if let Some(route) = self.route_id(entry, exit, class) {
-                acc += w;
-                list.push((route, acc));
-            }
-        }
-        self.dest_cache.insert((entry, class.id()), list.clone());
-        list
     }
 
     /// Next connector of a vehicle on (or about to enter) `lane`, following its route.
@@ -573,106 +484,6 @@ impl Simulation {
                 vehicles[i as usize].rank = rank as u32;
             }
         }
-    }
-
-    fn spawn(&mut self) {
-        for si in 0..self.sources.len() {
-            while self.sources[si].next_arrival <= self.time {
-                self.generate(si);
-            }
-            if self.vehicles.len() < self.config.max_vehicles as usize
-                && let Some(pending) = self.sources[si].queue.front().cloned()
-                && self.try_insert(&pending)
-            {
-                self.sources[si].queue.pop_front();
-            }
-        }
-    }
-
-    /// One arrival at source `si`: class, parameters, entry link and destination are drawn
-    /// from the source's own RNG stream.
-    fn generate(&mut self, si: usize) {
-        let mut rng = self.sources[si].rng.clone();
-        let params = self
-            .fleet
-            .sample(&self.fleet.types, &self.fleet.drivers, &mut rng);
-        let class = params.class;
-        let links = &self.sources[si].links;
-        let link = if links.len() == 1 {
-            links[0]
-        } else {
-            links[((rng.next_f64() * links.len() as f64) as usize).min(links.len() - 1)]
-        };
-        let u_dest = rng.next_f64();
-        let rate = self.sources[si].rate;
-        let gap = exponential(&mut rng, rate);
-        let src = &mut self.sources[si];
-        src.next_arrival += gap;
-        src.rng = rng;
-        let dests = self.destinations(link, class);
-        match dests.last() {
-            Some(&(_, total)) => {
-                let target = u_dest * total;
-                let route = dests
-                    .iter()
-                    .find(|(_, cum)| target < *cum)
-                    .unwrap_or(&dests[dests.len() - 1])
-                    .0;
-                self.sources[si].queue.push_back(Pending { params, link, route });
-            }
-            None => self.counters.unroutable += 1,
-        }
-    }
-
-    /// Inserts a pending vehicle at the start of its entry link if a lane has a safe gap.
-    fn try_insert(&mut self, p: &Pending) -> bool {
-        let link = &self.net.links[p.link as usize];
-        let mask = p.params.class.mask();
-        let route = &self.routes[p.route as usize];
-        let next = route.get(1).copied();
-        let lanes = link.first_lane..link.first_lane + link.lane_count;
-        let allowed = |l: &u32| self.net.lanes[*l as usize].class_mask & mask != 0;
-        let on_route = |l: &u32| next.is_none_or(|n| self.net.choose_connector(*l, n, mask) != NONE);
-        let candidates: Vec<u32> = if lanes.clone().any(|l| allowed(&l) && on_route(&l)) {
-            lanes.filter(|l| allowed(l) && on_route(l)).collect()
-        } else {
-            lanes.filter(allowed).collect()
-        };
-        // Lane with the largest free space at its start (ties: rightmost).
-        let mut best: Option<(u32, f64, f64)> = None;
-        for lane in candidates {
-            let (gap, leader_speed) = match self.seg_vehicles[lane as usize].last() {
-                Some(&j) => {
-                    let l = &self.vehicles[j as usize];
-                    (l.pos - l.params.length, l.speed)
-                }
-                None => (f64::INFINITY, f64::INFINITY),
-            };
-            if best.is_none_or(|(_, g, _)| gap > g) {
-                best = Some((lane, gap, leader_speed));
-            }
-        }
-        let Some((lane, gap, leader_speed)) = best else {
-            return false;
-        };
-        // Insert at the leader's speed (capped by the desired speed) once the equilibrium gap
-        // for that speed is available.
-        let pr = &p.params;
-        let speed = pr
-            .desired_speed(self.net.seg_speed_limit[lane as usize])
-            .min(leader_speed);
-        if gap < (pr.minimum_gap + speed * pr.time_headway).max(pr.minimum_gap + 0.5) {
-            return false;
-        }
-        let i = self.new_vehicle(p.params, lane, 0.0, speed, p.route);
-        let list = &mut self.seg_vehicles[lane as usize];
-        if list.is_empty() {
-            self.occupied.push(lane);
-        }
-        self.vehicles[i].rank = list.len() as u32;
-        list.push(i as u32);
-        self.counters.spawned += 1;
-        true
     }
 
     fn compute_accelerations(&mut self) {
@@ -895,7 +706,7 @@ impl Simulation {
             spawned: c.spawned,
             arrived: c.arrived,
             active: n as u64,
-            waiting_to_enter: self.sources.iter().map(|s| s.queue.len() as u64).sum(),
+            waiting_to_enter: self.demand.waiting(),
             rerouted: c.rerouted,
             stranded: c.stranded,
             unroutable: c.unroutable,
@@ -990,9 +801,11 @@ impl Simulation {
         for &l in &self.conn_claims {
             h.u64(u64::from(l));
         }
-        for s in &self.sources {
+        for s in &self.demand.sources {
             h.f64(s.next_arrival);
-            h.u64(s.queue.len() as u64);
+        }
+        for q in &self.demand.queues {
+            h.u64(q.queue.len() as u64);
         }
         let c = &self.counters;
         for x in [
@@ -1010,15 +823,6 @@ impl Simulation {
         h.f64(c.travel_time_sum);
         h.0
     }
-}
-
-fn set_rate(src: &mut Source, vehicles_per_hour: f64, now: f64) {
-    src.rate = vehicles_per_hour / 3600.0;
-    src.next_arrival = if src.rate > 0.0 {
-        now + exponential(&mut src.rng, src.rate)
-    } else {
-        f64::INFINITY
-    };
 }
 
 struct Fnv(u64);

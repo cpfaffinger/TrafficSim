@@ -424,13 +424,18 @@ impl Fleet {
 
     /// Type distribution of a mix (`{type name: share}`); empty = cars only.
     pub fn type_cdf(&self, mix: &BTreeMap<String, f64>) -> Result<Cdf<u16>, String> {
+        Ok(cdf(&self.type_weights(mix)?))
+    }
+
+    /// Weights of a mix per catalogue type (catalogue order); empty = cars only.
+    pub fn type_weights(&self, mix: &BTreeMap<String, f64>) -> Result<Vec<(u16, f64)>, String> {
         check_shares(mix, "vehicle mix")?;
         for name in mix.keys() {
             if self.catalogue.index(name).is_none() {
                 return Err(format!("unknown vehicle class or type '{name}' in a vehicle mix"));
             }
         }
-        let entries: Vec<(u16, f64)> = self
+        Ok(self
             .catalogue
             .iter()
             .enumerate()
@@ -442,8 +447,16 @@ impl Fleet {
                 };
                 (i as u16, w)
             })
-            .collect();
-        Ok(cdf(&entries))
+            .collect())
+    }
+
+    /// Cumulative distribution of arbitrary weights (all zero gives an empty distribution).
+    pub fn cdf_of<T: Copy>(weights: &[(T, f64)]) -> Cdf<T> {
+        if weights.iter().map(|w| w.1).sum::<f64>() > 0.0 {
+            cdf(weights)
+        } else {
+            Vec::new()
+        }
     }
 
     /// Driver distribution of a mix (`{profile name: share}`); empty = legacy sampling.

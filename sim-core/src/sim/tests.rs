@@ -594,6 +594,160 @@ fn destination_weights_steer_exits() {
     assert!(s.stats().spawned > 10);
 }
 
+// ---------------------------------------------------------------- #53 demand model
+
+fn link_ids(s: &Simulation, route: &[u32]) -> Vec<String> {
+    route
+        .iter()
+        .map(|&l| s.network().links[l as usize].id.clone())
+        .collect()
+}
+
+#[test]
+fn od_matrix_routes_between_zones_and_replaces_the_default_demand() {
+    let config = SimConfig::from_json(
+        r#"{"defaultDemand": 900,
+            "zones": {"west": {"nodes": ["n1"]}, "east": {"nodes": ["n2"]}},
+            "od": [{"from": "west", "to": "east", "vph": 1800}]}"#,
+    )
+    .unwrap();
+    let mut s = Simulation::new(fixture_network(), config, 3).unwrap();
+    assert_eq!(
+        s.demand("n3"),
+        Some(0.0),
+        "defaultDemand is ignored with an OD matrix"
+    );
+    run_checked(&mut s, 3000);
+    let generated = s.stats().spawned + s.stats().waiting_to_enter;
+    assert!((120..=180).contains(&generated), "{generated}");
+    for v in s.vehicles() {
+        assert_eq!(link_ids(&s, s.route_of(v)), ["l1", "l2"]);
+    }
+    assert_eq!(s.od_demand(0), Some((1800.0, 1.0)));
+    assert_eq!(s.od_demand(1), None);
+    s.set_od_demand(0, 0.0).unwrap();
+    assert!(s.set_od_demand(0, -1.0).is_err());
+    assert!(s.set_od_demand(3, 1.0).is_err());
+    let before = s.stats().spawned + s.stats().waiting_to_enter;
+    s.run(1000);
+    assert_eq!(s.stats().spawned + s.stats().waiting_to_enter, before);
+}
+
+#[test]
+fn time_of_day_profiles_shape_the_arrivals() {
+    let config = SimConfig::from_json(
+        r#"{"startTime": "06:00", "defaultDemand": 0, "demand": {"n1": 3600},
+            "timeProfiles": {"gate": {"interval": 300, "factors": [0, 1]}},
+            "demandProfile": "gate"}"#,
+    )
+    .unwrap();
+    let mut s = Simulation::new(fixture_network(), config, 5).unwrap();
+    assert_eq!(s.time_of_day(), 21_600.0);
+    s.run(2990);
+    assert_eq!(
+        s.stats().spawned + s.stats().waiting_to_enter,
+        0,
+        "factor 0 for 5 minutes"
+    );
+    s.run(3000);
+    let n = s.stats().spawned + s.stats().waiting_to_enter;
+    assert!((240..=360).contains(&n), "{n}");
+    assert!((s.time_of_day() - (21_600.0 + 599.0)).abs() < 1.0);
+    // The built-in weekday curve: the evening peak carries far more traffic than the night.
+    let count = |start: &str| {
+        let config = SimConfig::from_json(&format!(
+            r#"{{"startTime": "{start}", "demandProfile": "weekday", "defaultDemand": 1800}}"#
+        ))
+        .unwrap();
+        let mut s = Simulation::new(fixture_network(), config, 5).unwrap();
+        s.run(3000);
+        s.stats().spawned + s.stats().waiting_to_enter
+    };
+    assert!(count("17:00") > 8 * count("03:00").max(1));
+}
+
+#[test]
+fn internal_zones_insert_vehicles_safely_into_passing_traffic() {
+    let b = corridor(1, 400.0, 15.0);
+    let config = SimConfig::from_json(
+        r#"{"demand": {"A": 900},
+            "zones": {"res": {"links": ["down"]}, "town": {"nodes": ["B"]}, "start": {"nodes": ["A"]}},
+            "od": [{"from": "res", "to": "town", "vph": 600},
+                   {"from": "start", "to": "res", "vph": 300}]}"#,
+    )
+    .unwrap();
+    let mut s = sim(&b, config);
+    let mut inserted_on_down = 0;
+    let mut seen = std::collections::BTreeSet::new();
+    for _ in 0..6000 {
+        s.step();
+        check_invariants(&mut s);
+        for v in s.vehicles() {
+            if seen.insert(v.id) && link_of(&s, v) == "down" {
+                inserted_on_down += 1;
+            }
+        }
+    }
+    assert!(inserted_on_down > 50, "{inserted_on_down}");
+    let stats = s.stats();
+    assert!(stats.arrived > 150 && stats.stranded == 0, "{stats:?}");
+}
+
+#[test]
+fn vehicle_mixes_per_od_and_time_of_day() {
+    let config = SimConfig::from_json(
+        r#"{"zones": {"w": {"nodes": ["n1"]}, "e": {"nodes": ["n2"]}, "s": {"nodes": ["n4"]}},
+            "vehicleMix": {"car": 1, "articulatedTruck": 1},
+            "vehicleMixProfiles": {"articulatedTruck": "night"},
+            "timeProfiles": {"night": {"interval": 3600, "factors": [1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1]}},
+            "od": [{"from": "w", "to": "e", "vph": 1200},
+                   {"from": "e", "to": "w", "vph": 600, "vehicleMix": {"bus": 1}, "driverMix": {"aggressive": 1}}]}"#,
+    )
+    .unwrap();
+    let mut day = Simulation::new(fixture_network(), config.clone(), 8).unwrap();
+    run_checked(&mut day, 2000);
+    let fleet = day.fleet().clone();
+    for v in day.vehicles() {
+        let ty = fleet.catalogue.name(v.params.vehicle_type);
+        match link_ids(&day, day.route_of(v))[0].as_str() {
+            "l1" => assert_eq!(ty, "car", "no trucks at 07:00"),
+            _ => {
+                assert_eq!(ty, "bus");
+                assert_eq!(fleet.profiles.name(v.params.driver_profile), "aggressive");
+            }
+        }
+    }
+    let night = SimConfig {
+        start_time: crate::demand::TimeOfDay(2.0 * 3600.0),
+        ..config
+    };
+    let mut s = Simulation::new(fixture_network(), night, 8).unwrap();
+    s.run(2000);
+    assert!(
+        s.vehicles()
+            .iter()
+            .any(|v| s.fleet().catalogue.name(v.params.vehicle_type) == "articulatedTruck")
+    );
+}
+
+#[test]
+fn zones_are_checked_against_the_network() {
+    let build = |zones: &str| {
+        let json = format!(r#"{{"zones": {zones}, "od": [{{"from": "a", "to": "b", "vph": 100}}]}}"#);
+        Simulation::new(fixture_network(), SimConfig::from_json(&json).unwrap(), 1)
+            .err()
+            .unwrap_or_default()
+    };
+    assert!(build(r#"{"a": {"nodes": ["zz"]}, "b": {"nodes": ["n2"]}}"#).contains("unknown node 'zz'"));
+    assert!(build(r#"{"a": {"links": ["zz"]}, "b": {"nodes": ["n2"]}}"#).contains("unknown link 'zz'"));
+    assert!(build(r#"{"a": {}, "b": {"nodes": ["n2"]}}"#).contains("no origin links"));
+    assert!(build(r#"{"a": {"nodes": ["n1"]}, "b": {}}"#).contains("no destination links"));
+    assert_eq!(
+        build(r#"{"a": {"nodes": ["n1"]}, "b": {"nodes": ["n2", "n0"]}}"#),
+        ""
+    );
+}
+
 // ---------------------------------------------------------------- #44 signals
 
 fn refresh_signals(s: &mut Simulation) {
@@ -1147,25 +1301,40 @@ fn golden_runs() {
             "driverMix": {"attentive": 1, "average": 2, "distracted": 1, "aggressive": 1}}"#,
     )
     .unwrap();
-    let cases: [(&str, Simulation, usize, u64); 5] = [
-        ("fixture", busy_fixture(42), 3000, 0x9c63_5587_5f45_d69e),
+    let od = SimConfig::from_json(
+        r#"{"startTime": "16:30", "demand": {"n7": 600}, "demandProfile": "weekday",
+            "zones": {"w": {"nodes": ["n1"]}, "e": {"nodes": ["n2"]}, "ns": {"nodes": ["n3", "n4"]}},
+            "vehicleMix": {"car": 9, "articulatedTruck": 1}, "vehicleMixProfiles": {"articulatedTruck": "freight"},
+            "od": [{"from": "w", "to": "e", "vph": 900, "profile": "eveningPeak"},
+                   {"from": "ns", "to": "ns", "vph": 500, "driverMix": {"commuter": 1}},
+                   {"from": "e", "to": "ns", "vph": 400, "vehicleMix": {"van": 1}}]}"#,
+    )
+    .unwrap();
+    let cases: [(&str, Simulation, usize, u64); 6] = [
+        ("fixture", busy_fixture(42), 3000, 0x10b0_52ff_7865_8b52),
         (
             "t-junction",
             sim(&t_junction(Priority::Minor), with_demand(600.0)),
             3000,
-            0xc76d_de54_e710_091d,
+            0x3f6c_1274_11c2_f7bd,
         ),
         (
             "roundabout",
             sim(&roundabout(), with_demand(500.0)),
             3000,
-            0x8c0b_2b61_c338_6ce6,
+            0xa191_38b9_45d8_97c6,
         ),
         (
             "driver-profiles",
             Simulation::new(fixture_network(), profiles, 42).unwrap(),
             3000,
-            0x5c67_ef1f_6e9c_1db6,
+            0x7327_8586_ef77_fdde,
+        ),
+        (
+            "od-matrix",
+            Simulation::new(fixture_network(), od, 42).unwrap(),
+            3000,
+            0x10f7_e9c2_8e20_b5ac,
         ),
         (
             "rbl-crossroads",
@@ -1178,7 +1347,7 @@ fn golden_runs() {
                 with_demand(400.0),
             ),
             3000,
-            0x656c_fd2f_a210_6b52,
+            0xf5d4_c455_c41b_c9f2,
         ),
     ];
     let mut report = String::new();

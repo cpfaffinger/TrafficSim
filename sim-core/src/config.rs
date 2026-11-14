@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use crate::demand::{OdEntry, TimeOfDay, TimeProfile, Zone, resolve_profile};
 use crate::driver::{DriverProfilePatch, Fleet};
 use crate::vehicle::VehicleTypePatch;
 
@@ -116,6 +117,19 @@ pub struct SimConfig {
     /// Driver profile shares; empty = legacy average drivers (`heterogeneity` spread).
     pub driver_mix: BTreeMap<String, f64>,
     pub perception: PerceptionConfig,
+    /// Time of day at simulation time 0 (seconds or `"HH:MM"`, default 07:00).
+    pub start_time: TimeOfDay,
+    /// Custom time-of-day profiles (in addition to the built-in ones).
+    pub time_profiles: BTreeMap<String, TimeProfile>,
+    /// Time-of-day profile applied to the boundary demand (`demand` / `defaultDemand`).
+    pub demand_profile: Option<String>,
+    /// Demand zones for the OD matrix.
+    pub zones: BTreeMap<String, Zone>,
+    /// OD matrix. When present, `defaultDemand` is ignored; `demand` adds boundary traffic.
+    pub od: Vec<OdEntry>,
+    /// Time-of-day profile per vehicle type: its share in every mix is multiplied by the profile
+    /// factor (e.g. `{"articulatedTruck": "freight"}`).
+    pub vehicle_mix_profiles: BTreeMap<String, String>,
 }
 
 impl Default for SimConfig {
@@ -134,6 +148,12 @@ impl Default for SimConfig {
             driver_profiles: BTreeMap::new(),
             driver_mix: BTreeMap::new(),
             perception: PerceptionConfig::default(),
+            start_time: TimeOfDay::default(),
+            time_profiles: BTreeMap::new(),
+            demand_profile: None,
+            zones: BTreeMap::new(),
+            od: Vec::new(),
+            vehicle_mix_profiles: BTreeMap::new(),
         }
     }
 }
@@ -164,7 +184,8 @@ impl SimConfig {
         if !(0.0..=0.5).contains(&self.heterogeneity) {
             return Err("heterogeneity must be between 0 and 0.5".into());
         }
-        self.fleet()?;
+        let fleet = self.fleet()?;
+        self.validate_demand(&fleet)?;
         let j = &self.junction;
         let times = [
             j.critical_gap_minor,
@@ -185,6 +206,43 @@ impl SimConfig {
         }
         if self.lane_change.interval == 0 {
             return Err("laneChange.interval must be at least 1".into());
+        }
+        Ok(())
+    }
+
+    /// Checks profiles, zones and the OD matrix (references to the network are checked when the
+    /// simulation is built).
+    fn validate_demand(&self, fleet: &Fleet) -> Result<(), String> {
+        for (name, p) in &self.time_profiles {
+            p.validate(name)?;
+        }
+        if let Some(name) = &self.demand_profile {
+            resolve_profile(&self.time_profiles, name)?;
+        }
+        for (ty, profile) in &self.vehicle_mix_profiles {
+            if fleet.catalogue.index(ty).is_none() {
+                return Err(format!("unknown vehicle type '{ty}' in vehicleMixProfiles"));
+            }
+            resolve_profile(&self.time_profiles, profile)?;
+        }
+        for (i, od) in self.od.iter().enumerate() {
+            for zone in [&od.from, &od.to] {
+                if !self.zones.contains_key(zone) {
+                    return Err(format!("od[{i}] references unknown zone '{zone}'"));
+                }
+            }
+            if !(od.vph.is_finite() && od.vph >= 0.0) {
+                return Err(format!("od[{i}].vph must be finite and non-negative"));
+            }
+            if let Some(p) = &od.profile {
+                resolve_profile(&self.time_profiles, p)?;
+            }
+            if let Some(mix) = &od.vehicle_mix {
+                fleet.type_cdf(mix)?;
+            }
+            if let Some(mix) = &od.driver_mix {
+                fleet.driver_cdf(mix)?;
+            }
         }
         Ok(())
     }
@@ -239,6 +297,40 @@ mod tests {
             (
                 r#"{"driverProfiles": {"x": {"reactionTime": 9}}}"#,
                 "invalid parameters",
+            ),
+            (r#"{"startTime": "25:00"}"#, "invalid time of day"),
+            (r#"{"demandProfile": "rush"}"#, "unknown time profile"),
+            (
+                r#"{"timeProfiles": {"x": {"interval": 0, "factors": [1]}}}"#,
+                "invalid",
+            ),
+            (
+                r#"{"vehicleMixProfiles": {"tram": "flat"}}"#,
+                "unknown vehicle type",
+            ),
+            (
+                r#"{"vehicleMixProfiles": {"car": "rush"}}"#,
+                "unknown time profile",
+            ),
+            (
+                r#"{"od": [{"from": "a", "to": "b", "vph": 1}]}"#,
+                "unknown zone 'a'",
+            ),
+            (
+                r#"{"zones": {"a": {}}, "od": [{"from": "a", "to": "a", "vph": -1}]}"#,
+                "non-negative",
+            ),
+            (
+                r#"{"zones": {"a": {}}, "od": [{"from": "a", "to": "a", "vph": 1, "profile": "x"}]}"#,
+                "unknown time profile",
+            ),
+            (
+                r#"{"zones": {"a": {}}, "od": [{"from": "a", "to": "a", "vph": 1, "vehicleMix": {"tram": 1}}]}"#,
+                "unknown vehicle class",
+            ),
+            (
+                r#"{"zones": {"a": {}}, "od": [{"from": "a", "to": "a", "vph": 1, "driverMix": {"x": 1}}]}"#,
+                "unknown driver profile",
             ),
         ] {
             let e = SimConfig::from_json(json).unwrap_err();

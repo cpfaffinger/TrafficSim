@@ -99,6 +99,30 @@ impl Simulation {
         (leader, list.get(k).copied())
     }
 
+    /// Nearest vehicle about to enter `lane` from an incoming connector (or from the lane before
+    /// an empty connector): front position relative to the lane start (negative) and index.
+    pub(super) fn incoming_follower(&self, lane: u32) -> Option<(f64, u32)> {
+        let net = &self.net;
+        net.lane_incoming(lane)
+            .iter()
+            .filter_map(|&ic| {
+                let seg = net.connector_segment(ic);
+                let clen = net.seg_length[seg as usize];
+                let on_connector = self.seg_vehicles[seg as usize]
+                    .first()
+                    .map(|&j| (self.vehicles[j as usize].pos - clen, j));
+                on_connector.or_else(|| {
+                    let from = net.connectors[ic as usize].from_lane;
+                    let flen = net.seg_length[from as usize];
+                    self.seg_vehicles[from as usize]
+                        .iter()
+                        .find(|&&j| self.vehicles[j as usize].next_conn == ic)
+                        .map(|&j| (self.vehicles[j as usize].pos - flen - clen, j))
+                })
+            })
+            .max_by(|a, b| a.0.total_cmp(&b.0))
+    }
+
     fn neighbour(&self, j: u32, limit: f64) -> Neighbour {
         let v = &self.vehicles[j as usize];
         Neighbour {
@@ -173,29 +197,10 @@ impl Simulation {
             // relative to the lane start).
             let new_follower = match follow {
                 Some(j) => Some(self.neighbour(j, t_limit)),
-                None => net
-                    .lane_incoming(target)
-                    .iter()
-                    .filter_map(|&ic| {
-                        let seg = net.connector_segment(ic);
-                        let clen = net.seg_length[seg as usize];
-                        let on_connector = self.seg_vehicles[seg as usize].first().map(|&j| Neighbour {
-                            pos: self.vehicles[j as usize].pos - clen,
-                            ..self.neighbour(j, t_limit)
-                        });
-                        on_connector.or_else(|| {
-                            let from = net.connectors[ic as usize].from_lane;
-                            let flen = net.seg_length[from as usize];
-                            self.seg_vehicles[from as usize]
-                                .iter()
-                                .find(|&&j| self.vehicles[j as usize].next_conn == ic)
-                                .map(|&j| Neighbour {
-                                    pos: self.vehicles[j as usize].pos - flen - clen,
-                                    ..self.neighbour(j, t_limit)
-                                })
-                        })
-                    })
-                    .max_by(|a, b| a.pos.total_cmp(&b.pos)),
+                None => self.incoming_follower(target).map(|(pos, j)| Neighbour {
+                    pos,
+                    ..self.neighbour(j, t_limit)
+                }),
             };
             let moved = Neighbour {
                 pos: s,

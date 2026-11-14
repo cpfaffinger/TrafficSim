@@ -5,6 +5,7 @@
 //! and to WebAssembly (for the browser worker, see [`wasm`]).
 
 pub mod config;
+pub mod demand;
 pub mod detmath;
 pub mod driver;
 pub mod idm;

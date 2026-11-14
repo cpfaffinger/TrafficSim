@@ -4,13 +4,17 @@
 //               |
 //  W (101) ---- J (100) ---- E (102)
 //  way 1000 [101, 201, 202, 100]   way 2000 [100, 301, 102]
+//  (link geometries have three points: ends and midpoint)
 //               |
 //            S (104)  way 4000 [100, 501, 104]
 import type { Connector, Link, NetworkPackage, Vec3 } from '../network/types';
 import { connector, node, packageOf, straightLink, type StraightLinkOptions } from './networkFactory';
 
+/** Adds OSM ids and a midpoint to the reference line (each way has one node between its ends). */
 function osmLink(link: Link, wayId: number, afterFrom: number, beforeTo: number): Link {
-  return { ...link, osmWayId: wayId, osmAfterFrom: afterFrom, osmBeforeTo: beforeTo };
+  const [a, b] = [link.geometry[0]!, link.geometry.at(-1)!];
+  const mid: Vec3 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+  return { ...link, geometry: [a, mid, b], osmWayId: wayId, osmAfterFrom: afterFrom, osmBeforeTo: beforeTo };
 }
 
 function move(id: string, nodeId: string, from: Link, fromLane: number, to: Link, toLane: number, turn: Connector['turn']): Connector {
@@ -29,14 +33,8 @@ export function editorNetwork(o: EditorNetworkOptions = {}): NetworkPackage {
     leftEdge: 'centre_dashed',
     ...extra,
   });
-  // Way 1000, two lanes per direction, the western approach has a bent geometry (three points).
+  // Way 1000 has two nodes between its ends.
   const l0 = osmLink(straightLink('l0', 'n1', 'n0', [-100, 0], [0, 0], two('l1', { lanes: 2, turns: [['through', 'right'], ['through']] })), 1000, 201, 202);
-  const bent: Vec3[] = [
-    [-100, 0, 0],
-    [-50, 0, 0],
-    [0, 0, 0],
-  ];
-  l0.geometry = bent;
   const l1 = osmLink(straightLink('l1', 'n0', 'n1', [0, 0], [-100, 0], two('l0', { lanes: 2 })), 1000, 202, 201);
   const l2 = osmLink(straightLink('l2', 'n0', 'n2', [0, 0], [100, 0], two('l3', { lanes: 2 })), 2000, 301, 301);
   const l3 = osmLink(straightLink('l3', 'n2', 'n0', [100, 0], [0, 0], two('l2', { lanes: 2 })), 2000, 301, 301);

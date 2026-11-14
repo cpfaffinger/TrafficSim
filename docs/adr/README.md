@@ -23,3 +23,4 @@ number, open a PR. Superseded ADRs stay in place with their status updated.
 | [0015](0015-lean-ci.md) | Lean, cost-free CI on GitHub Actions | Accepted |
 | [0016](0016-roundabouts-grade-separation-lane-markings.md) | Roundabouts, grade separation and lane markings in the network model | Accepted |
 | [0017](0017-webgpu-evaluation.md) | Stay on WebGL2, prepare for Three.js WebGPURenderer | Accepted |
+| [0018](0018-terrain-elevation-and-gradients.md) | Terrain elevation and gradients | Accepted |

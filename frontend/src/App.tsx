@@ -7,6 +7,9 @@ import { mergeAttributions } from './lib/attribution';
 import { NetworkViewer } from './views/NetworkViewer';
 import { RingDemo } from './views/RingDemo';
 
+import { UpdateBanner } from './components/UpdateBanner';
+import { BUILD_ID, isOutdated, VERSION_CHECK_MS } from './lib/version';
+
 export function App() {
   const api = useMemo(() => new ApiClient(), []);
   const [mode, setMode] = useState<AppMode>('network');
@@ -15,6 +18,27 @@ export function App() {
   const [metaAttributions, setMetaAttributions] = useState<string[]>([]);
   const [viewerAttributions, setViewerAttributions] = useState<string[]>([]);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [outdated, setOutdated] = useState(false);
+
+  // Detect a newer deployment while this tab is open (hashed assets + no-cache index.html).
+  useEffect(() => {
+    const controller = new AbortController();
+    const check = () =>
+      api
+        .getMeta(controller.signal)
+        .then((meta) => setOutdated(isOutdated(BUILD_ID, meta.version)))
+        .catch(() => undefined);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void check();
+    };
+    const interval = setInterval(check, VERSION_CHECK_MS);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      controller.abort();
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [api]);
 
   // Backend status and metadata.
   useEffect(() => {
@@ -29,6 +53,7 @@ export function App() {
       .getMeta(controller.signal)
       .then((meta) => {
         setVersion(meta.version);
+        setOutdated(isOutdated(BUILD_ID, meta.version));
         setMetaAttributions(meta.attributions);
       })
       .catch(() => undefined);
@@ -52,6 +77,7 @@ export function App() {
         <ModeTabs mode={mode} onChange={setMode} />
         <span className={`status-dot ${status}`} role="img" aria-label={`Backend ${status}`} title={`Backend ${status}`} />
       </header>
+      {outdated && <UpdateBanner onReload={() => window.location.reload()} />}
       <main className="app-main" id={`panel-${mode}`} role="tabpanel" aria-labelledby={`tab-${mode}`}>
         {mode === 'network' ? (
           <NetworkViewer api={api} onAttributions={setViewerAttributions} />

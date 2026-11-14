@@ -12,6 +12,7 @@ import {
   zoomTowards,
   type RtsCameraLimits,
   type RtsCameraState,
+  classifyTwoFingerGesture,
 } from '../lib/rtsCamera';
 
 const ROTATE_SPEED = 0.005;
@@ -33,7 +34,7 @@ export class RtsCameraController {
   private grab: [number, number] | null = null;
   private last = { x: 0, y: 0 };
   private down: { x: number; y: number } | null = null;
-  private pinch: { distance: number; angle: number } | null = null;
+  private pinch: { distance: number; angle: number; mid: { x: number; y: number } } | null = null;
   private readonly raycaster = new THREE.Raycaster();
   private readonly ndc = new THREE.Vector2();
 
@@ -138,10 +139,17 @@ export class RtsCameraController {
     if (this.mode === 'pinch') {
       const now = this.pinchMetrics();
       if (now && this.pinch) {
-        const mid = this.pinchMid();
-        const point = mid ? this.groundAt(mid.x, mid.y) : null;
-        this.state = zoomTowards(this.state, this.pinch.distance / Math.max(now.distance, 1), point, this.limits);
-        this.state = rotate(this.state, now.angle - this.pinch.angle, 0, this.limits);
+        const gesture = classifyTwoFingerGesture(this.pinch, now);
+        if (gesture === 'tilt') {
+          // Both fingers move up/down together: tilt like in map apps.
+          this.state = rotate(this.state, 0, (now.mid.y - this.pinch.mid.y) * ROTATE_SPEED, this.limits);
+        } else {
+          const before = this.groundAt(this.pinch.mid.x, this.pinch.mid.y);
+          const after = this.groundAt(now.mid.x, now.mid.y);
+          if (before && after) this.state = panByGroundDelta(this.state, before, after, this.limits);
+          this.state = zoomTowards(this.state, this.pinch.distance / Math.max(now.distance, 1), this.groundAt(now.mid.x, now.mid.y), this.limits);
+          this.state = rotate(this.state, now.angle - this.pinch.angle, 0, this.limits);
+        }
         this.pinch = now;
         this.apply();
       }
@@ -173,7 +181,12 @@ export class RtsCameraController {
       this.down = null;
       this.pinch = null;
     } else if (this.mode === 'pinch') {
-      this.mode = null; // lift one finger: stop until a fresh gesture starts
+      // Lifting one finger continues as a one-finger pan with the remaining finger.
+      const [rest] = [...this.pointers.values()];
+      this.pinch = null;
+      this.mode = rest ? 'pan' : null;
+      this.grab = rest ? this.groundAt(rest.x, rest.y) : null;
+      if (rest) this.last = { ...rest };
     }
   };
 
@@ -200,14 +213,13 @@ export class RtsCameraController {
 
   private onBlur = (): void => this.keys.clear();
 
-  private pinchMid(): { x: number; y: number } | null {
-    const [a, b] = [...this.pointers.values()];
-    return a && b ? { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } : null;
-  }
-
-  private pinchMetrics(): { distance: number; angle: number } | null {
+  private pinchMetrics(): { distance: number; angle: number; mid: { x: number; y: number } } | null {
     const [a, b] = [...this.pointers.values()];
     if (!a || !b) return null;
-    return { distance: Math.hypot(b.x - a.x, b.y - a.y), angle: Math.atan2(b.y - a.y, b.x - a.x) };
+    return {
+      distance: Math.hypot(b.x - a.x, b.y - a.y),
+      angle: Math.atan2(b.y - a.y, b.x - a.x),
+      mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+    };
   }
 }

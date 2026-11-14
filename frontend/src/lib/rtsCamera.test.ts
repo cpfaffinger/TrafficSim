@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   cameraPosition,
+  classifyTwoFingerGesture,
   clampState,
   clipPlanes,
   DEFAULT_LIMITS,
@@ -119,5 +120,21 @@ describe('framing and projection helpers', () => {
   it('tells clicks from drags', () => {
     expect(isClick({ x: 0, y: 0 }, { x: 3, y: 0 })).toBe(true);
     expect(isClick({ x: 0, y: 0 }, { x: 10, y: 0 })).toBe(false);
+  });
+});
+
+describe('two-finger gestures', () => {
+  const sample = (distance: number, angle: number, x: number, y: number) => ({ distance, angle, mid: { x, y } });
+
+  it('detects a vertical two-finger drag as tilt', () => {
+    expect(classifyTwoFingerGesture(sample(200, 0, 100, 300), sample(201, 0.01, 101, 280))).toBe('tilt');
+  });
+
+  it('treats spreading, twisting or sideways moves as pinch/pan', () => {
+    expect(classifyTwoFingerGesture(sample(200, 0, 100, 300), sample(260, 0, 100, 290))).toBe('pinch');
+    expect(classifyTwoFingerGesture(sample(200, 0, 100, 300), sample(200, 0.3, 100, 280))).toBe('pinch');
+    expect(classifyTwoFingerGesture(sample(200, 0, 100, 300), sample(200, 0, 140, 290))).toBe('pinch');
+    expect(classifyTwoFingerGesture(sample(200, Math.PI / 2, 100, 300), sample(200, Math.PI / 2, 100, 280))).toBe('pinch');
+    expect(classifyTwoFingerGesture(sample(200, 3.1, 100, 300), sample(200, -3.1, 100, 280))).toBe('pinch');
   });
 });

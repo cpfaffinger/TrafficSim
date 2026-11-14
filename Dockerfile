@@ -29,6 +29,8 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund
 COPY frontend/ ./
 COPY --from=sim-core /out ./src/generated/sim-core
+ARG SOURCE_COMMIT=dev
+ENV VITE_BUILD_ID=${SOURCE_COMMIT}
 RUN npm run build
 
 # ---------- Backend: dotnet publish ----------

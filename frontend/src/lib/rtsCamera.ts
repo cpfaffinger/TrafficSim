@@ -130,3 +130,24 @@ export function intersectGround(
 export function isClick(down: { x: number; y: number }, up: { x: number; y: number }, tolerance = 4): boolean {
   return Math.hypot(up.x - down.x, up.y - down.y) <= tolerance;
 }
+
+/** Two-finger touch sample: finger distance, angle and midpoint in screen pixels. */
+export interface TwoFingerSample {
+  distance: number;
+  angle: number;
+  mid: { x: number; y: number };
+}
+
+/**
+ * Distinguishes a two-finger vertical drag (tilt) from pinch/twist/pan: the midpoint moves mostly
+ * vertically while finger distance and angle stay nearly constant.
+ */
+export function classifyTwoFingerGesture(previous: TwoFingerSample, current: TwoFingerSample): 'tilt' | 'pinch' {
+  const dy = current.mid.y - previous.mid.y;
+  const dx = current.mid.x - previous.mid.x;
+  const spread = Math.abs(current.distance - previous.distance);
+  let twist = Math.abs(current.angle - previous.angle);
+  if (twist > Math.PI) twist = 2 * Math.PI - twist;
+  const horizontalFingers = Math.abs(Math.cos(current.angle)) > 0.7;
+  return horizontalFingers && Math.abs(dy) > 2 && Math.abs(dy) > 2 * Math.abs(dx) && spread < Math.abs(dy) * 0.5 && twist < 0.05 ? 'tilt' : 'pinch';
+}

@@ -104,6 +104,36 @@ body,
   inset: 0;
 }
 
+/* The 3D view handles all gestures itself (pan, pinch, twist, tilt); without this the browser
+   scrolls or zooms the page on touch devices and cancels the pointer events. */
+.scene canvas {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.update-banner {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem 1rem;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+.update-banner button {
+  background: #fff;
+  color: var(--accent);
+  border: 0;
+  border-radius: 4px;
+  padding: 0.2rem 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .scene canvas:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: -3px;

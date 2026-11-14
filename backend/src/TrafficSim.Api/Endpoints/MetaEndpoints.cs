@@ -12,8 +12,9 @@ internal static class MetaEndpoints
 
     public static RouteGroupBuilder MapMetaEndpoints(this RouteGroupBuilder group)
     {
-        group.MapGet("/meta", (IProviderCatalog catalog) =>
+        group.MapGet("/meta", (IProviderCatalog catalog, HttpContext context) =>
         {
+            context.Response.Headers.CacheControl = "no-store"; // clients poll this to detect new deployments
             var version = typeof(MetaEndpoints).Assembly
                 .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "0.0.0";
             var attributions = catalog.Providers.Where(p => p.Enabled).Select(p => p.Attribution)

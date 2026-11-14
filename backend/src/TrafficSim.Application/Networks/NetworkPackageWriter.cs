@@ -26,8 +26,10 @@ public static class NetworkPackageWriter
                 Points(c.Geometry), R(c.Length), c.Conflicts.ToList())).ToList(),
             network.Signals.Select(s => new PackageSignal(s.NodeId, s.Cycle, s.Offset,
                 s.Groups.Select(g => new PackageSignalGroup(g.Id, g.Green.Select(i => new[] { i.Start, i.End }).ToList(), g.Amber)).ToList())).ToList(),
-            new PackageStats(network.Nodes.Count, network.Links.Count, network.LaneCount, network.Connectors.Count, network.Signals.Count, network.IgnoredSigns),
-            network.Polygon?.Ring.Select(p => new[] { p.Longitude, p.Latitude }).ToList());
+            new PackageStats(network.Nodes.Count, network.Links.Count, network.LaneCount, network.Connectors.Count, network.Signals.Count, network.IgnoredSigns,
+                network.TransitLines.Count, network.DroppedTransitLines),
+            network.Polygon?.Ring.Select(p => new[] { p.Longitude, p.Latitude }).ToList(),
+            TransitPackage.Lines(network));
     }
 
     public static byte[] SerializeGzip(NetworkPackage package)

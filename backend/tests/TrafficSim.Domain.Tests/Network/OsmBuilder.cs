@@ -10,6 +10,7 @@ internal sealed class OsmBuilder
     private readonly LocalTangentPlane _plane = new(Origin);
     private readonly List<OsmNode> _nodes = [];
     private readonly List<OsmWay> _ways = [];
+    private readonly List<OsmRelation> _relations = [];
 
     /// <summary>Area of ±<paramref name="half"/> metres around the origin.</summary>
     public BoundingBox Area(double half = 300)
@@ -31,5 +32,12 @@ internal sealed class OsmBuilder
         return this;
     }
 
-    public OsmDataSet Build() => new(_nodes, _ways);
+    /// <summary>A relation (#85); members as (type, ref, role).</summary>
+    public OsmBuilder Relation(long id, (OsmMemberType Type, long Ref, string Role)[] members, params (string, string)[] tags)
+    {
+        _relations.Add(new OsmRelation(id, members.Select(m => new OsmMember(m.Type, m.Ref, m.Role)).ToList(), OsmTags.Of(tags)));
+        return this;
+    }
+
+    public OsmDataSet Build() => new(_nodes, _ways, null, _relations);
 }

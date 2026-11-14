@@ -187,4 +187,10 @@ public sealed class RoadNetwork
 
     /// <summary>Stop/give-way signs that could not be attached to a junction approach.</summary>
     public int IgnoredSigns { get; init; }
+
+    /// <summary>Public transport lines mapped onto the links (#85, ADR-0019).</summary>
+    public IReadOnlyList<TransitLine> TransitLines { get; set; } = [];
+
+    /// <summary>Bus routes in the area that could not be mapped onto the links (dropped, never failing the import).</summary>
+    public int DroppedTransitLines { get; set; }
 }

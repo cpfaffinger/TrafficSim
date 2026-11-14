@@ -96,7 +96,7 @@ public static class NetworkCompiler
             BuildSignalPlans();
             AssignEndSigns();
 
-            return new RoadNetwork
+            var network = new RoadNetwork
             {
                 Origin = _plane.Origin,
                 Area = area,
@@ -108,6 +108,8 @@ public static class NetworkCompiler
                 Signals = _signals,
                 IgnoredSigns = _ignoredSigns,
             };
+            TransitRule.Apply(network, data);
+            return network;
         }
 
         // ---------------------------------------------------------------- pieces (split + clip)

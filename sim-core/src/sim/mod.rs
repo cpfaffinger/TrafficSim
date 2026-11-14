@@ -92,8 +92,16 @@ pub struct Vehicle {
     pub stop_done: bool,
     /// Time until the next lane change is allowed (s).
     pub lc_timer: f64,
-    /// Visual lateral offset from the lane centre (m, positive = left), decays to 0.
+    /// Lateral offset from the lane centre (m, positive = left): follows the lane-change progress
+    /// (#108), or decays to 0 after an instantaneous change (`laneChange.duration = 0`).
     pub lat_offset: f64,
+    /// Lane being left during a lane change (#108), [`NONE`] otherwise. While changing, the
+    /// vehicle occupies this lane (as a *shadow*) and its current lane `seg`.
+    pub lc_from: u32,
+    /// Progress of the current lane change in [0, 1).
+    pub lc_progress: f64,
+    /// Progress per second of the current lane change (1 / duration).
+    lc_rate: f64,
     /// Insertion time (s).
     pub depart: f64,
     /// Index in the occupant list of `seg` (0 = most downstream).
@@ -121,6 +129,17 @@ pub struct Vehicle {
     alive: bool,
 }
 
+impl Vehicle {
+    /// Completes a lane change in progress (#108): the vehicle leaves its source lane.
+    fn end_lane_change(&mut self) {
+        if self.lc_from != NONE {
+            self.lc_from = NONE;
+            self.lc_progress = 0.0;
+            self.lat_offset = 0.0;
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 struct Counters {
     spawned: u64,
@@ -129,6 +148,7 @@ struct Counters {
     stranded: u64,
     unroutable: u64,
     lane_changes: u64,
+    lane_change_aborts: u64,
     forced_entries: u64,
     lapses: u64,
     commuter_reroutes: u64,
@@ -155,6 +175,8 @@ pub struct Stats {
     /// Generated vehicles dropped because no destination was reachable.
     pub unroutable: u64,
     pub lane_changes: u64,
+    /// Lane changes reversed because a conflict appeared in their first half (#108).
+    pub lane_change_aborts: u64,
     /// Junction entries forced by the deadlock breaker (`junction.maxWait`).
     pub forced_entries: u64,
     /// Distraction lapses started (#52).
@@ -205,6 +227,10 @@ pub struct Simulation {
     /// Occupants per segment, most downstream first.
     seg_vehicles: Vec<Vec<u32>>,
     occupied: Vec<u32>,
+    /// Per lane: vehicles changing away from it (#108), most downstream first by their position
+    /// projected onto the lane ([`Simulation::pos_on`]).
+    seg_shadows: Vec<Vec<u32>>,
+    shadowed: Vec<u32>,
     /// Vehicles that claimed each connector but have not entered it yet.
     conn_claims: Vec<u32>,
     conn_last_claim: Vec<f64>,
@@ -297,6 +323,8 @@ impl Simulation {
             next_id: 0,
             seg_vehicles: vec![Vec::new(); segments],
             occupied: Vec::new(),
+            seg_shadows: vec![Vec::new(); net.lane_count()],
+            shadowed: Vec::new(),
             conn_claims: vec![0; connectors],
             conn_last_claim: vec![f64::NEG_INFINITY; connectors],
             signal_state: Vec::new(),
@@ -460,6 +488,9 @@ impl Simulation {
             stop_done: false,
             lc_timer: 0.0,
             lat_offset: 0.0,
+            lc_from: NONE,
+            lc_progress: 0.0,
+            lc_rate: 0.0,
             depart: self.time,
             rank: 0,
             flags: 0,
@@ -547,12 +578,23 @@ impl Simulation {
             self.seg_vehicles[seg as usize].clear();
         }
         self.occupied.clear();
+        for &lane in &self.shadowed {
+            self.seg_shadows[lane as usize].clear();
+        }
+        self.shadowed.clear();
         for (i, v) in self.vehicles.iter().enumerate() {
             let list = &mut self.seg_vehicles[v.seg as usize];
             if list.is_empty() {
                 self.occupied.push(v.seg);
             }
             list.push(i as u32);
+            if v.lc_from != NONE {
+                let list = &mut self.seg_shadows[v.lc_from as usize];
+                if list.is_empty() {
+                    self.shadowed.push(v.lc_from);
+                }
+                list.push(i as u32);
+            }
         }
         let vehicles = &mut self.vehicles;
         for &seg in &self.occupied {
@@ -564,6 +606,16 @@ impl Simulation {
             for (rank, &i) in list.iter().enumerate() {
                 vehicles[i as usize].rank = rank as u32;
             }
+        }
+        for k in 0..self.shadowed.len() {
+            let lane = self.shadowed[k];
+            let mut list = std::mem::take(&mut self.seg_shadows[lane as usize]);
+            list.sort_unstable_by(|&a, &b| {
+                let (pa, pb) = (self.pos_on(a, lane), self.pos_on(b, lane));
+                pb.total_cmp(&pa)
+                    .then(self.vehicles[a as usize].id.cmp(&self.vehicles[b as usize].id))
+            });
+            self.seg_shadows[lane as usize] = list;
         }
     }
 
@@ -599,6 +651,22 @@ impl Simulation {
             let l = &self.vehicles[j as usize];
             self.follow_vehicle(&mut a, &idm, speed, l.pos - l.params.length - v.pos, j, delay);
             leader_found = true;
+        }
+        // Vehicles changing away from this lane still occupy it (#108); a vehicle changing lanes
+        // also follows the leader on the lane it is leaving.
+        if net.is_lane(v.seg) {
+            if let (Some((j, p)), _) = self.shadows_around(v.seg, v.pos, v.id) {
+                let gap = p - self.vehicles[j as usize].params.length - v.pos;
+                self.follow_vehicle(&mut a, &idm, speed, gap, j, delay);
+                leader_found = true;
+            }
+            if v.lc_from != NONE {
+                let s = self.pos_on(i as u32, v.lc_from);
+                if let (Some((j, p)), _) = self.occupants_around(v.lc_from, s, v.id) {
+                    let gap = p - self.vehicles[j as usize].params.length - s;
+                    self.follow_vehicle(&mut a, &idm, speed, gap, j, delay);
+                }
+            }
         }
         if v.stop_dist.is_finite() {
             Self::stop_at(&mut a, &idm, speed, v.stop_dist);
@@ -655,9 +723,9 @@ impl Simulation {
                     a.limit(-needed);
                 }
             }
-            if !leader_found && let Some(&j) = self.seg_vehicles[next as usize].last() {
+            if !leader_found && let Some((j, p)) = self.last_on(next) {
                 let l = &self.vehicles[j as usize];
-                self.follow_vehicle(&mut a, &idm, speed, dist + l.pos - l.params.length, j, delay);
+                self.follow_vehicle(&mut a, &idm, speed, dist + p - l.params.length, j, delay);
                 leader_found = true;
             }
             dist += net.seg_length[next as usize];
@@ -709,12 +777,12 @@ impl Simulation {
             v.pos += dist;
             v.odo += dist;
             v.lc_timer = (v.lc_timer - dt).max(0.0);
-            let lateral = lateral_rate * dt;
-            v.lat_offset = if v.lat_offset.abs() <= lateral {
-                0.0
-            } else {
-                v.lat_offset - lateral * v.lat_offset.signum()
-            };
+            if v.lc_from != NONE {
+                v.lc_progress += v.lc_rate * dt;
+                if v.lc_progress >= 1.0 {
+                    v.end_lane_change();
+                }
+            }
             loop {
                 let len = net.seg_length[v.seg as usize];
                 if v.pos <= len {
@@ -757,6 +825,8 @@ impl Simulation {
                         v.pos -= len;
                         v.prev_seg = v.seg;
                         v.seg = net.connector_segment(c);
+                        // Leaving the lane completes a lane change in progress.
+                        v.end_lane_change();
                         v.route_pos += 1;
                         v.next_conn = match route.get(v.route_pos as usize + 1) {
                             Some(&next) => net.choose_connector(info.to_lane, next, v.params.class.mask()),
@@ -775,6 +845,16 @@ impl Simulation {
                     }
                 }
             }
+            if v.lc_from != NONE {
+                v.lat_offset = lane_change::change_offset(net, v.lc_from, v.seg, v.lc_progress);
+            } else {
+                let lateral = lateral_rate * dt;
+                v.lat_offset = if v.lat_offset.abs() <= lateral {
+                    0.0
+                } else {
+                    v.lat_offset - lateral * v.lat_offset.signum()
+                };
+            }
             if v.seg < lane_count {
                 v.link_delay += dt * (1.0 - v.speed / net.seg_speed_limit[v.seg as usize]).max(0.0);
                 if v.speed < cells::STOP_SPEED {
@@ -791,7 +871,7 @@ impl Simulation {
             if v.speed < 0.5 {
                 f |= flags::WAITING;
             }
-            if v.lat_offset != 0.0 {
+            if v.lc_from != NONE || v.lat_offset != 0.0 {
                 f |= flags::CHANGING_LANE;
             }
             if !net.is_lane(v.seg) {
@@ -838,6 +918,7 @@ impl Simulation {
             stranded: c.stranded,
             unroutable: c.unroutable,
             lane_changes: c.lane_changes,
+            lane_change_aborts: c.lane_change_aborts,
             forced_entries: c.forced_entries,
             lapses: c.lapses,
             commuter_reroutes: c.commuter_reroutes,
@@ -890,11 +971,19 @@ impl Simulation {
             };
             // Left normal of the driving direction.
             let (nx, ny) = (-dir[1], dir[0]);
+            let mut heading = dir[1].atan2(dir[0]);
+            if v.lc_from != NONE {
+                // Yaw of the lateral motion (#108); lateral speed relative to at least 3 m/s so a
+                // slow vehicle does not turn sideways.
+                let lateral =
+                    lane_change::change_lateral_speed(&self.net, v.lc_from, v.seg, v.lc_progress, v.lc_rate);
+                heading += lateral.atan2(v.speed.max(3.0));
+            }
             out.extend_from_slice(&[
                 (point[0] + nx * v.lat_offset) as f32,
                 (point[1] + ny * v.lat_offset) as f32,
                 point[2] as f32,
-                dir[1].atan2(dir[0]) as f32,
+                heading as f32,
                 v.speed as f32,
                 v.params.length as f32,
                 f32::from(v.params.class.id()),
@@ -925,6 +1014,8 @@ impl Simulation {
             h.u64(u64::from(v.route_pos));
             h.u64(u64::from(v.claimed));
             h.f64(v.lat_offset);
+            h.u64(u64::from(v.lc_from));
+            h.f64(v.lc_progress);
             h.f64(v.params.speed_factor);
             h.f64(v.odo);
             h.f64(v.lapse_until);
@@ -946,6 +1037,7 @@ impl Simulation {
             c.stranded,
             c.unroutable,
             c.lane_changes,
+            c.lane_change_aborts,
             c.forced_entries,
             c.lapses,
             c.commuter_reroutes,

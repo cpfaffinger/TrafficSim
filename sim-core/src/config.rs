@@ -56,9 +56,20 @@ pub struct LaneChangeConfig {
     pub cooldown: f64,
     /// Distance (m) before the end of the lane-change area over which mandatory urgency ramps up.
     pub urgency_distance: f64,
-    /// Duration of the visual lateral transition (s); the model change itself is instantaneous.
+    /// Duration of the visual lateral transition (s) of instantaneous lane changes
+    /// (`duration = 0` only).
     pub visual_duration: f64,
+    /// Duration (s) of a lane change at or above [`FULL_DURATION_SPEED`] (#108). While changing,
+    /// a vehicle occupies its source and its target lane. 0 = instantaneous model change with a
+    /// purely visual lateral transition (`visualDuration`, the behaviour before #108).
+    pub duration: f64,
+    /// Duration (s) of a lane change from standstill; the duration grows linearly with the speed
+    /// up to `duration` at [`FULL_DURATION_SPEED`].
+    pub min_duration: f64,
 }
+
+/// Speed (m/s) from which a lane change takes the full `laneChange.duration`.
+pub const FULL_DURATION_SPEED: f64 = 10.0;
 
 impl Default for LaneChangeConfig {
     fn default() -> Self {
@@ -68,7 +79,20 @@ impl Default for LaneChangeConfig {
             cooldown: 3.0,
             urgency_distance: 200.0,
             visual_duration: 2.5,
+            duration: 3.0,
+            min_duration: 1.0,
         }
+    }
+}
+
+impl LaneChangeConfig {
+    /// Duration (s) of a lane change started at `speed`; 0 for instantaneous changes.
+    pub fn duration_at(&self, speed: f64) -> f64 {
+        if self.duration <= 0.0 {
+            return 0.0;
+        }
+        let min = self.min_duration.min(self.duration);
+        min + (self.duration - min) * (speed / FULL_DURATION_SPEED).clamp(0.0, 1.0)
     }
 }
 
@@ -376,6 +400,8 @@ impl SimConfig {
             self.lane_change.cooldown,
             self.lane_change.urgency_distance,
             self.lane_change.visual_duration,
+            self.lane_change.duration,
+            self.lane_change.min_duration,
             self.perception.emergency_factor,
             self.merging.cooperation_distance,
             self.merging.max_cooperative_deceleration,
@@ -529,6 +555,8 @@ mod tests {
             (r#"{"heterogeneity": 0.9}"#, "heterogeneity"),
             (r#"{"junction": {"maxWait": -1}}"#, "non-negative"),
             (r#"{"laneChange": {"interval": 0}}"#, "interval"),
+            (r#"{"laneChange": {"duration": -1}}"#, "non-negative"),
+            (r#"{"laneChange": {"minDuration": -1}}"#, "non-negative"),
             (r#"{"driverMix": {"sleepy": 1}}"#, "unknown driver profile"),
             (r#"{"vehicleTypes": {"tram": {"length": 30}}}"#, "needs a class"),
             (
@@ -581,6 +609,32 @@ mod tests {
             let e = SimConfig::from_json(json).unwrap_err();
             assert!(e.contains(needle), "{json}: {e}");
         }
+    }
+
+    #[test]
+    fn lane_change_duration_shrinks_at_low_speed() {
+        let c = SimConfig::from_json(r#"{"laneChange": {"duration": 4, "minDuration": 1.5}}"#).unwrap();
+        let lc = &c.lane_change;
+        assert_eq!(lc.duration_at(0.0), 1.5);
+        assert_eq!(lc.duration_at(FULL_DURATION_SPEED / 2.0), 2.75);
+        assert_eq!(lc.duration_at(FULL_DURATION_SPEED), 4.0);
+        assert_eq!(lc.duration_at(40.0), 4.0);
+        let d = LaneChangeConfig::default();
+        assert_eq!((d.duration_at(0.0), d.duration_at(30.0)), (1.0, 3.0));
+        let instant = LaneChangeConfig {
+            duration: 0.0,
+            ..d.clone()
+        };
+        assert_eq!(instant.duration_at(20.0), 0.0);
+        let inverted = LaneChangeConfig {
+            min_duration: 5.0,
+            ..d
+        };
+        assert_eq!(
+            inverted.duration_at(0.0),
+            3.0,
+            "minDuration is capped by duration"
+        );
     }
 
     #[test]

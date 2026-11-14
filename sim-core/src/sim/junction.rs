@@ -104,7 +104,7 @@ impl Simulation {
             None => net.seg_length[v.seg as usize] - v.pos,
             Some(cur) => {
                 let lane = net.connectors[cur as usize].to_lane;
-                if !self.seg_vehicles[lane as usize].is_empty() {
+                if self.last_on(lane).is_some() {
                     return None;
                 }
                 net.seg_length[v.seg as usize] - v.pos + net.seg_length[lane as usize]
@@ -308,11 +308,11 @@ impl Simulation {
         for &j in &self.seg_vehicles[net.connector_segment(c) as usize] {
             needed += self.vehicles[j as usize].params.length + 2.0;
         }
-        match self.seg_vehicles[info.to_lane as usize].last() {
+        match self.last_on(info.to_lane) {
             None => true,
-            Some(&j) => {
+            Some((j, pos)) => {
                 let last = &self.vehicles[j as usize];
-                last.pos - last.params.length >= needed || last.speed > 3.0
+                pos - last.params.length >= needed || last.speed > 3.0
             }
         }
     }

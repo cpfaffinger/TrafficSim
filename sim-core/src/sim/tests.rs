@@ -51,7 +51,9 @@ fn check_invariants(sim: &mut Simulation) {
     sim.rebuild_lists();
     let sim = &*sim;
     let net = sim.network();
-    let mut by_seg: BTreeMap<u32, Vec<&Vehicle>> = BTreeMap::new();
+    // (front position, length, id) per segment; vehicles changing lanes also occupy their
+    // source lane (#108).
+    let mut by_seg: BTreeMap<u32, Vec<(f64, f64, u32)>> = BTreeMap::new();
     for v in sim.vehicles() {
         assert!(v.speed >= 0.0 && v.speed.is_finite(), "speed {}", v.speed);
         assert!(
@@ -68,19 +70,32 @@ fn check_invariants(sim: &mut Simulation) {
             v.speed,
             limit
         );
-        by_seg.entry(v.seg).or_default().push(v);
+        by_seg
+            .entry(v.seg)
+            .or_default()
+            .push((v.pos, v.params.length, v.id));
+        if v.lc_from != NONE {
+            assert!(net.is_lane(v.seg) && v.lc_progress >= 0.0 && v.lc_progress < 1.0);
+            let from = &net.lanes[v.lc_from as usize];
+            assert_eq!(from.link, net.lanes[v.seg as usize].link);
+            assert_eq!(from.index.abs_diff(net.lanes[v.seg as usize].index), 1);
+            let s = v.pos * net.seg_length[v.lc_from as usize] / net.seg_length[v.seg as usize];
+            by_seg
+                .entry(v.lc_from)
+                .or_default()
+                .push((s, v.params.length, v.id));
+        }
     }
-    for vs in by_seg.values_mut() {
-        vs.sort_by(|a, b| b.pos.total_cmp(&a.pos));
+    for (seg, vs) in &mut by_seg {
+        vs.sort_by(|a, b| b.0.total_cmp(&a.0));
         for w in vs.windows(2) {
-            let gap = w[0].pos - w[0].params.length - w[1].pos;
+            let gap = w[0].0 - w[0].1 - w[1].0;
             assert!(
                 gap > -1e-6,
-                "overlap {gap} on segment {} t={}: {:?} / {:?} lc={:?}",
-                w[0].seg,
+                "overlap {gap} on segment {seg} t={}: {:?} / {:?} lc={:?}",
                 sim.time(),
-                w[0],
-                w[1],
+                vehicle(sim, w[0].2),
+                vehicle(sim, w[1].2),
                 sim.lane_change_log().iter().rev().take(3).collect::<Vec<_>>()
             );
         }
@@ -1275,6 +1290,186 @@ fn keep_right_bias_on_motorways() {
     assert_eq!(vehicle(&s, 0).unwrap().lat_offset, 0.0);
 }
 
+// ---------------------------------------------------------------- #108 continuous lane changes
+
+fn lanes_of(s: &Simulation, link: &str) -> (u32, u32) {
+    let net = s.network();
+    let l = net.link_index(link).unwrap();
+    (net.link_lane(l, 0).unwrap(), net.link_lane(l, 1).unwrap())
+}
+
+fn snapshot_of(s: &Simulation, id: u32) -> [f32; SNAPSHOT_STRIDE] {
+    let snap = s.snapshot();
+    let k = s.vehicles().iter().position(|v| v.id == id).unwrap();
+    snap[k * SNAPSHOT_STRIDE..(k + 1) * SNAPSHOT_STRIDE]
+        .try_into()
+        .unwrap()
+}
+
+#[test]
+fn lane_changes_take_their_duration_and_occupy_both_lanes() {
+    let mut s = overtaking(true);
+    let (lane0, lane1) = lanes_of(&s, "up");
+    while s.lane_change_log().is_empty() {
+        s.step();
+        check_invariants(&mut s);
+    }
+    let start = s.time();
+    let v = vehicle(&s, 1).unwrap();
+    assert_eq!((v.seg, v.lc_from), (lane1, lane0));
+    assert!(v.lc_progress > 0.0 && v.lc_progress < 0.1);
+    assert_ne!(v.flags & flags::CHANGING_LANE, 0);
+    let duration = s.config().lane_change.duration_at(v.speed);
+    assert!(duration > 2.9, "{duration}");
+    // The vehicle is listed on its target lane and as a shadow on its source lane.
+    s.rebuild_lists();
+    assert_eq!(s.seg_shadows[lane0 as usize], [1]);
+    let y = |s: &Simulation| f64::from(snapshot_of(s, 1)[1]);
+    let heading = |s: &Simulation| f64::from(snapshot_of(s, 1)[3]);
+    let mut last_y = y(&s);
+    assert!(
+        (last_y - -4.875).abs() < 0.1,
+        "starts near the centre of lane 0: {last_y}"
+    );
+    let mut max_heading: f64 = 0.0;
+    while vehicle(&s, 1).unwrap().lc_from != NONE {
+        s.step();
+        check_invariants(&mut s);
+        let now = y(&s);
+        assert!(
+            now >= last_y - 1e-6 && now - last_y < 0.3,
+            "smooth lateral motion {last_y} -> {now}"
+        );
+        max_heading = max_heading.max(heading(&s));
+        last_y = now;
+        assert!(s.time() - start < duration + 0.2, "change takes too long");
+    }
+    assert!(
+        s.time() - start > duration - 0.2,
+        "change ended after {}",
+        s.time() - start
+    );
+    assert!(
+        max_heading > 0.05,
+        "heading turns left while moving left: {max_heading}"
+    );
+    assert!(
+        (last_y - -1.625).abs() < 1e-3,
+        "ends on the lane 1 centre: {last_y}"
+    );
+    let v = vehicle(&s, 1).unwrap();
+    assert_eq!((v.lat_offset, v.flags & flags::CHANGING_LANE), (0.0, 0));
+    assert_eq!(s.lane_change_log().len(), 1, "no second change while changing");
+}
+
+#[test]
+fn followers_on_the_source_lane_brake_for_a_changing_vehicle() {
+    let mut b = corridor(2, 1000.0, 15.0);
+    b.link_mut("up").boundaries[0].allow_right = false;
+    let config = SimConfig {
+        lane_change: crate::config::LaneChangeConfig {
+            duration: 8.0,
+            min_duration: 8.0,
+            ..Default::default()
+        },
+        ..quiet()
+    };
+    let mut s = sim(&b, config);
+    s.set_event_logging(true);
+    let (lane0, _) = lanes_of(&s, "up");
+    let slow = VehicleParams {
+        max_speed: 4.0,
+        ..car()
+    };
+    let stay = VehicleParams {
+        lane_change_threshold: 1000.0,
+        ..car()
+    };
+    s.place_vehicle("up", 0, 160.0, 4.0, "down", slow).unwrap();
+    let changer = s.place_vehicle("up", 0, 120.0, 6.0, "down", car()).unwrap();
+    let follower = s.place_vehicle("up", 0, 70.0, 15.0, "down", stay).unwrap();
+    let mut compared = false;
+    for _ in 0..400 {
+        s.step();
+        check_invariants(&mut s);
+        let c = vehicle(&s, changer).unwrap();
+        if c.lc_from == lane0 && !compared {
+            // The follower's IDM leader is the shadow: without it, it would brake less.
+            compared = true;
+            s.rebuild_lists();
+            let f = s.vehicles().iter().position(|v| v.id == follower).unwrap();
+            let with_shadow = s.acceleration(f);
+            let shadows = std::mem::take(&mut s.seg_shadows[lane0 as usize]);
+            let without = s.acceleration(f);
+            s.seg_shadows[lane0 as usize] = shadows;
+            assert!(with_shadow < without - 0.3, "{with_shadow} vs {without}");
+        }
+    }
+    assert!(compared);
+    assert_eq!(s.lane_change_log().len(), 1);
+}
+
+#[test]
+fn lane_change_aborts_when_a_conflict_appears_in_the_first_half() {
+    for (late, aborted) in [(false, 1), (true, 0)] {
+        let mut s = overtaking(true);
+        let (lane0, lane1) = lanes_of(&s, "up");
+        while s.lane_change_log().is_empty() {
+            s.step();
+        }
+        let progress = if late { 0.5 } else { 0.3 };
+        while vehicle(&s, 1).unwrap().lc_progress < progress {
+            s.step();
+        }
+        let pos = vehicle(&s, 1).unwrap().pos;
+        // A fast vehicle appears close behind on the target lane.
+        s.place_vehicle("up", 1, pos - 6.5, 15.0, "down", car()).unwrap();
+        s.step();
+        check_invariants(&mut s);
+        let v = vehicle(&s, 1).unwrap();
+        assert_eq!(s.stats().lane_change_aborts, aborted, "late={late}");
+        if aborted == 1 {
+            assert_eq!((v.seg, v.lc_from), (lane0, lane1), "back towards lane 0");
+            assert!(v.lc_progress > 0.5 && v.lat_offset > 0.0);
+            run_checked(&mut s, 40);
+            let v = vehicle(&s, 1).unwrap();
+            assert_eq!((v.seg, v.lc_from), (lane0, NONE));
+        } else {
+            assert_eq!((v.seg, v.lc_from), (lane1, lane0), "finishes the change");
+        }
+    }
+}
+
+#[test]
+fn zero_duration_keeps_instantaneous_lane_changes() {
+    let mut b = corridor(2, 1000.0, 15.0);
+    b.link_mut("up").boundaries[0].allow_left = true;
+    let config = SimConfig {
+        lane_change: crate::config::LaneChangeConfig {
+            duration: 0.0,
+            ..Default::default()
+        },
+        ..quiet()
+    };
+    let mut s = sim(&b, config);
+    s.set_event_logging(true);
+    let slow = VehicleParams {
+        max_speed: 5.0,
+        ..car()
+    };
+    s.place_vehicle("up", 0, 100.0, 5.0, "down", slow).unwrap();
+    s.place_vehicle("up", 0, 20.0, 15.0, "down", car()).unwrap();
+    while s.lane_change_log().is_empty() {
+        s.step();
+    }
+    let v = vehicle(&s, 1).unwrap();
+    assert_eq!(v.lc_from, NONE);
+    assert!(v.lat_offset < 0.0);
+    assert_ne!(v.flags & flags::CHANGING_LANE, 0);
+    run_checked(&mut s, 40);
+    assert_eq!(vehicle(&s, 1).unwrap().lat_offset, 0.0);
+}
+
 // ---------------------------------------------------------------- #97 markings, roundabouts, bridges
 
 #[test]
@@ -1464,32 +1659,32 @@ fn golden_runs() {
             "motorway-merge",
             Simulation::new(crate::synth::motorway_merge().network(), merge, 42).unwrap(),
             3000,
-            0x0521_2e2c_85e2_29e3,
+            0x4993_b216_2219_af83,
         ),
-        ("fixture", busy_fixture(42), 3000, 0x986d_65bf_03a7_73af),
+        ("fixture", busy_fixture(42), 3000, 0x47d9_dff5_dc7a_b679),
         (
             "t-junction",
             sim(&t_junction(Priority::Minor), with_demand(600.0)),
             3000,
-            0x92b9_2c8c_6c56_e01f,
+            0xc82e_869d_58f2_7efb,
         ),
         (
             "roundabout",
             sim(&roundabout(), with_demand(500.0)),
             3000,
-            0x5841_55a4_ec98_7ad7,
+            0x0cdb_bdcd_ea5e_b7d3,
         ),
         (
             "driver-profiles",
             Simulation::new(fixture_network(), profiles, 42).unwrap(),
             3000,
-            0xeb4e_022e_b286_932f,
+            0xbe75_bc8b_623a_2d89,
         ),
         (
             "od-matrix",
             Simulation::new(fixture_network(), od, 42).unwrap(),
             3000,
-            0xc48e_09c2_2ed3_562b,
+            0x9fe5_8d69_135f_0b62,
         ),
         (
             "rbl-crossroads",
@@ -1502,7 +1697,7 @@ fn golden_runs() {
                 with_demand(400.0),
             ),
             3000,
-            0x0d54_746d_e68c_0740,
+            0xf1f8_fecf_ff44_3310,
         ),
     ];
     let mut report = String::new();

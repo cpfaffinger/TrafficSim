@@ -83,12 +83,12 @@ configuration.
 
 | Offset | Field | Unit / encoding |
 |--------|-------|-----------------|
-| 0, 1, 2 | `x, y, z` | metres, ENU (same frame as the package); vehicle **centre** on the lane centreline plus the visual lane-change offset |
-| 3 | `heading` | radians, counter-clockwise from +x (east) |
+| 0, 1, 2 | `x, y, z` | metres, ENU (same frame as the package); vehicle **centre** on the lane centreline plus the lateral lane-change offset (#108) |
+| 3 | `heading` | radians, counter-clockwise from +x (east); includes the yaw of the lateral lane-change motion |
 | 4 | `speed` | m/s |
 | 5 | `length` | m (from the vehicle type) |
 | 6 | `classId` | 0 car, 1 van, 2 truck (rigid and articulated), 3 bus, 4 motorcycle |
-| 7 | `flags` | bit 0 braking (< −1 m/s²), bit 1 waiting (< 0.5 m/s), bit 2 lane change in progress (visual), bit 3 inside a junction (on a connector), bit 4 holding at a stop line (red / stop sign / yielding) |
+| 7 | `flags` | bit 0 braking (< −1 m/s²), bit 1 waiting (< 0.5 m/s), bit 2 lane change in progress, bit 3 inside a junction (on a connector), bit 4 holding at a stop line (red / stop sign / yielding) |
 | 8 | `vehicleId` | stable id, unique per run (exact up to 2²⁴) |
 
 Vehicles appear in insertion order; the order changes when vehicles leave, so match by `vehicleId`
@@ -145,7 +145,10 @@ catch typos).
   "laneChange": {
     "interval": 5,                    // discretionary evaluation every n steps (staggered)
     "keepRightBias": 0.3,             // m/s², motorway / trunk roads
-    "cooldown": 3.0, "urgencyDistance": 200.0, "visualDuration": 2.5
+    "cooldown": 3.0, "urgencyDistance": 200.0,
+    "duration": 3.0,                  // s at ≥ 10 m/s; 0 = instantaneous changes (pre-#108 model)
+    "minDuration": 1.0,               // s from standstill (linear in between)
+    "visualDuration": 2.5             // s, display slide of instantaneous changes only
   },
   "merging": { "cooperation": true, "cooperationDistance": 200, "maxCooperativeDeceleration": 2.0,
                "courtesyBias": 0.5 },
@@ -257,7 +260,8 @@ the road-class default.
 
 `time`, `spawned`, `arrived`, `active`, `waitingToEnter` (generated vehicles queued at their entry
 because the gap was not yet safe), `rerouted` (missed mandatory lane change), `stranded` (removed
-at a dead end), `unroutable` (no destination reachable), `laneChanges`, `forcedEntries` (deadlock
+at a dead end), `unroutable` (no destination reachable), `laneChanges`, `laneChangeAborts`
+(lane changes reversed in their first half, #108), `forcedEntries` (deadlock
 breaker), `lapses` (distraction lapses), `commuterReroutes` (en-route route changes of familiar
 drivers), `meanTravelTime` (arrived vehicles, s), `meanSpeed` (active vehicles, m/s).
 
@@ -375,7 +379,17 @@ One step runs, in this fixed order and always iterating vehicles in a stable ord
    keep-right bias, courtesy towards mergers and a strategic bias towards lanes that continue two
    links ahead; mandatory changes towards a lane connected to the next route link with an urgency
    ramp. Mergers on an ending lane wait at its end; other vehicles in a wrong lane re-route at the
-   zone (at the latest 15 m before the lane end).
+   zone (at the latest 15 m before the lane end). **Continuous lateral motion (#108):** a change
+   takes `laneChange.duration` (3 s at ≥ 10 m/s, linearly down to `minDuration` at standstill).
+   The vehicle joins the target lane at the start and stays on the source lane as a *shadow* until
+   the change ends: followers on both lanes (IDM leader search incl. look-ahead into the next lane,
+   insertion, junction exit checks, MOBIL gaps of later changes) see it in both lanes, and it
+   follows the leaders of both lanes. It cannot start another change meanwhile. If in the first
+   half the gap ahead on the target lane drops below 1 m or the new follower would have to brake
+   harder than 2 × `safeDeceleration`, the change is reversed (the lanes swap roles, the lateral
+   motion continues back); in the second half it is completed. Entering a connector completes a
+   change at once. The lateral offset follows `w · (1 − (3p² − 2p³))` of the progress `p` (lane
+   centre distance `w`), so `x, y` and the heading of the snapshot come from the model state.
 6. **Junctions (#44, #45):** signal aspects, stop signs, priority and gap acceptance, claims (see
    module docs of `sim::junction`).
 7. **Perception (#52):** distraction lapses start/end.
@@ -393,7 +407,8 @@ OD matrix with curves, right-before-left crossroads, motorway merge). The core h
 clock, no global RNG, no hash-map iteration, and only uses IEEE basic operations (+ − × ÷ √) for
 state. Golden checksums change whenever the model changes on purpose: update them in the same
 commit (Phase 5 changes: reaction times applied by default; checksum extended by odometer, lapse
-state, smoothed travel times and actuated controller state).
+state, smoothed travel times and actuated controller state; #108: continuous lane changes,
+checksum extended by the lane-change state and the abort counter).
 
 ## Performance (#78)
 
@@ -428,8 +443,9 @@ message on stderr for bad arguments, files or configurations.
 
 ## Known limitations
 
-- Lane changes are instantaneous in the model (the snapshot interpolates laterally for display);
-  lane choice looks two links ahead at most.
+- Lane changes occupy both lanes for their whole duration (no sublane model: no partial lateral
+  overlap with vehicles of a third lane, no lateral gap acceptance); lane choice looks two links
+  ahead at most.
 - Conflict areas are reduced to one conflict point per connector pair; claims block whole
   movements until that point is cleared.
 - Vehicles whose destination becomes unreachable from their lane re-route to the nearest exit.

@@ -15,7 +15,9 @@ behaviour, plus heterogeneity (vehicle types, attentiveness, reaction times).
 - **Reaction time:** each driver perceives leader gap/speed with a personal delay (0.3–1.5 s) via a
   history ring buffer; distracted drivers additionally get random perception lapses.
 - **Lane changes:** MOBIL (politeness `p`, threshold `Δa_th`, safe braking `b_safe`), keep-right bias on
-  motorways, mandatory changes for route following with distance-based urgency.
+  motorways, mandatory changes for route following with distance-based urgency. A change takes a finite
+  duration (default 3 s, shorter at low speed) during which the vehicle occupies source and target lane;
+  it is reversed if a conflict appears in its first half (#108).
 - **Junctions:** conflict zones between lane connectors; gap acceptance for priority / yield / stop;
   fixed-time signal plans first, actuated control later.
 - **Integration:** fixed time step `Δt = 0.1 s` (configurable), ballistic position update, speeds clamped at ≥ 0.

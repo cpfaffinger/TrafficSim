@@ -618,10 +618,10 @@ impl Simulation {
         // Lane with the largest free space at its start (ties: rightmost).
         let mut best: Option<(u32, f64, f64)> = None;
         for lane in candidates {
-            let (gap, leader_speed) = match self.seg_vehicles[lane as usize].last() {
-                Some(&j) => {
+            let (gap, leader_speed) = match self.last_on(lane) {
+                Some((j, pos)) => {
                     let l = &self.vehicles[j as usize];
-                    (l.pos - l.params.length, l.speed)
+                    (pos - l.params.length, l.speed)
                 }
                 None => (f64::INFINITY, f64::INFINITY),
             };
@@ -671,15 +671,15 @@ impl Simulation {
         };
         let len = self.net.seg_length[lane as usize];
         let s = (p.frac * len).clamp(pr.length.min(len), len);
-        let (lead, follow) = self.neighbours(lane, s, u32::MAX);
-        if let Some(j) = lead {
+        let (lead, follow) = self.occupants_around(lane, s, u32::MAX);
+        if let Some((j, pos)) = lead {
             let l = &self.vehicles[j as usize];
-            if l.pos - l.params.length - s < pr.minimum_gap + 1.0 {
+            if pos - l.params.length - s < pr.minimum_gap + 1.0 {
                 return false;
             }
         }
         let behind = match follow {
-            Some(j) => Some((self.vehicles[j as usize].pos, j)),
+            Some((j, pos)) => Some((pos, j)),
             None => self.incoming_follower(lane),
         };
         if let Some((pos, j)) = behind {
@@ -690,9 +690,10 @@ impl Simulation {
             }
         }
         let i = self.new_vehicle(p.params, lane, s, 0.0, p.route);
-        let k = follow.map_or(self.seg_vehicles[lane as usize].len(), |j| {
-            self.vehicles[j as usize].rank as usize
-        });
+        let k = match self.neighbours(lane, s, u32::MAX).1 {
+            Some(j) => self.vehicles[j as usize].rank as usize,
+            None => self.seg_vehicles[lane as usize].len(),
+        };
         let list = &mut self.seg_vehicles[lane as usize];
         if list.is_empty() {
             self.occupied.push(lane);

@@ -20,7 +20,7 @@ public class EfScenarioStoreTests(PostGisFixture db)
         await using (var context = db.CreateContext())
         {
             await new EfNetworkBaselineStore(context).SaveAsync(
-                new NetworkBaselineInfo(baselineId, new BoundingBox(1, 1, 2, 2), now, "t", null, new PackageStats(0, 0, 0, 0, 0), []), [1], null, Ct);
+                new NetworkBaselineInfo(baselineId, new BoundingBox(5, 5, 6, 6), now, "t", null, new PackageStats(0, 0, 0, 0, 0), []), [1], null, Ct);
         }
 
         var scenario = new Scenario(Guid.NewGuid(), "S", baselineId, null,

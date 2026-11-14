@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using TrafficSim.Application.Scenarios;
@@ -78,15 +79,16 @@ public sealed class EfRunStore(TrafficSimDbContext db) : IRunStore
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    private static readonly Expression<Func<RunEntity, SimulationRun>> Projection =
+        r => new SimulationRun(r.Id, r.ScenarioId, r.Seed, r.SimulatedSeconds, r.Summary, r.BucketFormat, r.CreatedAt);
+
     public async Task<SimulationRun?> GetAsync(Guid id, CancellationToken cancellationToken) =>
-        await Runs().FirstOrDefaultAsync(r => r.Id == id, cancellationToken).ConfigureAwait(false);
+        await db.Set<RunEntity>().AsNoTracking().Where(r => r.Id == id).Select(Projection).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
 
     public Task<byte[]?> GetBucketsAsync(Guid id, CancellationToken cancellationToken) =>
         db.Set<RunEntity>().AsNoTracking().Where(r => r.Id == id).Select(r => (byte[]?)r.Buckets).FirstOrDefaultAsync(cancellationToken);
 
     public async Task<IReadOnlyList<SimulationRun>> ListAsync(Guid scenarioId, CancellationToken cancellationToken) =>
-        await Runs().Where(r => r.ScenarioId == scenarioId).OrderByDescending(r => r.CreatedAt).ToListAsync(cancellationToken).ConfigureAwait(false);
-
-    private IQueryable<SimulationRun> Runs() => db.Set<RunEntity>().AsNoTracking()
-        .Select(r => new SimulationRun(r.Id, r.ScenarioId, r.Seed, r.SimulatedSeconds, r.Summary, r.BucketFormat, r.CreatedAt));
+        await db.Set<RunEntity>().AsNoTracking().Where(r => r.ScenarioId == scenarioId).OrderByDescending(r => r.CreatedAt)
+            .Select(Projection).ToListAsync(cancellationToken).ConfigureAwait(false);
 }

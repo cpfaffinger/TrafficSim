@@ -3,6 +3,9 @@ import type { BasemapStatus } from '../scene/NetworkScene';
 export interface ViewToolbarProps {
   showBasemap: boolean;
   showTunnels: boolean;
+  /** Terrain toggle (#87); omitted when the network has no terrain. */
+  showTerrain?: boolean;
+  onShowTerrain?: (v: boolean) => void;
   basemapStatus: BasemapStatus;
   canReset: boolean;
   onShowBasemap: (v: boolean) => void;
@@ -26,6 +29,11 @@ export function ViewToolbar(p: ViewToolbarProps) {
       <label>
         <input type="checkbox" checked={p.showTunnels} onChange={(e) => p.onShowTunnels(e.target.checked)} /> Tunnels
       </label>
+      {p.onShowTerrain && (
+        <label>
+          <input type="checkbox" checked={p.showTerrain ?? true} onChange={(e) => p.onShowTerrain?.(e.target.checked)} /> Terrain
+        </label>
+      )}
       <button type="button" onClick={p.onReset} disabled={!p.canReset}>
         Reset view
       </button>

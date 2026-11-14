@@ -48,6 +48,7 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
   const [geocoderAttribution, setGeocoderAttribution] = useState<string | null>(null);
   const [showTunnels, setShowTunnels] = useState(true);
   const [showBasemap, setShowBasemap] = useState(true);
+  const [showTerrain, setShowTerrain] = useState(true);
   const [simSettings, setSimSettings] = useState<SimulationSettings>({ demandScale: 100, truckShare: 0.08, seed: 1 });
   const [analysis, setAnalysis] = useState<ActivityAnalysis | null>(null);
   const [demandOpen, setDemandOpen] = useState(false);
@@ -70,6 +71,7 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
 
   useEffect(() => sceneRef.current?.setTunnelsVisible(showTunnels), [showTunnels]);
   useEffect(() => sceneRef.current?.setBasemapVisible(showBasemap), [showBasemap]);
+  useEffect(() => sceneRef.current?.setTerrainVisible(showTerrain), [showTerrain, pkg]);
 
   const index = useMemo(() => (pkg ? new PackageIndex(pkg) : null), [pkg]);
   const model = useMemo(() => (index && target ? inspect(index, target) : null), [index, target]);
@@ -266,6 +268,8 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
           canReset={pkg !== null}
           onShowBasemap={setShowBasemap}
           onShowTunnels={setShowTunnels}
+          showTerrain={showTerrain}
+          onShowTerrain={pkg?.terrain ? setShowTerrain : undefined}
           onReset={() => sceneRef.current?.resetView()}
         />
         {pkg && demandOpen && demandScenario && (

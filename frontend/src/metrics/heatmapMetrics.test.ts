@@ -19,9 +19,11 @@ describe('heatmap metrics (#59)', () => {
   });
 
   it('uses a diverging scale for differences', () => {
-    expect(diffColor('speedRatio', 0)).toEqual([1, 1, 1]);
-    expect(diffColor('speedRatio', 1)[2]).toBe(1); // faster in B = blue
-    expect(diffColor('density', 120)[0]).toBe(1); // denser in B = red
+    expect(diffColor('speedRatio', 0)).toEqual([0.86, 0.87, 0.89]);
+    diffColor('speedRatio', 1).forEach((v, i) => expect(v).toBeCloseTo([0.24, 0.39, 0.87][i]!)); // faster in B = blue
+    diffColor('density', 120).forEach((v, i) => expect(v).toBeCloseTo([0.9, 0.28, 0.3][i]!)); // denser in B = red
+    // a 3 % speed-ratio change is already a quarter of the way to blue (sqrt easing)
+    expect(diffColor('speedRatio', 0.03)[0]).toBeCloseTo(0.86 - 0.62 * Math.sqrt(0.1));
     expect(diffColor('density', Number.NaN)).toBe(EMPTY);
   });
 

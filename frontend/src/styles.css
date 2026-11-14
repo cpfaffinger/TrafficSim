@@ -646,7 +646,7 @@ dl.stats dd {
 }
 
 .legend-bar.diverging {
-  background: linear-gradient(to right, #e5484d, #ffffff, #3e63dd);
+  background: linear-gradient(to right, #e6474d, #dbdee3, #3d63de);
   border: 1px solid var(--border, #ccc);
 }
 

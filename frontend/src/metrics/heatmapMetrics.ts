@@ -51,12 +51,23 @@ export function metricColor(metric: HeatmapMetric, value: number): Rgb {
 export const EMPTY: Rgb = [0.72, 0.74, 0.76];
 
 /** Diverging colour for differences B − A normalised by `max`: blue = better in B, red = worse. */
+/** A change of this share of the metric range saturates the diff colour (#74). */
+export const DIFF_RANGE = 0.3;
+const DIFF_NEUTRAL: Rgb = [0.86, 0.87, 0.89];
+const DIFF_BETTER: Rgb = [0.24, 0.39, 0.87];
+const DIFF_WORSE: Rgb = [0.9, 0.28, 0.3];
+
+/**
+ * Diverging colour of a B − A difference: blue = better in B, red = worse, light grey = unchanged.
+ * The square-root easing keeps small seed-to-seed differences visible on the light basemap.
+ */
 export function diffColor(metric: HeatmapMetric, delta: number): Rgb {
   if (Number.isNaN(delta)) return EMPTY;
   const info = METRIC_INFO[metric];
-  const t = Math.max(-1, Math.min(1, delta / info.max)) * (info.higherIsBetter ? 1 : -1);
-  // t > 0: improvement (blue), t < 0: worse (red), 0: white
-  return t >= 0 ? [1 - 0.8 * t, 1 - 0.55 * t, 1] : [1, 1 + 0.75 * t, 1 + 0.8 * t];
+  const t = Math.max(-1, Math.min(1, delta / (info.max * DIFF_RANGE))) * (info.higherIsBetter ? 1 : -1);
+  const k = Math.sqrt(Math.abs(t));
+  const to = t >= 0 ? DIFF_BETTER : DIFF_WORSE;
+  return [0, 1, 2].map((c) => DIFF_NEUTRAL[c]! + (to[c]! - DIFF_NEUTRAL[c]!) * k) as unknown as Rgb;
 }
 
 /** Moving average along each lane (smoothed density overlay, #59). Empty cells stay empty. */

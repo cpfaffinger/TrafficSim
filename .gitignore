@@ -32,3 +32,6 @@ node_modules/
 frontend/dist/
 frontend/coverage/
 frontend/src/generated/
+
+# Claude Code agent worktrees
+.claude/worktrees/

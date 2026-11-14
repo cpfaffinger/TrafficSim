@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using TrafficSim.Infrastructure.Health;
+using TrafficSim.Infrastructure.Persistence;
 
 namespace TrafficSim.Infrastructure;
 
@@ -18,6 +19,8 @@ public static class ServiceCollectionExtensions
         if (!string.IsNullOrWhiteSpace(connectionString))
         {
             services.AddSingleton(_ => NpgsqlDataSource.Create(connectionString));
+            services.AddDbContext<TrafficSimDbContext>(options => PersistenceRegistration.Configure(options, connectionString));
+            services.AddHostedService<DatabaseMigrator>();
             healthChecks.AddCheck<PostGisHealthCheck>("postgis", tags: [ReadyTag]);
         }
 

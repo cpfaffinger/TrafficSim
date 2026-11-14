@@ -9,6 +9,11 @@
         <ModulePath>.*\.Tests\.dll$</ModulePath>
       </Exclude>
     </ModulePaths>
+    <Sources>
+      <Exclude>
+        <Source>.*[\/]Migrations[\/].*</Source>
+      </Exclude>
+    </Sources>
     <Attributes>
       <Exclude>
         <Attribute>^System\.Diagnostics\.CodeAnalysis\.ExcludeFromCodeCoverageAttribute$</Attribute>

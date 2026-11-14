@@ -10,6 +10,7 @@
     <Project Path="tests/TrafficSim.Api.Tests/TrafficSim.Api.Tests.csproj" />
     <Project Path="tests/TrafficSim.Application.Tests/TrafficSim.Application.Tests.csproj" />
     <Project Path="tests/TrafficSim.Domain.Tests/TrafficSim.Domain.Tests.csproj" />
+    <Project Path="tests/TrafficSim.Infrastructure.Tests/TrafficSim.Infrastructure.Tests.csproj" />
     <Project Path="tests/TrafficSim.Providers.Tests/TrafficSim.Providers.Tests.csproj" />
   </Folder>
 </Solution>

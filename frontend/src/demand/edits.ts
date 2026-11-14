@@ -104,6 +104,25 @@ export const setMix = (m: DemandModel, kind: MixKind, mix: Mix | null): DemandMo
 /** Sets one share of a mix (0 keeps the name listed; the sim core normalises the weights). */
 export const setShare = (mix: Mix | null, name: string, share: number): Mix => ({ ...mix, [name]: share });
 
+/**
+ * Sets one entry to `percent` % and rescales the others proportionally so that the shares sum to
+ * 100 % (equal split when the others are all zero). Result in fractions, 4 decimals.
+ */
+export function setSharePercent(mix: Mix | null, names: readonly string[], name: string, percent: number): Mix {
+  const p = Math.min(100, Math.max(0, Number.isFinite(percent) ? percent : 0)) / 100;
+  const current = normalizeMix(mix);
+  const others = [...new Set([...names, ...Object.keys(mix ?? {})])].filter((n) => n !== name);
+  const rest = others.reduce((a, n) => a + (current[n] ?? 0), 0);
+  const round = (v: number) => Math.round(v * 10_000) / 10_000;
+  const out: Mix = {};
+  for (const n of others) {
+    const share = rest > 0 ? ((current[n] ?? 0) / rest) * (1 - p) : (1 - p) / others.length;
+    if (share > 0 || (mix && n in mix)) out[n] = round(share);
+  }
+  out[name] = round(p);
+  return out;
+}
+
 /** Shares normalised to fractions (for display); empty or all-zero mixes give {}. */
 export function normalizeMix(mix: Mix | null | undefined): Mix {
   if (!mix) return {};

@@ -14,6 +14,8 @@ export interface ScenarioPanelProps {
   confirm?: (message: string) => boolean;
   copy?: (text: string) => Promise<void>;
   location?: { origin: string; pathname: string };
+  /** Opens the demand editor for the open scenario (#54). */
+  onEditDemand?: () => void;
 }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Unexpected error');
@@ -21,7 +23,7 @@ const defaultConfirm = (m: string) => window.confirm(m);
 const defaultCopy = (text: string) => navigator.clipboard.writeText(text);
 
 /** Scenario management for the loaded baseline (#72): list, create, open, settings, clone, delete, share (#76), export (#75). */
-export function ScenarioPanel({ api, session, confirm = defaultConfirm, copy = defaultCopy, location = window.location }: ScenarioPanelProps) {
+export function ScenarioPanel({ api, session, confirm = defaultConfirm, copy = defaultCopy, location = window.location, onEditDemand }: ScenarioPanelProps) {
   const { baselineId, scenario } = session;
   const [list, setList] = useState<Scenario[]>([]);
   const [newName, setNewName] = useState('');
@@ -165,6 +167,11 @@ export function ScenarioPanel({ api, session, confirm = defaultConfirm, copy = d
             }
           />
           <div className="buttons">
+            {onEditDemand && (
+              <button type="button" onClick={onEditDemand} disabled={busy}>
+                Edit demand
+              </button>
+            )}
             <button type="button" onClick={clone} disabled={busy}>
               Clone as variant
             </button>

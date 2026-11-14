@@ -15,6 +15,7 @@ import {
   setMix,
   setProfile,
   setShare,
+  setSharePercent,
   setStartTime,
   updateOd,
 } from './edits';
@@ -96,5 +97,20 @@ describe('demand edits', () => {
     expect(normalizeMix({ car: 3, van: 1, bad: -1 })).toEqual({ car: 0.75, van: 0.25, bad: 0 });
     expect(normalizeMix({ car: 0 })).toEqual({});
     expect(normalizeMix(undefined)).toEqual({});
+  });
+});
+
+describe('linked mix sliders', () => {
+  const names = ['car', 'van', 'truck'];
+  it('rescale the other shares to keep 100 %', () => {
+    expect(setSharePercent({ car: 3, van: 1 }, names, 'car', 50)).toEqual({ van: 0.5, car: 0.5 });
+    expect(setSharePercent({ car: 0.5, van: 0.25, truck: 0.25 }, names, 'truck', 50)).toEqual({ car: 0.3333, van: 0.1667, truck: 0.5 });
+  });
+
+  it('split the rest equally when nothing else has a share', () => {
+    expect(setSharePercent(null, names, 'car', 40)).toEqual({ van: 0.3, truck: 0.3, car: 0.4 });
+    expect(setSharePercent({ car: 1 }, names, 'car', 100)).toEqual({ car: 1 });
+    expect(setSharePercent({ car: 1, van: 0 }, names, 'car', 120)).toEqual({ van: 0, car: 1 });
+    expect(setSharePercent({ car: 1 }, ['car'], 'car', NaN)).toEqual({ car: 0 });
   });
 });

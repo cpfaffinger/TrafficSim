@@ -13,10 +13,12 @@ export interface SharedScenarioPanelProps {
   token: string;
   onPackage: (pkg: NetworkPackage) => void;
   location?: { origin: string; pathname: string };
+  /** Shows the scenario's demand read-only (#54). */
+  onShowDemand?: (scenario: Scenario) => void;
 }
 
 /** Read-only viewer mode (#76): loads a shared scenario and its network; no edit tools. */
-export function SharedScenarioPanel({ api, token, onPackage, location = window.location }: SharedScenarioPanelProps) {
+export function SharedScenarioPanel({ api, token, onPackage, location = window.location, onShowDemand }: SharedScenarioPanelProps) {
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const [issues, setIssues] = useState<EditIssue[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +62,13 @@ export function SharedScenarioPanel({ api, token, onPackage, location = window.l
             <dd>{Math.round(scenario.durationSeconds / 60)} min</dd>
           </dl>
           <IssueList issues={issues} />
+          {onShowDemand && (
+            <div className="buttons">
+              <button type="button" onClick={() => onShowDemand(scenario)}>
+                View demand
+              </button>
+            </div>
+          )}
           <ExportsMenu scenarioId={scenario.id} listRuns={api.listRuns.bind(api)} />
         </>
       )}

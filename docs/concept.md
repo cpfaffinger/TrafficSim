@@ -29,7 +29,8 @@ immediate visual feedback. Unlike a game, TrafficSim works on **real geography**
 
 ### 1.2 Non-goals (for now)
 
-- Pedestrians, cyclists and public transport as simulated agents (backlog).
+- Pedestrians as agents walking a footway network (pedestrians are modelled as demand at crossings,
+  [ADR-0020](adr/0020-pedestrian-crossings.md)), cyclists and public transport as simulated agents (backlog).
 - Calibrated, legally binding traffic engineering studies (we aim for *plausible*, not certified).
 - Multi-user real-time collaboration.
 - Mobile devices as a primary target.
@@ -112,6 +113,7 @@ Roundabouts, bridges/tunnels and lane markings are specified in
 | `layer`, `bridge`, `tunnel`, `covered` | grade separation: vertical level and structure; no junction without a shared node |
 | `change:lanes`, `change`, `overtaking`, `divider` | lane boundaries: dashed / solid / asymmetric markings, lane-change permissions |
 | `railway=level_crossing` | level crossing control |
+| `highway=crossing`, `crossing=*`, `crossing_ref`, `crossing:markings`, `footway=crossing` | pedestrian crossings (zebra, signal, uncontrolled, unmarked) plus implicit crosswalks at signalised junctions ([ADR-0020](adr/0020-pedestrian-crossings.md)) |
 | `access`, `hgv`, `bus:lanes`, `psv` | vehicle class restrictions |
 | `destination:lanes`, `placement`, `width` | rendering & lane change hints (later) |
 
@@ -146,6 +148,10 @@ Details: [ADR-0007](adr/0007-microscopic-traffic-model.md).
   (residential / living-street / service links, commuter curves), time-of-day curves, vehicle
   and driver mix per OD pair and time of day. The demand configuration shape is documented in
   `sim-core/README.md` (the backend generates a default per imported network).
+- **Pedestrians:** crossing demand, not agents ([ADR-0020](adr/0020-pedestrian-crossings.md)):
+  Poisson arrivals per crossing, walking at 1.3 m/s in groups; vehicles yield at zebra crossings,
+  pedestrians accept gaps at uncontrolled crossings, request a pedestrian phase at push-button
+  signals and conflict with turning vehicles during the parallel green at signalised junctions.
 - **Vehicle diversity:** vehicle type catalogue as data (car, van, rigid and articulated truck,
   bus, motorcycle); driver profiles (*attentive*, *average*, *distracted*, *aggressive*,
   *commuter*) with truncated-normal distributions, not constants.

@@ -10,7 +10,7 @@ import { fromScene, LocalTangentPlane, toScene } from '../network/geo';
 import type { MeshData, PickTarget } from '../network/meshData';
 import { buildNetworkMeshes, type NetworkMeshes } from '../network/networkMeshes';
 import type { BBox, GeoOrigin, NetworkPackage, TerrainGrid } from '../network/types';
-import { drapeOnTerrain } from '../network/terrain';
+import { drapeOnTerrain, subdivide } from '../network/terrain';
 import { TerrainLayer } from './TerrainLayer';
 import { disposeGroup, subsetGeometry, toBufferGeometry } from './geometry';
 import { RtsCameraController } from './RtsCameraController';
@@ -19,6 +19,9 @@ import { HeatmapLayer } from './HeatmapLayer';
 import { SignLayer } from './SignLayer';
 import { SimulationLayer } from './SimulationLayer';
 import { TransitLayer } from './TransitLayer';
+
+/** Basemap ground layers in drawing order (see loadBasemapFor). */
+const GROUND_ORDER = ['landuse', 'park', 'water'] as const;
 
 /** Positron-inspired palette. */
 /** The preview basemap covers this multiple of the proposed area's width/height. */
@@ -120,6 +123,8 @@ export class NetworkScene {
     this.ground = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshLambertMaterial({ color: COLORS.ground }));
     this.ground.rotation.x = -Math.PI / 2;
     this.ground.position.y = -0.3;
+    // Drawn before the terrain and the basemap ground layers, which do not write depth.
+    this.ground.renderOrder = -5;
     this.ground.scale.set(20_000, 20_000, 1);
     this.scene.add(this.ground, this.basemapGroup, this.networkGroup, this.tunnelGroup, this.overlayGroup, this.highlightGroup, this.simulation.group, this.signs.group, this.transit.group, this.heatmap.group, this.terrain.group);
     this.scene.add(this.crossings.markings, this.crossings.pedestrians);
@@ -409,11 +414,20 @@ export class NetworkScene {
       .then((result) => {
         if (abort.signal.aborted) return;
         const meshes = buildBasemapMeshes(result.polygons);
-        if (terrain) for (const m of Object.values(meshes)) drapeOnTerrain(m, terrain);
-        const lambert = (color: number) => new THREE.MeshLambertMaterial({ color });
-        this.addMesh(this.basemapGroup, meshes.landuse, lambert(COLORS.landuse));
-        this.addMesh(this.basemapGroup, meshes.park, lambert(COLORS.park));
-        this.addMesh(this.basemapGroup, meshes.water, lambert(COLORS.water));
+        if (terrain) {
+          // Ground polygons follow the terrain at its sample spacing (#87); buildings per vertex.
+          for (const kind of ['landuse', 'park', 'water'] as const) meshes[kind] = subdivide(meshes[kind], terrain.cellSize);
+          for (const m of Object.values(meshes)) drapeOnTerrain(m, terrain);
+        }
+        // Ground layers never hide roads, vehicles or markings: drawn first (terrain, landuse, park,
+        // water) without writing depth, so on slopes where they rise above a road the road stays visible.
+        const ground = (color: number, order: number) => {
+          const mesh = this.addMesh(this.basemapGroup, meshes[GROUND_ORDER[order]!], new THREE.MeshLambertMaterial({ color, depthWrite: false }));
+          mesh.renderOrder = -3 + order;
+        };
+        ground(COLORS.landuse, 0);
+        ground(COLORS.park, 1);
+        ground(COLORS.water, 2);
         this.lodMeshes.buildings = [this.addMesh(this.basemapGroup, meshes.building, new THREE.MeshLambertMaterial({ color: COLORS.building, flatShading: true }))];
         this.applyLod(true);
         this.dirty = true;

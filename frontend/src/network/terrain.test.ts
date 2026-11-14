@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readGoldenFixtureJson } from '../test/goldenFixture';
 import { MeshData } from './meshData';
 import { parseNetworkPackage } from './parse';
-import { buildTerrainMesh, drapeOnTerrain, terrainHeightAt, terrainRange } from './terrain';
+import { buildTerrainMesh, drapeOnTerrain, subdivide, terrainHeightAt, terrainRange } from './terrain';
 import type { TerrainGrid } from './types';
 
 /** 3×2 samples, 10 m cells from (−10, 0): heights rise 1 m per column and 10 m per row. */
@@ -75,5 +75,36 @@ describe('parseNetworkPackage — terrain', () => {
     expect(parseNetworkPackage(withTerrain({ ...grid, cellSize: 0 })).terrain).toBeUndefined();
     expect(parseNetworkPackage(withTerrain({ ...grid, west: 'x' })).terrain).toBeUndefined();
     expect(parseNetworkPackage(withTerrain([1, 2])).terrain).toBeUndefined();
+  });
+});
+
+describe('subdivide', () => {
+  it('splits large ground triangles so a draped surface follows the terrain', () => {
+    // A 100 m triangle over a ridge: draped only at its corners it would span the ridge flat.
+    const mesh = new MeshData();
+    mesh.triangle(mesh.vertex([0, 0, 0]), mesh.vertex([100, 0, 0]), mesh.vertex([0, 100, 0]));
+    const fine = subdivide(mesh, 10);
+    expect(fine.triangleCount).toBeGreaterThan(50);
+    const p = fine.positions;
+    for (let t = 0; t < fine.indices.length; t += 3) {
+      const [a, b, c] = [0, 1, 2].map((k) => fine.indices[t + k]! * 3);
+      const len = (i: number, j: number) => Math.hypot(p[i]! - p[j]!, p[i + 2]! - p[j + 2]!);
+      expect(Math.max(len(a!, b!), len(b!, c!), len(c!, a!))).toBeLessThanOrEqual(10);
+    }
+    // Same area, same orientation (scene y up: normals of the pieces point up like the original).
+    const area = (m: MeshData) => {
+      let sum = 0;
+      for (let t = 0; t < m.indices.length; t += 3) {
+        const [a, b, c] = [0, 1, 2].map((k) => m.indices[t + k]! * 3);
+        const ux = m.positions[b!]! - m.positions[a!]!;
+        const uz = m.positions[b! + 2]! - m.positions[a! + 2]!;
+        const vx = m.positions[c!]! - m.positions[a!]!;
+        const vz = m.positions[c! + 2]! - m.positions[a! + 2]!;
+        sum += (uz * vx - ux * vz) / 2;
+      }
+      return sum;
+    };
+    expect(area(fine)).toBeCloseTo(area(mesh), 6);
+    expect(subdivide(mesh, 1000).triangleCount).toBe(1);
   });
 });

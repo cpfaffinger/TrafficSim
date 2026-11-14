@@ -68,3 +68,42 @@ export function drapeOnTerrain(mesh: MeshData, t: TerrainGrid): void {
     p[i + 1] = p[i + 1]! + terrainHeightAt(t, p[i]!, -p[i + 2]!);
   }
 }
+
+/**
+ * Splits the triangles of a mesh (scene coordinates) until no edge is longer than `maxEdge`
+ * horizontally, so a draped surface follows the terrain instead of spanning it with large flat
+ * triangles that float above roads on convex slopes. Vertices are not shared in the result.
+ */
+export function subdivide(mesh: MeshData, maxEdge: number): MeshData {
+  type P = [number, number, number];
+  const out = new MeshData();
+  const p = mesh.positions;
+  const at = (i: number): P => [p[3 * i]!, p[3 * i + 1]!, p[3 * i + 2]!];
+  const len2 = (a: P, b: P) => (a[0] - b[0]) ** 2 + (a[2] - b[2]) ** 2;
+  const mid = (a: P, b: P): P => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+  const max2 = maxEdge * maxEdge;
+  const stack: [P, P, P, number][] = [];
+  for (let t = 0; t < mesh.indices.length; t += 3) {
+    stack.push([at(mesh.indices[t]!), at(mesh.indices[t + 1]!), at(mesh.indices[t + 2]!), 0]);
+    while (stack.length > 0) {
+      const [a, b, c, depth] = stack.pop()!;
+      const [ab, bc, ca] = [len2(a, b), len2(b, c), len2(c, a)];
+      const longest = Math.max(ab, bc, ca);
+      if (longest <= max2 || depth >= 12) {
+        const i = out.vertexCount;
+        out.positions.push(...a, ...b, ...c);
+        out.triangle(i, i + 1, i + 2);
+      } else if (longest === ab) {
+        const d = mid(a, b);
+        stack.push([a, d, c, depth + 1], [d, b, c, depth + 1]);
+      } else if (longest === bc) {
+        const d = mid(b, c);
+        stack.push([a, b, d, depth + 1], [a, d, c, depth + 1]);
+      } else {
+        const d = mid(c, a);
+        stack.push([a, b, d, depth + 1], [d, b, c, depth + 1]);
+      }
+    }
+  }
+  return out;
+}

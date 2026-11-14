@@ -23,7 +23,7 @@ export class TerrainLayer {
     const material = new THREE.MeshLambertMaterial({ color: TERRAIN_COLOR, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 4 });
     const mesh = new THREE.Mesh(toBufferGeometry(buildTerrainMesh(terrain, TERRAIN_OFFSET)), material);
     mesh.matrixAutoUpdate = false;
-    mesh.renderOrder = -1;
+    mesh.renderOrder = -4;
     this.group.add(mesh);
     this.range = terrainRange(terrain);
   }

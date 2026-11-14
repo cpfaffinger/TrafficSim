@@ -17,7 +17,10 @@ WORKDIR /src/sim-core
 
 FROM rust-base AS sim-core
 COPY sim-core/ ./
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
+# The library embeds the golden network package (src/synth.rs) from docs/architecture/fixtures.
+COPY docs/architecture/fixtures/ /src/docs/architecture/fixtures/
+# sharing=locked: sim-core and sim-tools build in parallel and must not unpack crates concurrently.
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/src/sim-core/target \
     cargo build --release --lib --target wasm32-unknown-unknown \
  && wasm-bindgen --target web --out-dir /out target/wasm32-unknown-unknown/release/trafficsim_sim_core.wasm
@@ -25,7 +28,11 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # ---------- Simulation core: native batch runner (#84) ----------
 FROM rust-base AS sim-tools
 COPY sim-core/ ./
-RUN --mount=type=cache,target=/usr/local/cargo/registry     --mount=type=cache,target=/src/sim-core/target-native     CARGO_TARGET_DIR=/src/sim-core/target-native cargo build --release --bin batch  && mkdir -p /tools && cp /src/sim-core/target-native/release/batch /tools/trafficsim-batch
+COPY docs/architecture/fixtures/ /src/docs/architecture/fixtures/
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/src/sim-core/target-native \
+    CARGO_TARGET_DIR=/src/sim-core/target-native cargo build --release --bin batch \
+ && mkdir -p /tools && cp /src/sim-core/target-native/release/batch /tools/trafficsim-batch
 
 # ---------- Frontend: Vite build ----------
 FROM node:${NODE_VERSION}-alpine AS frontend

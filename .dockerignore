@@ -8,7 +8,8 @@
 .git
 .github
 data
-docs
+docs/**
+!docs/architecture/fixtures/**
 deploy
 frontend/dist
 frontend/src/generated
@@ -16,3 +17,4 @@ sim-core/target
 .env
 *.md
 !frontend/**/*.md
+.claude

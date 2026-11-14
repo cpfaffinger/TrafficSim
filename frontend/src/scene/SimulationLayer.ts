@@ -13,6 +13,8 @@ export class SimulationLayer {
   private vehicles: THREE.InstancedMesh;
   private signals: THREE.InstancedMesh | null = null;
   private markers: SignalMarker[] = [];
+  /** Enlargement of vehicles when the camera is far away (#80). */
+  vehicleScale = 1;
   private readonly matrix = new THREE.Matrix4();
   private readonly position = new THREE.Vector3();
   private readonly quaternion = new THREE.Quaternion();
@@ -57,7 +59,8 @@ export class SimulationLayer {
       this.position.set(x, y, z);
       // Heading is counter-clockwise from east in ENU; scene rotation about +y has the same sense.
       this.quaternion.setFromAxisAngle(this.up, snapshot[o + 3]!);
-      this.scale.set(Math.max(0.5, snapshot[o + 5]!), dims.height, dims.width);
+      const s = this.vehicleScale;
+      this.scale.set(Math.max(0.5, snapshot[o + 5]!) * Math.min(2, s), dims.height * s, dims.width * s);
       this.matrix.compose(this.position, this.quaternion, this.scale);
       this.vehicles.setMatrixAt(i, this.matrix);
       this.vehicles.setColorAt(i, this.color.setRGB(...vehicleColor({ speed: snapshot[o + 4]!, flags: Math.round(snapshot[o + 7]!) })));

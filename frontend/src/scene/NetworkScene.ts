@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildBasemapMeshes } from '../basemap/basemapMeshes';
 import { loadBasemap } from '../basemap/loader';
+import { lodFor, sameLod, type LodState } from '../lib/lod';
 import { frameRect } from '../lib/rtsCamera';
 import { nextPick, uniqueOwners, type PreviousPick } from '../lib/picking';
 import { LocalTangentPlane, toScene } from '../network/geo';
@@ -55,6 +56,8 @@ export class NetworkScene {
   private readonly overlayGroup = new THREE.Group();
   private readonly highlightGroup = new THREE.Group();
   private readonly simulation = new SimulationLayer();
+  private lodMeshes: { markings: THREE.Object3D[]; buildings: THREE.Object3D[] } = { markings: [], buildings: [] };
+  private lod: LodState = lodFor(0);
   private readonly lastCamera = new THREE.Matrix4();
   private readonly ground: THREE.Mesh;
   private readonly resizeObserver: ResizeObserver;
@@ -132,6 +135,7 @@ export class NetworkScene {
       new THREE.MeshLambertMaterial({ color: COLORS.marking, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     );
     markings.renderOrder = 1;
+    this.lodMeshes.markings = [markings];
     const structures = this.addMesh(this.networkGroup, m.structures, new THREE.MeshLambertMaterial({ color: COLORS.concrete }));
     const ghost = (opacity: number, color: number) =>
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
@@ -275,7 +279,8 @@ export class NetworkScene {
         this.addMesh(this.basemapGroup, meshes.landuse, lambert(COLORS.landuse));
         this.addMesh(this.basemapGroup, meshes.park, lambert(COLORS.park));
         this.addMesh(this.basemapGroup, meshes.water, lambert(COLORS.water));
-        this.addMesh(this.basemapGroup, meshes.building, new THREE.MeshLambertMaterial({ color: COLORS.building, flatShading: true }));
+        this.lodMeshes.buildings = [this.addMesh(this.basemapGroup, meshes.building, new THREE.MeshLambertMaterial({ color: COLORS.building, flatShading: true }))];
+        this.applyLod(true);
         this.dirty = true;
         this.callbacks.onBasemap?.('ready', result.attribution);
       })
@@ -322,6 +327,7 @@ export class NetworkScene {
     this.frameHandle = requestAnimationFrame(this.animate);
     const dt = Math.min(this.clock.getDelta(), 0.1);
     if (this.controls.update(dt)) this.dirty = true;
+    this.applyLod(false);
     // Render on demand: camera movement, new content or resize. Pointer moves mark dirty via the camera.
     const fogFar = Math.max(4000, this.controls.state.distance * 12);
     const fog = this.scene.fog as THREE.Fog;
@@ -335,6 +341,16 @@ export class NetworkScene {
       this.renderer.render(this.scene, this.camera);
     }
   };
+
+  private applyLod(force: boolean): void {
+    const next = lodFor(this.controls.state.distance);
+    if (!force && sameLod(next, this.lod)) return;
+    this.lod = next;
+    for (const m of this.lodMeshes.markings) m.visible = next.markings;
+    for (const m of this.lodMeshes.buildings) m.visible = next.buildings;
+    this.simulation.vehicleScale = next.vehicleScale;
+    this.dirty = true;
+  }
 
   private cameraMoved(): boolean {
     if (this.lastCamera.equals(this.camera.matrixWorld)) return false;

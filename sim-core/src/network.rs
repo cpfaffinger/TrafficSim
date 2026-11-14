@@ -143,6 +143,8 @@ pub struct Network {
     node_index: BTreeMap<String, u32>,
     link_index: BTreeMap<String, u32>,
     connector_index: BTreeMap<String, u32>,
+    /// Public transport lines (#85), resolved from the package.
+    pub transit: Vec<crate::transit::Line>,
 }
 
 fn class_mask(allowed: &[package::VehicleClassDto]) -> u8 {
@@ -222,6 +224,7 @@ impl Network {
             node_index: BTreeMap::new(),
             link_index: BTreeMap::new(),
             connector_index: BTreeMap::new(),
+            transit: Vec::new(),
         };
 
         for node in &p.nodes {
@@ -500,6 +503,7 @@ impl Network {
             net.lane_in.extend_from_slice(&inc);
             net.lanes[lane].in_range = (start, net.lane_in.len() as u32);
         }
+        net.transit = crate::transit::resolve(&net, &p.transit_lines);
         Ok(net)
     }
 

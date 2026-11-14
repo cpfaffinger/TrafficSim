@@ -29,7 +29,9 @@ immediate visual feedback. Unlike a game, TrafficSim works on **real geography**
 
 ### 1.2 Non-goals (for now)
 
-- Pedestrians, cyclists and public transport as simulated agents (backlog).
+- Pedestrians and cyclists as simulated agents (backlog). Public transport is simulated as buses on
+  OSM bus lines with dwell times at stops (#85, [ADR-0019](adr/0019-public-transport-lines-and-stops.md));
+  timetables (GTFS), passengers and rail modes are not.
 - Calibrated, legally binding traffic engineering studies (we aim for *plausible*, not certified).
 - Multi-user real-time collaboration.
 - Mobile devices as a primary target.
@@ -113,6 +115,7 @@ Roundabouts, bridges/tunnels and lane markings are specified in
 | `change:lanes`, `change`, `overtaking`, `divider` | lane boundaries: dashed / solid / asymmetric markings, lane-change permissions |
 | `railway=level_crossing` | level crossing control |
 | `access`, `hgv`, `bus:lanes`, `psv` | vehicle class restrictions |
+| `type=route` + `route=bus\|trolleybus` relations, `public_transport=stop_position\|platform`, `bus_bay`, `interval` | transit lines (link sequences), stops (link, position, bay) and headways ([ADR-0019](adr/0019-public-transport-lines-and-stops.md)) |
 | `destination:lanes`, `placement`, `width` | rendering & lane change hints (later) |
 
 Missing data is filled from per-country, per-road-class defaults and flagged so the UI can show

@@ -68,7 +68,7 @@ public sealed record PackageSignalGroup(string Id, IReadOnlyList<double[]> Green
 
 public sealed record PackageSignal(string Node, double Cycle, double Offset, IReadOnlyList<PackageSignalGroup> Groups);
 
-public sealed record PackageStats(int Nodes, int Links, int Lanes, int Connectors, int Signals, int IgnoredSigns = 0);
+public sealed record PackageStats(int Nodes, int Links, int Lanes, int Connectors, int Signals, int IgnoredSigns = 0, int TransitLines = 0, int DroppedTransitLines = 0);
 
 public sealed record NetworkPackage(
     int FormatVersion,
@@ -83,7 +83,8 @@ public sealed record NetworkPackage(
     IReadOnlyList<PackageSignal> Signals,
     PackageStats Stats,
     IReadOnlyList<double[]>? Area = null,
-    PackageTerrain? Terrain = null)
+    PackageTerrain? Terrain = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<PackageTransitLine>? TransitLines = null)
 {
     public const int CurrentFormatVersion = 1;
 

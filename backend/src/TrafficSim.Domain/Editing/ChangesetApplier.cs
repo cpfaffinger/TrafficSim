@@ -101,6 +101,7 @@ public static class ChangesetApplier
         private const long SplitIdBase = -1_000_000_000;
         private readonly Dictionary<long, OsmNode> _nodes;
         private readonly List<MutableWay> _ways;
+        private readonly IReadOnlyList<OsmRelation> _relations;
         private long _nextGeneratedId = SplitIdBase;
 
         public State(OsmDataSet data)
@@ -113,6 +114,7 @@ public static class ChangesetApplier
                 NodeIds = w.NodeIds.ToList(),
                 Tags = new Dictionary<string, string>(w.Tags, StringComparer.Ordinal),
             }).ToList();
+            _relations = data.Relations;
         }
 
         public CompilerOverrides Overrides { get; } = new();
@@ -122,10 +124,12 @@ public static class ChangesetApplier
         public OsmDataSet Build(DateTimeOffset? timestamp)
         {
             var used = _ways.SelectMany(w => w.NodeIds).ToHashSet();
+            used.UnionWith(_relations.SelectMany(r => r.Members).Where(m => m.Type == OsmMemberType.Node).Select(m => m.Ref));
             return new OsmDataSet(
                 _nodes.Values.Where(n => used.Contains(n.Id)),
                 _ways.Select(w => new OsmWay(w.Id, w.NodeIds, w.Tags)),
-                timestamp);
+                timestamp,
+                TransitRelations.FollowSplits(_relations, _ways.Select(w => (w.Id, w.OriginalId, (IReadOnlyList<long>)w.NodeIds)).ToList()));
         }
 
         public string? SetWayTags(SetWayTags e)

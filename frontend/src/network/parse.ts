@@ -1,3 +1,4 @@
+import { parseTransitLines } from '../transit/model';
 import {
   BOUNDARY_MARKINGS,
   CONNECTOR_TURNS,
@@ -371,5 +372,7 @@ export function parseNetworkPackage(input: unknown): NetworkPackage {
   };
   const pkg: NetworkPackage = { ...base, stats: stats(o.stats, base) };
   checkReferences(pkg);
+  const transitLines = parseTransitLines(o.transitLines, pkg.links);
+  if (transitLines.length > 0) pkg.transitLines = transitLines;
   return pkg;
 }

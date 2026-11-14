@@ -39,6 +39,9 @@ congestion, queue and speed **heatmaps**.
   MOBIL lane changes with continuous lateral motion, signals incl. actuated control, priority and
   gap acceptance, conflict areas, rerouting, heterogeneous vehicles and drivers, deterministic per
   seed.
+- **Public transport**: bus and trolleybus lines and stops from OSM route relations, buses on
+  their headways with dwell times, kerb stops that block the lane or bays, editable headways per
+  scenario, bus KPIs (trips, travel time, dwell, headway regularity).
 - **Lane-accurate heatmaps** (speed ratio, density, queues, delay, flow, stops) with a timeline and
   replay of 30 s buckets.
 - **Stored runs**: save the browser run or run several seeds on the server with the native sim

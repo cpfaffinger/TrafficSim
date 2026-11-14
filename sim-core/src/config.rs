@@ -324,6 +324,8 @@ pub struct SimConfig {
     pub metrics: MetricsConfig,
     pub signal_control: SignalControlConfig,
     pub merging: MergingConfig,
+    /// Buses on the package's public transport lines (#85).
+    pub transit: crate::transit::TransitConfig,
 }
 
 impl Default for SimConfig {
@@ -357,6 +359,7 @@ impl Default for SimConfig {
             metrics: MetricsConfig::default(),
             signal_control: SignalControlConfig::default(),
             merging: MergingConfig::default(),
+            transit: crate::transit::TransitConfig::default(),
         }
     }
 }
@@ -464,6 +467,7 @@ impl SimConfig {
         {
             return Err("signalControl needs non-negative times with 0 < minGreen ≤ maxGreen".into());
         }
+        self.transit.validate()?;
         Ok(())
     }
 

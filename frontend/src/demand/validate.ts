@@ -2,8 +2,9 @@ import type { NetworkPackage } from '../network/types';
 import type { Builtins } from './builtins';
 import { curveProblem, resolveCurve } from './curves';
 import { isObject, type DemandModel, type Mix } from './model';
+import { readTransit, transitIssues } from '../transit/model';
 
-export type DemandSection = 'overview' | 'od' | 'entries' | 'curves' | 'mixes';
+export type DemandSection = 'overview' | 'od' | 'entries' | 'curves' | 'mixes' | 'transit';
 
 export interface DemandIssue {
   section: DemandSection;
@@ -95,5 +96,8 @@ export function validateDemand(m: DemandModel, builtins: Builtins, pkg: NetworkP
   if (vm) add('mixes', 'vehicleMix', `Vehicle mix: ${vm}.`);
   const dm = m.driverMix && mixIssues(m.driverMix, names.driver, 'driver profile');
   if (dm) add('mixes', 'driverMix', `Driver mix: ${dm}.`);
+  if (m.rest.transit !== undefined) {
+    for (const message of transitIssues(readTransit(m.rest.transit), pkg ? (pkg.transitLines ?? []) : null)) add('transit', 'transit', message);
+  }
   return issues;
 }

@@ -4,7 +4,8 @@
 > renderer (TypeScript) and the simulation core (Rust). See [ADR-0009](../adr/0009-server-side-lane-graph-compilation.md),
 > [ADR-0011](../adr/0011-coordinate-reference-systems.md), [ADR-0016](../adr/0016-roundabouts-grade-separation-lane-markings.md).
 > The golden fixture [`fixtures/network-package-v1.json`](fixtures/network-package-v1.json) is
-> parsed by contract tests on all three stacks.
+> parsed by contract tests on all three stacks; [`fixtures/network-package-transit-v1.json`](fixtures/network-package-transit-v1.json)
+> adds a bus line with a kerb stop and a bay stop (#85).
 
 ## Conventions
 
@@ -39,7 +40,8 @@
 | `links` | Link[] | Directed road segments between two nodes. |
 | `connectors` | Connector[] | Lane-to-lane movements through nodes. |
 | `signals` | SignalController[] | Fixed-time signal plans. |
-| `stats` | object | Informational counts (`nodes`, `links`, `lanes`, `connectors`, `signals`, `ignoredSigns` = stop/give-way signs that could not be attached to a junction). |
+| `stats` | object | Informational counts (`nodes`, `links`, `lanes`, `connectors`, `signals`, `ignoredSigns` = stop/give-way signs that could not be attached to a junction, `transitLines`, `droppedTransitLines` = bus routes of the area that could not be mapped onto the links). |
+| `transitLines` | TransitLine[] \| absent | Public transport lines (#85, ADR-0019). Optional; absent when the area has none. |
 
 ## Terrain
 
@@ -157,6 +159,35 @@ A movement from the end of one lane to the start of another through a node.
 Outside green and amber a group is red. Permissive movements (e.g. left turns during the opposing
 green) carry `priority = signal` and list the opposing through connectors in `conflicts`; the
 simulation yields on conflicts even when green.
+
+## TransitLine
+
+One direction of a bus or trolleybus line (one OSM PTv2 route relation) mapped onto the links
+(ADR-0019). Readers that do not simulate public transport ignore the key; the sim core drops a
+line whose links are unknown or not joined by a connector open to buses, and a stop that is not on
+its line.
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `id` | string | e.g. `"t0"`; referenced by the `transit.headways` simulation config. |
+| `osmId` | number \| null | Route relation id. |
+| `ref`, `name` | string \| null | Line number and name (from the route, else its route master). |
+| `mode` | string | `bus` or `trolleybus`. |
+| `colour` | string \| null | OSM `colour`, e.g. `"#e2001a"`. |
+| `headway` | number \| null | Seconds between departures from OSM `interval` (route, else route master); null when not mapped (the simulation then uses its default). |
+| `links` | string[] | Connected link sequence in driving order: consecutive links share a node and a connector usable by buses. The first link starts at a boundary node (the line enters the area) or inside the network (the line starts there); likewise for the last link. |
+| `stops` | TransitStop[] | In driving order. |
+
+### TransitStop
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `id` | string | e.g. `"t0s3"`. |
+| `osmId` | number \| null | Stop position node, else the platform node. |
+| `name` | string \| null | |
+| `link` | string | Link of the line the stop lies on. |
+| `pos` | number | Distance along the link's `geometry` (m) where the bus front halts. |
+| `bay` | boolean | The bus pulls into a bay (OSM `bus_bay`) instead of blocking the kerb lane. |
 
 ## Example
 

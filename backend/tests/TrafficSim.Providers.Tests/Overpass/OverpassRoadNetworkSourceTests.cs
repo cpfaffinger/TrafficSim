@@ -72,7 +72,7 @@ public class OverpassRoadNetworkSourceTests
         Assert.Contains("(48.2000000,16.3600000,48.2050000,16.3700000)", query, StringComparison.Ordinal);
         Assert.Contains("motorway_link", query, StringComparison.Ordinal);
         Assert.Contains("[\"service\"!~", query, StringComparison.Ordinal);
-        Assert.EndsWith("(._;>;);out body qt;", query, StringComparison.Ordinal);
+        Assert.Contains("(._;>;);out body qt;", query, StringComparison.Ordinal);
     }
 
     [Fact]

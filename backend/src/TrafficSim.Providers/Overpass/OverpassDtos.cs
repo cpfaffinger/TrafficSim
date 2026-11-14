@@ -18,4 +18,10 @@ internal sealed record OverpassElement(
     [property: JsonPropertyName("lat")] double? Lat,
     [property: JsonPropertyName("lon")] double? Lon,
     [property: JsonPropertyName("nodes")] IReadOnlyList<long>? Nodes,
-    [property: JsonPropertyName("tags")] IReadOnlyDictionary<string, string>? Tags);
+    [property: JsonPropertyName("tags")] IReadOnlyDictionary<string, string>? Tags,
+    [property: JsonPropertyName("members")] IReadOnlyList<OverpassMember>? Members = null);
+
+internal sealed record OverpassMember(
+    [property: JsonPropertyName("type")] string? Type,
+    [property: JsonPropertyName("ref")] long Ref,
+    [property: JsonPropertyName("role")] string? Role);

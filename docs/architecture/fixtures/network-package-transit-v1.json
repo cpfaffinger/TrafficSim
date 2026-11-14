@@ -1,0 +1,332 @@
+{
+ "formatVersion": 1,
+ "baselineId": null,
+ "origin": {
+  "lat": 48.2,
+  "lon": 16.37
+ },
+ "bbox": [
+  16.369,
+  48.199,
+  16.379,
+  48.201
+ ],
+ "osmTimestamp": null,
+ "attribution": [
+  "© OpenStreetMap contributors (ODbL)"
+ ],
+ "nodes": [
+  {
+   "id": "A",
+   "osmId": null,
+   "x": 0,
+   "y": 0,
+   "z": 0,
+   "control": "boundary"
+  },
+  {
+   "id": "M",
+   "osmId": null,
+   "x": 300,
+   "y": 0,
+   "z": 0,
+   "control": "none"
+  },
+  {
+   "id": "B",
+   "osmId": null,
+   "x": 600,
+   "y": 0,
+   "z": 0,
+   "control": "boundary"
+  }
+ ],
+ "links": [
+  {
+   "id": "up",
+   "osmWayId": null,
+   "from": "A",
+   "to": "M",
+   "roadClass": "primary",
+   "name": "Corridor",
+   "layer": 0,
+   "structure": "none",
+   "roundabout": false,
+   "oppositeLink": null,
+   "throughTraffic": true,
+   "length": 300,
+   "speedLimit": 13.89,
+   "geometry": [
+    [
+     0,
+     0,
+     0
+    ],
+    [
+     300,
+     0,
+     0
+    ]
+   ],
+   "lanes": [
+    {
+     "id": "up:0",
+     "index": 0,
+     "width": 3.25,
+     "speedLimit": 13.89,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [],
+     "geometry": [
+      [
+       0,
+       -4.875,
+       0
+      ],
+      [
+       300,
+       -4.875,
+       0
+      ]
+     ],
+     "length": 300
+    },
+    {
+     "id": "up:1",
+     "index": 1,
+     "width": 3.25,
+     "speedLimit": 13.89,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [],
+     "geometry": [
+      [
+       0,
+       -1.625,
+       0
+      ],
+      [
+       300,
+       -1.625,
+       0
+      ]
+     ],
+     "length": 300
+    }
+   ],
+   "boundaries": [
+    {
+     "rightLane": 0,
+     "leftLane": 1,
+     "marking": "dashed",
+     "allowLeft": true,
+     "allowRight": true
+    }
+   ],
+   "leftEdge": "edge",
+   "noLaneChangeZone": 0,
+   "assumed": []
+  },
+  {
+   "id": "down",
+   "osmWayId": null,
+   "from": "M",
+   "to": "B",
+   "roadClass": "primary",
+   "name": "Corridor",
+   "layer": 0,
+   "structure": "none",
+   "roundabout": false,
+   "oppositeLink": null,
+   "throughTraffic": true,
+   "length": 300,
+   "speedLimit": 13.89,
+   "geometry": [
+    [
+     300,
+     0,
+     0
+    ],
+    [
+     600,
+     0,
+     0
+    ]
+   ],
+   "lanes": [
+    {
+     "id": "down:0",
+     "index": 0,
+     "width": 3.25,
+     "speedLimit": 13.89,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [],
+     "geometry": [
+      [
+       300,
+       -4.875,
+       0
+      ],
+      [
+       600,
+       -4.875,
+       0
+      ]
+     ],
+     "length": 300
+    },
+    {
+     "id": "down:1",
+     "index": 1,
+     "width": 3.25,
+     "speedLimit": 13.89,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [],
+     "geometry": [
+      [
+       300,
+       -1.625,
+       0
+      ],
+      [
+       600,
+       -1.625,
+       0
+      ]
+     ],
+     "length": 300
+    }
+   ],
+   "boundaries": [
+    {
+     "rightLane": 0,
+     "leftLane": 1,
+     "marking": "dashed",
+     "allowLeft": true,
+     "allowRight": true
+    }
+   ],
+   "leftEdge": "edge",
+   "noLaneChangeZone": 0,
+   "assumed": []
+  }
+ ],
+ "connectors": [
+  {
+   "id": "c0",
+   "node": "M",
+   "fromLink": "up",
+   "fromLane": 0,
+   "toLink": "down",
+   "toLane": 0,
+   "turn": "through",
+   "priority": "major",
+   "signalGroup": null,
+   "geometry": [
+    [
+     300,
+     -4.875,
+     0
+    ],
+    [
+     300.5,
+     -4.875,
+     0
+    ]
+   ],
+   "length": 0.5,
+   "conflicts": []
+  },
+  {
+   "id": "c1",
+   "node": "M",
+   "fromLink": "up",
+   "fromLane": 1,
+   "toLink": "down",
+   "toLane": 1,
+   "turn": "through",
+   "priority": "major",
+   "signalGroup": null,
+   "geometry": [
+    [
+     300,
+     -1.625,
+     0
+    ],
+    [
+     300.5,
+     -1.625,
+     0
+    ]
+   ],
+   "length": 0.5,
+   "conflicts": []
+  }
+ ],
+ "signals": [],
+ "stats": {
+  "nodes": 3,
+  "links": 2,
+  "lanes": 4,
+  "connectors": 2,
+  "signals": 0,
+  "ignoredSigns": 0,
+  "transitLines": 1,
+  "droppedTransitLines": 0
+ },
+ "transitLines": [
+  {
+   "id": "t0",
+   "osmId": 100,
+   "ref": "13A",
+   "name": "Bus 13A: West => East",
+   "mode": "bus",
+   "colour": "#e2001a",
+   "headway": 300,
+   "links": [
+    "up",
+    "down"
+   ],
+   "stops": [
+    {
+     "id": "t0s0",
+     "osmId": 11,
+     "name": "Kerb stop",
+     "link": "up",
+     "pos": 150,
+     "bay": false
+    },
+    {
+     "id": "t0s1",
+     "osmId": 12,
+     "name": "Bay stop",
+     "link": "down",
+     "pos": 200,
+     "bay": true
+    }
+   ]
+  }
+ ]
+}

@@ -598,7 +598,7 @@ impl Simulation {
 
     /// Inserts a pending vehicle at the start of `link` if a lane has a safe gap ahead (and,
     /// for links inside the network, behind towards vehicles arriving from upstream).
-    fn try_insert(&mut self, link: u32, p: &Pending) -> bool {
+    pub(super) fn try_insert(&mut self, link: u32, p: &Pending) -> bool {
         if p.frac > 0.0 {
             return self.try_insert_along(link, p);
         }

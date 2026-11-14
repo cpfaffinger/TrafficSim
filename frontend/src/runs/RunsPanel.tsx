@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import type { BatchJob, RunSummary, Scenario, ScenarioClient } from '../api/scenarioClient';
+import { TRANSIT_KPIS } from '../transit/kpis';
 import { aggregate, asSummary, formatStat, formatValue, RUN_KPIS } from './runStats';
 
 export type RunsApi = Pick<ScenarioClient, 'listRuns' | 'saveRun' | 'batchRunner' | 'startBatch' | 'getBatch'>;
@@ -136,6 +137,10 @@ export function RunsPanel({ api, scenario, seed, collectResults, onRunsChanged, 
   };
 
   const agg = aggregate(runs.map((r) => r.summary));
+  const transitAgg = aggregate(
+    runs.map((r) => r.summary),
+    TRANSIT_KPIS,
+  );
   const active = job !== null && (job.status === 'queued' || job.status === 'running');
 
   return (
@@ -175,6 +180,14 @@ export function RunsPanel({ api, scenario, seed, collectResults, onRunsChanged, 
                   <th scope="row">{k.label}</th>
                   <td>
                     {formatStat(agg.get(k.key) ?? null, k)} {k.unit}
+                  </td>
+                </tr>
+              ))}
+              {TRANSIT_KPIS.filter((k) => transitAgg.get(k.key)).map((k) => (
+                <tr key={k.key}>
+                  <th scope="row">{k.label}</th>
+                  <td>
+                    {formatStat(transitAgg.get(k.key) ?? null, k)} {k.unit}
                   </td>
                 </tr>
               ))}

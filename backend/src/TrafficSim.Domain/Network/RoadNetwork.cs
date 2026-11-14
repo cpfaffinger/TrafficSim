@@ -190,4 +190,10 @@ public sealed class RoadNetwork
 
     /// <summary>Terrain the network was compiled on (ADR-0018); null for flat networks.</summary>
     public TerrainGrid? Terrain { get; init; }
+
+    /// <summary>Public transport lines mapped onto the links (#85, ADR-0019).</summary>
+    public IReadOnlyList<TransitLine> TransitLines { get; set; } = [];
+
+    /// <summary>Bus routes in the area that could not be mapped onto the links (dropped, never failing the import).</summary>
+    public int DroppedTransitLines { get; set; }
 }

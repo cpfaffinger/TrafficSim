@@ -14,6 +14,20 @@ public sealed record OsmNode(long Id, GeoPoint Location, IReadOnlyDictionary<str
 /// <summary>An OSM way: ordered node references and tags.</summary>
 public sealed record OsmWay(long Id, IReadOnlyList<long> NodeIds, IReadOnlyDictionary<string, string> Tags);
 
+/// <summary>Type of an OSM relation member.</summary>
+public enum OsmMemberType
+{
+    Node,
+    Way,
+    Relation,
+}
+
+/// <summary>A member reference of an OSM relation with its role (e.g. <c>stop</c>, <c>platform</c>, empty).</summary>
+public sealed record OsmMember(OsmMemberType Type, long Ref, string Role);
+
+/// <summary>An OSM relation (public transport routes, #85): ordered members and tags.</summary>
+public sealed record OsmRelation(long Id, IReadOnlyList<OsmMember> Members, IReadOnlyDictionary<string, string> Tags);
+
 /// <summary>Helpers for OSM tag dictionaries.</summary>
 public static class OsmTags
 {
@@ -32,7 +46,7 @@ public static class OsmTags
 /// </summary>
 public sealed class OsmDataSet
 {
-    public OsmDataSet(IEnumerable<OsmNode> nodes, IEnumerable<OsmWay> ways, DateTimeOffset? dataTimestamp = null)
+    public OsmDataSet(IEnumerable<OsmNode> nodes, IEnumerable<OsmWay> ways, DateTimeOffset? dataTimestamp = null, IEnumerable<OsmRelation>? relations = null)
     {
         ArgumentNullException.ThrowIfNull(nodes);
         ArgumentNullException.ThrowIfNull(ways);
@@ -48,11 +62,18 @@ public sealed class OsmDataSet
             .Where(w => w.NodeIds.Count >= 2)
             .ToList();
         DataTimestamp = dataTimestamp;
+        Relations = relations?.ToList() ?? [];
     }
 
     public IReadOnlyDictionary<long, OsmNode> Nodes { get; }
 
     public IReadOnlyList<OsmWay> Ways { get; }
+
+    /// <summary>
+    /// Relations delivered with the roads (bus and trolleybus routes and their route masters, #85).
+    /// Members may reference elements outside the data set (routes leave the area).
+    /// </summary>
+    public IReadOnlyList<OsmRelation> Relations { get; }
 
     /// <summary>OSM replication timestamp of the data, when the source reports it.</summary>
     public DateTimeOffset? DataTimestamp { get; }

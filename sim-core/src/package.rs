@@ -24,6 +24,9 @@ pub struct Package {
     pub connectors: Vec<Connector>,
     #[serde(default)]
     pub signals: Vec<SignalController>,
+    /// Public transport lines (#85), optional.
+    #[serde(default)]
+    pub transit_lines: Vec<crate::transit::TransitLineDto>,
 }
 
 impl Package {

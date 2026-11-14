@@ -204,6 +204,34 @@ export interface NetworkPackage {
   connectors: Connector[];
   signals: SignalController[];
   stats: PackageStats;
+  /** Public transport lines (#85); absent when the area has none. */
+  transitLines?: TransitLine[];
+}
+
+/** A stop of a transit line (#85). */
+export interface TransitStop {
+  id: string;
+  osmId: number | null;
+  name: string | null;
+  /** Link of the line the stop lies on and the distance along it (m). */
+  link: string;
+  pos: number;
+  /** The bus pulls into a bay instead of blocking the kerb lane. */
+  bay: boolean;
+}
+
+/** One direction of a bus line mapped onto the links (#85, ADR-0019). */
+export interface TransitLine {
+  id: string;
+  osmId: number | null;
+  ref: string | null;
+  name: string | null;
+  mode: string;
+  colour: string | null;
+  /** Headway (s) from OSM `interval`; null when not mapped. */
+  headway: number | null;
+  links: string[];
+  stops: TransitStop[];
 }
 
 export const END_SIGNS = ['none', 'stop', 'give_way', 'priority_road'] as const;

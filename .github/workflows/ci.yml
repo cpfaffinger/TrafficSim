@@ -10,9 +10,11 @@ on:
 permissions:
   contents: read
 
+# Superseded PR runs are cancelled. Runs on main are never cancelled: path filters compare each
+# push with its predecessor, so a cancelled run would leave that commit's changes untested.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   WASM_BINDGEN_VERSION: 0.2.130

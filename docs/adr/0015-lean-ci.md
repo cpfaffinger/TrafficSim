@@ -13,7 +13,7 @@ runners are billed. The project must not cause CI costs (C-34).
 - Use **only standard runners** (`ubuntu-latest`). No larger runners, no macOS/Windows runners.
 - **One workflow** (`ci.yml`) with one job per area (backend, sim-core, frontend), each gated by a
   **path filter**, plus a Docker build check that only runs when build-relevant files change on `main`.
-- `concurrency` with `cancel-in-progress: true` per ref; dependency caching (NuGet, cargo, npm).
+- `concurrency` cancels superseded PR runs (never runs on `main`, so no commit stays untested); dependency caching (NuGet, cargo, npm).
 - **No scheduled workflows**, no OS/version matrices.
 - **Deployment costs no Actions minutes and needs no secrets in GitHub**: continuous deployment is
   *pull-based*. A systemd timer on the staging host polls `main` (`git ls-remote`) every minute and

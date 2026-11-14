@@ -237,7 +237,7 @@ pub struct SignalGroup {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testnet::FIXTURE;
+    use crate::synth::FIXTURE;
 
     #[test]
     fn parses_the_golden_fixture() {

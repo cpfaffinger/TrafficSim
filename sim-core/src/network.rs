@@ -658,7 +658,7 @@ fn lane_geometries_end(net: &Network, lane: u32) -> (Point, Point) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testnet::{FIXTURE, NetBuilder, fixture_network, fixture_package};
+    use crate::synth::{FIXTURE, NetBuilder, fixture_network, fixture_package};
 
     fn fixture() -> Network {
         fixture_network()

@@ -197,7 +197,7 @@ impl NetworkSim {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testnet::FIXTURE;
+    use crate::synth::FIXTURE;
 
     #[test]
     fn network_sim_exposes_the_simulation() {

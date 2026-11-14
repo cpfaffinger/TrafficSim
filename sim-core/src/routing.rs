@@ -202,7 +202,7 @@ impl Router {
 mod tests {
     use super::*;
     use crate::package::{NodeControl, Priority, VehicleClassDto};
-    use crate::testnet::{NetBuilder, fixture_network};
+    use crate::synth::{NetBuilder, fixture_network};
 
     fn ids(net: &Network, route: &[u32]) -> Vec<String> {
         route.iter().map(|&l| net.links[l as usize].id.clone()).collect()

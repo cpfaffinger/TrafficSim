@@ -14,11 +14,9 @@ pub mod rng;
 pub mod routing;
 pub mod signals;
 pub mod sim;
+pub mod synth;
 pub mod vehicle;
 pub mod wasm;
-
-#[cfg(test)]
-pub(crate) mod testnet;
 
 pub use idm::IdmParams;
 pub use network::{Network, NetworkError};

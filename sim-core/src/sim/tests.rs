@@ -1,7 +1,7 @@
 use super::junction::Decision;
 use super::*;
 use crate::package::{NodeControl, Priority};
-use crate::testnet::{
+use crate::synth::{
     FIXTURE, NetBuilder, corridor, crossroads, fixture_network, grid, roundabout, t_junction,
 };
 

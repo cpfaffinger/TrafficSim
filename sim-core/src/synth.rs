@@ -1,5 +1,6 @@
-//! Test support: the golden fixture and a builder for small synthetic networks that follow the
-//! network package v1 spec (straight lanes, Bézier connectors, explicit conflicts).
+//! Synthetic networks for tests, benchmarks and the batch runner: the golden fixture and a
+//! builder for small networks that follow the network package v1 spec (straight lanes, Bézier
+//! connectors, explicit conflicts).
 
 use crate::network::Network;
 use crate::package::{

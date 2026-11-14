@@ -575,3 +575,10 @@ dl.stats dd {
     flex-wrap: wrap;
   }
 }
+
+/* Phones: the empty-inspector hint would cover a large part of the small map. */
+@media (max-width: 760px) {
+  .inspector-empty {
+    display: none;
+  }
+}

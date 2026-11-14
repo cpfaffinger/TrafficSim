@@ -9,7 +9,7 @@ export interface InspectorPanelProps {
 export function InspectorPanel({ model, onClose }: InspectorPanelProps) {
   if (!model) {
     return (
-      <section className="inspector" aria-label="Inspector">
+      <section className="inspector inspector-empty" aria-label="Inspector">
         <p className="muted">Click a lane, junction or bridge to inspect it. Click the same spot again to select what lies below.</p>
       </section>
     );

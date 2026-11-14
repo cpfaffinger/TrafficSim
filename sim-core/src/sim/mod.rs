@@ -23,6 +23,7 @@ use serde::Serialize;
 
 use crate::config::SimConfig;
 use crate::detmath;
+use crate::driver::Fleet;
 use crate::idm::MAX_EMERGENCY_DECELERATION;
 use crate::network::{NONE, Network};
 use crate::rng::Pcg32;
@@ -197,6 +198,7 @@ pub struct Simulation {
     route_cache: BTreeMap<(u32, u32, u8), u32>,
     dest_cache: BTreeMap<(u32, u8), Vec<(u32, f64)>>,
     counters: Counters,
+    fleet: Fleet,
     scratch_acc: Vec<f64>,
     log_events: bool,
     lane_change_log: Vec<LaneChangeEvent>,
@@ -227,6 +229,7 @@ impl Simulation {
 
     pub fn new(net: Network, config: SimConfig, seed: u64) -> Result<Self, String> {
         config.validate()?;
+        let fleet = config.fleet()?;
         let mut by_node: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
         for link in net.entry_links() {
             by_node
@@ -283,6 +286,7 @@ impl Simulation {
             route_cache: BTreeMap::new(),
             dest_cache: BTreeMap::new(),
             counters: Counters::default(),
+            fleet,
             scratch_acc: Vec::new(),
             log_events: false,
             lane_change_log: Vec::new(),
@@ -297,6 +301,11 @@ impl Simulation {
 
     pub fn config(&self) -> &SimConfig {
         &self.config
+    }
+
+    /// Vehicle types and driver profiles of this run.
+    pub fn fleet(&self) -> &Fleet {
+        &self.fleet
     }
 
     pub fn time(&self) -> f64 {
@@ -556,14 +565,10 @@ impl Simulation {
     /// from the source's own RNG stream.
     fn generate(&mut self, si: usize) {
         let mut rng = self.sources[si].rng.clone();
-        let u = rng.next_f64();
-        let class = self
-            .config
-            .class_cdf()
-            .iter()
-            .find(|(_, cum)| u < *cum)
-            .map_or(VehicleClass::Car, |(c, _)| *c);
-        let params = VehicleParams::sample(class, self.config.heterogeneity, &mut rng);
+        let params = self
+            .fleet
+            .sample(&self.fleet.types, &self.fleet.drivers, &mut rng);
+        let class = params.class;
         let links = &self.sources[si].links;
         let link = if links.len() == 1 {
             links[0]

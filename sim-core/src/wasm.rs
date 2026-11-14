@@ -192,6 +192,30 @@ impl NetworkSim {
     pub fn state_checksum(&self) -> String {
         format!("{:016x}", self.sim.state_checksum())
     }
+
+    /// Vehicle type catalogue of this run (built-in types plus `vehicleTypes` overrides) as JSON.
+    #[wasm_bindgen(js_name = vehicleTypesJson)]
+    pub fn vehicle_types_json(&self) -> String {
+        self.sim.fleet().catalogue.to_json()
+    }
+
+    /// Driver profiles of this run (built-in plus `driverProfiles` overrides) as JSON.
+    #[wasm_bindgen(js_name = driverProfilesJson)]
+    pub fn driver_profiles_json(&self) -> String {
+        self.sim.fleet().profiles.to_json()
+    }
+}
+
+/// The built-in vehicle type catalogue as JSON (`{name: type}`), e.g. for a demand editor.
+#[wasm_bindgen(js_name = builtinVehicleTypesJson)]
+pub fn builtin_vehicle_types_json() -> String {
+    crate::vehicle::VehicleCatalogue::builtin().to_json()
+}
+
+/// The built-in driver profiles as JSON (`{name: profile}`).
+#[wasm_bindgen(js_name = builtinDriverProfilesJson)]
+pub fn builtin_driver_profiles_json() -> String {
+    crate::driver::DriverProfiles::builtin().to_json()
 }
 
 #[cfg(test)]
@@ -232,6 +256,10 @@ mod tests {
             .unwrap();
         reference.step(300);
         assert_eq!(reference.state_checksum(), again);
+        assert!(sim.vehicle_types_json().contains("\"articulatedTruck\""));
+        assert!(sim.driver_profiles_json().contains("\"distracted\""));
+        assert_eq!(builtin_vehicle_types_json(), sim.vehicle_types_json());
+        assert_eq!(builtin_driver_profiles_json(), sim.driver_profiles_json());
     }
 
     #[test]

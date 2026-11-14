@@ -6,6 +6,7 @@
 
 pub mod config;
 pub mod detmath;
+pub mod driver;
 pub mod idm;
 pub mod network;
 pub mod package;

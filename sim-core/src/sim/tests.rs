@@ -401,6 +401,37 @@ fn vehicle_mix_and_heterogeneity_shape_the_fleet() {
 }
 
 #[test]
+fn vehicle_types_and_driver_profiles_come_from_the_config() {
+    let config = SimConfig::from_json(
+        r#"{"defaultDemand": 900,
+            "vehicleMix": {"car": 2, "articulatedTruck": 1, "minibus": 1},
+            "vehicleTypes": {"minibus": {"class": "bus", "length": 7.5}},
+            "driverMix": {"aggressive": 1, "distracted": 1}}"#,
+    )
+    .unwrap();
+    let mut s = Simulation::new(fixture_network(), config, 4).unwrap();
+    run_checked(&mut s, 1500);
+    let fleet = s.fleet();
+    let types: std::collections::BTreeSet<&str> = s
+        .vehicles()
+        .iter()
+        .map(|v| fleet.catalogue.name(v.params.vehicle_type))
+        .collect();
+    assert_eq!(types, ["articulatedTruck", "car", "minibus"].into());
+    for v in s.vehicles() {
+        let name = fleet.catalogue.name(v.params.vehicle_type);
+        let expected = fleet.catalogue.get(v.params.vehicle_type);
+        assert_eq!(v.params.length, expected.length, "{name}");
+        assert_eq!(v.params.class, expected.class);
+        let profile = fleet.profiles.name(v.params.driver_profile);
+        assert!(profile == "aggressive" || profile == "distracted");
+        if profile == "distracted" {
+            assert!(v.params.lapse_rate > 0.0);
+        }
+    }
+}
+
+#[test]
 fn entries_without_reachable_exits_count_as_unroutable() {
     let mut b = NetBuilder::new();
     b.node("A", 0.0, 0.0, NodeControl::Boundary)

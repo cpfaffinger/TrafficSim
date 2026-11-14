@@ -4,7 +4,8 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::vehicle::VehicleClass;
+use crate::driver::{DriverProfilePatch, Fleet};
+use crate::vehicle::VehicleTypePatch;
 
 /// Gap acceptance at junctions (#45). Critical gaps are the minimum time (s) between the
 /// moment the yielding vehicle reaches its stop line and the arrival of the next prioritised
@@ -78,14 +79,22 @@ pub struct SimConfig {
     pub demand: BTreeMap<String, f64>,
     /// Relative destination weight per exit node id (default 1).
     pub destination_weights: BTreeMap<String, f64>,
-    /// Vehicle class shares (`car`, `van`, `truck`, `bus`, `motorcycle`); default 100 % cars.
+    /// Vehicle type shares (catalogue names, e.g. `car`, `truck`, `articulatedTruck`);
+    /// default 100 % cars.
     pub vehicle_mix: BTreeMap<String, f64>,
-    /// Relative spread of desired speed, headway and acceleration (0 to 0.5).
+    /// Relative spread of desired speed, headway and acceleration (0 to 0.5) for vehicles
+    /// without a driver profile (empty `driverMix`).
     pub heterogeneity: f64,
     /// Vehicles are not inserted while this many are active (they queue at their entry).
     pub max_vehicles: u32,
     pub junction: JunctionConfig,
     pub lane_change: LaneChangeConfig,
+    /// Overrides and additions to the vehicle type catalogue (#50).
+    pub vehicle_types: BTreeMap<String, VehicleTypePatch>,
+    /// Overrides and additions to the driver profiles (#51).
+    pub driver_profiles: BTreeMap<String, DriverProfilePatch>,
+    /// Driver profile shares; empty = legacy average drivers (`heterogeneity` spread).
+    pub driver_mix: BTreeMap<String, f64>,
 }
 
 impl Default for SimConfig {
@@ -100,6 +109,9 @@ impl Default for SimConfig {
             max_vehicles: 100_000,
             junction: JunctionConfig::default(),
             lane_change: LaneChangeConfig::default(),
+            vehicle_types: BTreeMap::new(),
+            driver_profiles: BTreeMap::new(),
+            driver_mix: BTreeMap::new(),
         }
     }
 }
@@ -127,20 +139,10 @@ impl SimConfig {
         if !self.destination_weights.values().all(|&v| rate_ok(v)) {
             return Err("destination weights must be finite and non-negative".into());
         }
-        for (class, &share) in &self.vehicle_mix {
-            if VehicleClass::from_name(class).is_none() {
-                return Err(format!("unknown vehicle class '{class}' in vehicleMix"));
-            }
-            if !rate_ok(share) {
-                return Err("vehicle mix shares must be finite and non-negative".into());
-            }
-        }
-        if !self.vehicle_mix.is_empty() && self.vehicle_mix.values().sum::<f64>() <= 0.0 {
-            return Err("vehicle mix shares must not all be zero".into());
-        }
         if !(0.0..=0.5).contains(&self.heterogeneity) {
             return Err("heterogeneity must be between 0 and 0.5".into());
         }
+        self.fleet()?;
         let j = &self.junction;
         let times = [
             j.critical_gap_minor,
@@ -164,24 +166,15 @@ impl SimConfig {
         Ok(())
     }
 
-    /// Cumulative class distribution in [`VehicleClass::ALL`] order.
-    pub(crate) fn class_cdf(&self) -> [(VehicleClass, f64); 5] {
-        let share = |c: VehicleClass| {
-            if self.vehicle_mix.is_empty() {
-                if c == VehicleClass::Car { 1.0 } else { 0.0 }
-            } else {
-                self.vehicle_mix
-                    .iter()
-                    .find(|(k, _)| VehicleClass::from_name(k) == Some(c))
-                    .map_or(0.0, |(_, &v)| v)
-            }
-        };
-        let total: f64 = VehicleClass::ALL.iter().map(|&c| share(c)).sum();
-        let mut acc = 0.0;
-        VehicleClass::ALL.map(|c| {
-            acc += share(c) / total;
-            (c, acc)
-        })
+    /// Vehicle types, driver profiles and the default mixes.
+    pub fn fleet(&self) -> Result<Fleet, String> {
+        Fleet::new(
+            &self.vehicle_types,
+            &self.driver_profiles,
+            &self.vehicle_mix,
+            &self.driver_mix,
+            self.heterogeneity,
+        )
     }
 }
 
@@ -218,6 +211,12 @@ mod tests {
             (r#"{"heterogeneity": 0.9}"#, "heterogeneity"),
             (r#"{"junction": {"maxWait": -1}}"#, "non-negative"),
             (r#"{"laneChange": {"interval": 0}}"#, "interval"),
+            (r#"{"driverMix": {"sleepy": 1}}"#, "unknown driver profile"),
+            (r#"{"vehicleTypes": {"tram": {"length": 30}}}"#, "needs a class"),
+            (
+                r#"{"driverProfiles": {"x": {"reactionTime": 9}}}"#,
+                "invalid parameters",
+            ),
         ] {
             let e = SimConfig::from_json(json).unwrap_err();
             assert!(e.contains(needle), "{json}: {e}");
@@ -225,14 +224,19 @@ mod tests {
     }
 
     #[test]
-    fn class_distribution_is_cumulative() {
-        let cdf = SimConfig::default().class_cdf();
-        assert_eq!(cdf[0], (VehicleClass::Car, 1.0));
-        let c = SimConfig::from_json(r#"{"vehicleMix": {"car": 3, "truck": 1}}"#).unwrap();
-        let cdf = c.class_cdf();
-        assert_eq!(cdf[0].1, 0.75);
-        assert_eq!(cdf[1].1, 0.75);
-        assert_eq!(cdf[2], (VehicleClass::Truck, 1.0));
-        assert_eq!(cdf[4].1, 1.0);
+    fn fleet_uses_types_profiles_and_mixes() {
+        let c = SimConfig::from_json(
+            r#"{"vehicleMix": {"car": 3, "minibus": 1},
+                "vehicleTypes": {"minibus": {"class": "bus", "length": 7}},
+                "driverMix": {"average": 1, "aggressive": 1}}"#,
+        )
+        .unwrap();
+        let f = c.fleet().unwrap();
+        assert_eq!(f.catalogue.len(), 7);
+        assert_eq!(f.types.last().unwrap().1, 1.0);
+        assert_eq!(f.drivers.len(), 2);
+        let f = SimConfig::default().fleet().unwrap();
+        assert!(f.drivers.is_empty());
+        assert_eq!(f.types[0], (0, 1.0), "cars only by default");
     }
 }

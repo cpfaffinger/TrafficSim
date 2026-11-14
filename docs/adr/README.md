@@ -22,3 +22,4 @@ number, open a PR. Superseded ADRs stay in place with their status updated.
 | [0014](0014-licensing.md) | Licensing: MIT for code, ODbL attribution for data | Accepted |
 | [0015](0015-lean-ci.md) | Lean, cost-free CI on GitHub Actions | Accepted |
 | [0016](0016-roundabouts-grade-separation-lane-markings.md) | Roundabouts, grade separation and lane markings in the network model | Accepted |
+| [0017](0017-webgpu-evaluation.md) | Stay on WebGL2, prepare for Three.js WebGPURenderer | Accepted |

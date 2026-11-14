@@ -1,0 +1,1366 @@
+{
+  "morning": {
+    "startTimeOfDay": 23400,
+    "autoEntries": true,
+    "vehicleMix": {
+      "car": 0.85,
+      "van": 0.07,
+      "truck": 0.03,
+      "articulatedTruck": 0.02,
+      "motorcycle": 0.03
+    },
+    "driverMix": {
+      "average": 5,
+      "attentive": 2,
+      "commuter": 3,
+      "distracted": 1,
+      "aggressive": 1
+    },
+    "autoZones": false,
+    "zones": [
+      {
+        "id": "z-1_-1",
+        "links": [
+          "l1"
+        ]
+      },
+      {
+        "id": "z-1_0",
+        "links": [
+          "l1",
+          "l5"
+        ]
+      },
+      {
+        "id": "z0_-1",
+        "links": [
+          "l2"
+        ]
+      },
+      {
+        "id": "z0_0",
+        "links": [
+          "l2",
+          "l5"
+        ]
+      },
+      {
+        "id": "ext",
+        "nodes": [
+          "n1",
+          "n2",
+          "n3",
+          "n4",
+          "n5",
+          "n6",
+          "n7",
+          "n8"
+        ]
+      }
+    ],
+    "od": [
+      {
+        "from": "z-1_-1",
+        "to": "ext",
+        "vph": 2.69,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z-1_-1",
+        "to": "z0_-1",
+        "vph": 0.28,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z-1_0",
+        "to": "ext",
+        "vph": 1.9,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z-1_0",
+        "to": "z0_-1",
+        "vph": 0.21,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z-1_-1",
+        "to": "ext",
+        "vph": 0.54,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z-1_0",
+        "to": "ext",
+        "vph": 0.38,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "ext",
+        "to": "z-1_0",
+        "vph": 2.24,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "ext",
+        "to": "z0_-1",
+        "vph": 15.96,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "ext",
+        "to": "z0_0",
+        "vph": 8.78,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "ext",
+        "to": "z0_-1",
+        "vph": 0.7,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      },
+      {
+        "from": "z0_-1",
+        "to": "ext",
+        "vph": 0.7,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      },
+      {
+        "from": "ext",
+        "to": "z0_0",
+        "vph": 0.5,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      },
+      {
+        "from": "z0_0",
+        "to": "ext",
+        "vph": 0.5,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      }
+    ]
+  },
+  "midday": {
+    "startTimeOfDay": 39600,
+    "autoEntries": true,
+    "vehicleMix": {
+      "car": 0.85,
+      "van": 0.07,
+      "truck": 0.03,
+      "articulatedTruck": 0.02,
+      "motorcycle": 0.03
+    },
+    "driverMix": {
+      "average": 5,
+      "attentive": 2,
+      "commuter": 1,
+      "distracted": 1,
+      "aggressive": 1
+    },
+    "autoZones": false,
+    "zones": [
+      {
+        "id": "z-1_-1",
+        "links": [
+          "l1"
+        ]
+      },
+      {
+        "id": "z-1_0",
+        "links": [
+          "l1",
+          "l5"
+        ]
+      },
+      {
+        "id": "z0_-1",
+        "links": [
+          "l2"
+        ]
+      },
+      {
+        "id": "z0_0",
+        "links": [
+          "l2",
+          "l5"
+        ]
+      },
+      {
+        "id": "ext",
+        "nodes": [
+          "n1",
+          "n2",
+          "n3",
+          "n4",
+          "n5",
+          "n6",
+          "n7",
+          "n8"
+        ]
+      }
+    ],
+    "od": [
+      {
+        "from": "z-1_-1",
+        "to": "ext",
+        "vph": 0.4,
+        "curve": "flat"
+      },
+      {
+        "from": "z-1_0",
+        "to": "ext",
+        "vph": 0.29,
+        "curve": "flat"
+      },
+      {
+        "from": "z-1_0",
+        "to": "ext",
+        "vph": 0.45,
+        "curve": "flat"
+      },
+      {
+        "from": "z0_-1",
+        "to": "ext",
+        "vph": 3.19,
+        "curve": "flat"
+      },
+      {
+        "from": "z0_-1",
+        "to": "z0_0",
+        "vph": 0.31,
+        "curve": "flat"
+      },
+      {
+        "from": "z0_0",
+        "to": "ext",
+        "vph": 1.76,
+        "curve": "flat"
+      },
+      {
+        "from": "z0_0",
+        "to": "z0_-1",
+        "vph": 0.24,
+        "curve": "flat"
+      },
+      {
+        "from": "z-1_0",
+        "to": "ext",
+        "vph": 0.22,
+        "curve": "flat"
+      },
+      {
+        "from": "z0_-1",
+        "to": "ext",
+        "vph": 1.6,
+        "curve": "flat"
+      },
+      {
+        "from": "z0_-1",
+        "to": "z0_0",
+        "vph": 0.28,
+        "curve": "flat"
+      },
+      {
+        "from": "z0_0",
+        "to": "ext",
+        "vph": 0.88,
+        "curve": "flat"
+      },
+      {
+        "from": "ext",
+        "to": "z0_-1",
+        "vph": 1.4,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      },
+      {
+        "from": "z0_-1",
+        "to": "ext",
+        "vph": 1.4,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      },
+      {
+        "from": "ext",
+        "to": "z0_0",
+        "vph": 1,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      },
+      {
+        "from": "z0_0",
+        "to": "ext",
+        "vph": 1,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      }
+    ]
+  },
+  "evening": {
+    "startTimeOfDay": 55800,
+    "autoEntries": true,
+    "vehicleMix": {
+      "car": 0.85,
+      "van": 0.07,
+      "truck": 0.03,
+      "articulatedTruck": 0.02,
+      "motorcycle": 0.03
+    },
+    "driverMix": {
+      "average": 5,
+      "attentive": 2,
+      "commuter": 3,
+      "distracted": 1,
+      "aggressive": 1
+    },
+    "autoZones": false,
+    "zones": [
+      {
+        "id": "z-1_-1",
+        "links": [
+          "l1"
+        ]
+      },
+      {
+        "id": "z-1_0",
+        "links": [
+          "l1",
+          "l5"
+        ]
+      },
+      {
+        "id": "z0_-1",
+        "links": [
+          "l2"
+        ]
+      },
+      {
+        "id": "z0_0",
+        "links": [
+          "l2",
+          "l5"
+        ]
+      },
+      {
+        "id": "ext",
+        "nodes": [
+          "n1",
+          "n2",
+          "n3",
+          "n4",
+          "n5",
+          "n6",
+          "n7",
+          "n8"
+        ]
+      }
+    ],
+    "od": [
+      {
+        "from": "z-1_0",
+        "to": "ext",
+        "vph": 2.24,
+        "curve": "eveningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z-1_0",
+        "to": "z-1_-1",
+        "vph": 0.32,
+        "curve": "eveningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z0_-1",
+        "to": "ext",
+        "vph": 15.96,
+        "curve": "eveningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z0_-1",
+        "to": "z-1_-1",
+        "vph": 1.63,
+        "curve": "eveningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z0_-1",
+        "to": "z-1_0",
+        "vph": 1.19,
+        "curve": "eveningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z0_0",
+        "to": "ext",
+        "vph": 8.78,
+        "curve": "eveningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z0_0",
+        "to": "z-1_-1",
+        "vph": 0.89,
+        "curve": "eveningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z0_0",
+        "to": "z-1_0",
+        "vph": 0.66,
+        "curve": "eveningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z-1_-1",
+        "to": "ext",
+        "vph": 0.4,
+        "curve": "eveningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z-1_0",
+        "to": "ext",
+        "vph": 0.29,
+        "curve": "eveningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "ext",
+        "to": "z-1_-1",
+        "vph": 2.69,
+        "curve": "eveningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "ext",
+        "to": "z-1_0",
+        "vph": 1.9,
+        "curve": "eveningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "ext",
+        "to": "z0_-1",
+        "vph": 0.52,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      },
+      {
+        "from": "z0_-1",
+        "to": "ext",
+        "vph": 0.52,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      },
+      {
+        "from": "ext",
+        "to": "z0_0",
+        "vph": 0.38,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      },
+      {
+        "from": "z0_0",
+        "to": "ext",
+        "vph": 0.38,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      }
+    ]
+  },
+  "saturday": {
+    "startTimeOfDay": 36000,
+    "autoEntries": true,
+    "vehicleMix": {
+      "car": 0.85,
+      "van": 0.07,
+      "truck": 0.03,
+      "articulatedTruck": 0.02,
+      "motorcycle": 0.03
+    },
+    "driverMix": {
+      "average": 5,
+      "attentive": 2,
+      "commuter": 1,
+      "distracted": 1,
+      "aggressive": 1
+    },
+    "demandCurve": "flat",
+    "profiles": {
+      "motorway": {
+        "volumePerLane": 840,
+        "curve": "flat"
+      },
+      "trunk": {
+        "volumePerLane": 600,
+        "curve": "flat"
+      },
+      "motorway_link": {
+        "volumePerLane": 360,
+        "curve": "flat"
+      },
+      "primary": {
+        "volumePerLane": 360,
+        "curve": "flat"
+      },
+      "trunk_link": {
+        "volumePerLane": 240,
+        "curve": "flat"
+      },
+      "secondary": {
+        "volumePerLane": 240,
+        "curve": "flat"
+      },
+      "primary_link": {
+        "volumePerLane": 180,
+        "curve": "flat"
+      },
+      "tertiary": {
+        "volumePerLane": 150,
+        "curve": "flat"
+      },
+      "secondary_link": {
+        "volumePerLane": 120,
+        "curve": "flat"
+      },
+      "road": {
+        "volumePerLane": 90,
+        "curve": "flat"
+      },
+      "tertiary_link": {
+        "volumePerLane": 90,
+        "curve": "flat"
+      },
+      "unclassified": {
+        "volumePerLane": 72,
+        "curve": "flat"
+      },
+      "residential": {
+        "volumePerLane": 36,
+        "curve": "flat"
+      },
+      "service": {
+        "volumePerLane": 18,
+        "curve": "flat"
+      },
+      "busway": {
+        "volumePerLane": 18,
+        "curve": "flat"
+      },
+      "living_street": {
+        "volumePerLane": 12,
+        "curve": "flat"
+      }
+    },
+    "autoZones": false,
+    "zones": [
+      {
+        "id": "z-1_-1",
+        "links": [
+          "l1"
+        ]
+      },
+      {
+        "id": "z-1_0",
+        "links": [
+          "l1",
+          "l5"
+        ]
+      },
+      {
+        "id": "ext",
+        "nodes": [
+          "n1",
+          "n2",
+          "n3",
+          "n4",
+          "n5",
+          "n6",
+          "n7",
+          "n8"
+        ]
+      }
+    ],
+    "od": [
+      {
+        "from": "z-1_-1",
+        "to": "ext",
+        "vph": 0.94,
+        "curve": "flat"
+      },
+      {
+        "from": "z-1_0",
+        "to": "ext",
+        "vph": 0.67,
+        "curve": "flat"
+      },
+      {
+        "from": "z-1_-1",
+        "to": "ext",
+        "vph": 0.2,
+        "curve": "flat"
+      }
+    ]
+  },
+  "night": {
+    "startTimeOfDay": 79200,
+    "autoEntries": true,
+    "vehicleMix": {
+      "car": 0.85,
+      "van": 0.07,
+      "truck": 0.03,
+      "articulatedTruck": 0.02,
+      "motorcycle": 0.03
+    },
+    "driverMix": {
+      "average": 5,
+      "attentive": 2,
+      "commuter": 1,
+      "distracted": 1,
+      "aggressive": 1
+    },
+    "autoZones": false,
+    "zones": [
+      {
+        "id": "z-1_0",
+        "links": [
+          "l1",
+          "l5"
+        ]
+      },
+      {
+        "id": "z0_-1",
+        "links": [
+          "l2"
+        ]
+      },
+      {
+        "id": "z0_0",
+        "links": [
+          "l2",
+          "l5"
+        ]
+      },
+      {
+        "id": "ext",
+        "nodes": [
+          "n1",
+          "n2",
+          "n3",
+          "n4",
+          "n5",
+          "n6",
+          "n7",
+          "n8"
+        ]
+      }
+    ],
+    "od": [
+      {
+        "from": "z-1_0",
+        "to": "ext",
+        "vph": 0.22,
+        "curve": "flat"
+      },
+      {
+        "from": "z0_-1",
+        "to": "ext",
+        "vph": 1.6,
+        "curve": "flat"
+      },
+      {
+        "from": "z0_0",
+        "to": "ext",
+        "vph": 0.88,
+        "curve": "flat"
+      }
+    ]
+  },
+  "stress": {
+    "startTimeOfDay": 23400,
+    "autoEntries": true,
+    "vehicleMix": {
+      "car": 0.85,
+      "van": 0.07,
+      "truck": 0.03,
+      "articulatedTruck": 0.02,
+      "motorcycle": 0.03
+    },
+    "driverMix": {
+      "average": 5,
+      "attentive": 2,
+      "commuter": 3,
+      "distracted": 1,
+      "aggressive": 1
+    },
+    "profiles": {
+      "motorway": {
+        "volumePerLane": 1820,
+        "curve": "weekday"
+      },
+      "trunk": {
+        "volumePerLane": 1300,
+        "curve": "weekday"
+      },
+      "motorway_link": {
+        "volumePerLane": 780,
+        "curve": "weekday"
+      },
+      "primary": {
+        "volumePerLane": 780,
+        "curve": "weekday"
+      },
+      "trunk_link": {
+        "volumePerLane": 520,
+        "curve": "weekday"
+      },
+      "secondary": {
+        "volumePerLane": 520,
+        "curve": "weekday"
+      },
+      "primary_link": {
+        "volumePerLane": 390,
+        "curve": "weekday"
+      },
+      "tertiary": {
+        "volumePerLane": 325,
+        "curve": "weekday"
+      },
+      "secondary_link": {
+        "volumePerLane": 260,
+        "curve": "weekday"
+      },
+      "road": {
+        "volumePerLane": 195,
+        "curve": "weekday"
+      },
+      "tertiary_link": {
+        "volumePerLane": 195,
+        "curve": "weekday"
+      },
+      "unclassified": {
+        "volumePerLane": 156,
+        "curve": "weekday"
+      },
+      "residential": {
+        "volumePerLane": 78,
+        "curve": "weekday"
+      },
+      "service": {
+        "volumePerLane": 39,
+        "curve": "weekday"
+      },
+      "busway": {
+        "volumePerLane": 39,
+        "curve": "weekday"
+      },
+      "living_street": {
+        "volumePerLane": 26,
+        "curve": "weekday"
+      }
+    },
+    "autoZones": false,
+    "zones": [
+      {
+        "id": "z-1_-1",
+        "links": [
+          "l1"
+        ]
+      },
+      {
+        "id": "z-1_0",
+        "links": [
+          "l1",
+          "l5"
+        ]
+      },
+      {
+        "id": "z0_-1",
+        "links": [
+          "l2"
+        ]
+      },
+      {
+        "id": "z0_0",
+        "links": [
+          "l2",
+          "l5"
+        ]
+      },
+      {
+        "id": "ext",
+        "nodes": [
+          "n1",
+          "n2",
+          "n3",
+          "n4",
+          "n5",
+          "n6",
+          "n7",
+          "n8"
+        ]
+      }
+    ],
+    "od": [
+      {
+        "from": "z-1_-1",
+        "to": "ext",
+        "vph": 3.5,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z-1_-1",
+        "to": "z0_-1",
+        "vph": 0.36,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z-1_-1",
+        "to": "z0_0",
+        "vph": 0.2,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z-1_0",
+        "to": "ext",
+        "vph": 2.48,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z-1_0",
+        "to": "z0_-1",
+        "vph": 0.27,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z-1_-1",
+        "to": "ext",
+        "vph": 0.7,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "z-1_0",
+        "to": "ext",
+        "vph": 0.5,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "ext",
+        "to": "z-1_0",
+        "vph": 2.91,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "ext",
+        "to": "z0_-1",
+        "vph": 20.75,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "ext",
+        "to": "z0_0",
+        "vph": 11.41,
+        "curve": "morningPeak",
+        "driverMix": {
+          "commuter": 5,
+          "average": 3,
+          "attentive": 1,
+          "distracted": 0.5,
+          "aggressive": 0.5
+        }
+      },
+      {
+        "from": "ext",
+        "to": "z0_-1",
+        "vph": 0.91,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      },
+      {
+        "from": "z0_-1",
+        "to": "ext",
+        "vph": 0.91,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      },
+      {
+        "from": "ext",
+        "to": "z0_0",
+        "vph": 0.65,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      },
+      {
+        "from": "z0_0",
+        "to": "ext",
+        "vph": 0.65,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      }
+    ]
+  },
+  "event": {
+    "startTimeOfDay": 63000,
+    "autoEntries": true,
+    "vehicleMix": {
+      "car": 0.85,
+      "van": 0.07,
+      "truck": 0.03,
+      "articulatedTruck": 0.02,
+      "motorcycle": 0.03
+    },
+    "driverMix": {
+      "average": 5,
+      "attentive": 2,
+      "commuter": 1,
+      "distracted": 1,
+      "aggressive": 1
+    },
+    "autoZones": false,
+    "zones": [
+      {
+        "id": "z-1_-1",
+        "links": [
+          "l1"
+        ]
+      },
+      {
+        "id": "z-1_0",
+        "links": [
+          "l1",
+          "l5"
+        ]
+      },
+      {
+        "id": "ext",
+        "nodes": [
+          "n1",
+          "n2",
+          "n3",
+          "n4",
+          "n5",
+          "n6",
+          "n7",
+          "n8"
+        ]
+      }
+    ],
+    "od": [
+      {
+        "from": "z-1_-1",
+        "to": "ext",
+        "vph": 0.4,
+        "curve": "flat"
+      },
+      {
+        "from": "z-1_0",
+        "to": "ext",
+        "vph": 0.29,
+        "curve": "flat"
+      }
+    ]
+  },
+  "freight": {
+    "startTimeOfDay": 28800,
+    "autoEntries": true,
+    "vehicleMix": {
+      "car": 0.85,
+      "van": 0.07,
+      "truck": 0.03,
+      "articulatedTruck": 0.02,
+      "motorcycle": 0.03
+    },
+    "driverMix": {
+      "average": 5,
+      "attentive": 2,
+      "commuter": 1,
+      "distracted": 1,
+      "aggressive": 1
+    },
+    "autoZones": false,
+    "zones": [
+      {
+        "id": "z-1_-1",
+        "links": [
+          "l1"
+        ]
+      },
+      {
+        "id": "z-1_0",
+        "links": [
+          "l1",
+          "l5"
+        ]
+      },
+      {
+        "id": "z0_-1",
+        "links": [
+          "l2"
+        ]
+      },
+      {
+        "id": "z0_0",
+        "links": [
+          "l2",
+          "l5"
+        ]
+      },
+      {
+        "id": "ext",
+        "nodes": [
+          "n1",
+          "n2",
+          "n3",
+          "n4",
+          "n5",
+          "n6",
+          "n7",
+          "n8"
+        ]
+      }
+    ],
+    "od": [
+      {
+        "from": "z-1_-1",
+        "to": "ext",
+        "vph": 0.81,
+        "curve": "flat"
+      },
+      {
+        "from": "z-1_0",
+        "to": "ext",
+        "vph": 0.57,
+        "curve": "flat"
+      },
+      {
+        "from": "ext",
+        "to": "z-1_0",
+        "vph": 0.67,
+        "curve": "flat"
+      },
+      {
+        "from": "ext",
+        "to": "z0_-1",
+        "vph": 4.79,
+        "curve": "flat"
+      },
+      {
+        "from": "ext",
+        "to": "z0_0",
+        "vph": 2.63,
+        "curve": "flat"
+      },
+      {
+        "from": "ext",
+        "to": "z0_-1",
+        "vph": 4.2,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      },
+      {
+        "from": "z0_-1",
+        "to": "ext",
+        "vph": 4.2,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      },
+      {
+        "from": "ext",
+        "to": "z0_0",
+        "vph": 3,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      },
+      {
+        "from": "z0_0",
+        "to": "ext",
+        "vph": 3,
+        "curve": "flat",
+        "vehicleMix": {
+          "truck": 0.4,
+          "articulatedTruck": 0.4,
+          "van": 0.2
+        }
+      }
+    ]
+  }
+}

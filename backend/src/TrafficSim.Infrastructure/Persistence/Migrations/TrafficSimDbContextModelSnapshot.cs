@@ -32,6 +32,10 @@ namespace TrafficSim.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("Analysis")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("analysis");
+
                     b.Property<Polygon>("Area")
                         .IsRequired()
                         .HasColumnType("geometry(Polygon,4326)")

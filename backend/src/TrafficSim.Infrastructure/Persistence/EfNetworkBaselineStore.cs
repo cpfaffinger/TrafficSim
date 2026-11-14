@@ -26,6 +26,7 @@ public sealed class EfNetworkBaselineStore(TrafficSimDbContext db) : INetworkBas
             CreatedAt = info.CreatedAt,
             Source = info.Source,
             Name = info.Name,
+            Analysis = info.AnalysisJson,
             OsmTimestamp = info.OsmTimestamp,
             Nodes = info.Stats.Nodes,
             Links = info.Stats.Links,
@@ -104,6 +105,7 @@ public sealed class EfNetworkBaselineStore(TrafficSimDbContext db) : INetworkBas
         CreatedAt = b.CreatedAt,
         Source = b.Source,
         Name = b.Name,
+        Analysis = b.Analysis,
         OsmTimestamp = b.OsmTimestamp,
         Nodes = b.Nodes,
         Links = b.Links,
@@ -123,5 +125,6 @@ public sealed class EfNetworkBaselineStore(TrafficSimDbContext db) : INetworkBas
         new PackageStats(e.Nodes, e.Links, e.Lanes, e.Connectors, e.Signals),
         e.Attribution,
         e.PolygonRing is null ? null : GeoPolygon.Parse(e.PolygonRing),
-        e.Name);
+        e.Name,
+        e.Analysis);
 }

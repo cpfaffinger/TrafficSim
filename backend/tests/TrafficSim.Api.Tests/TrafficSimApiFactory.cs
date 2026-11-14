@@ -14,6 +14,8 @@ public sealed class TrafficSimApiFactory : WebApplicationFactory<Program>
 {
     public FakeGeocodingProvider Geocoder { get; } = new();
 
+    public FakeActivitySource Activity { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -23,6 +25,8 @@ public sealed class TrafficSimApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<IGeocodingProvider>();
             services.RemoveAll<IReverseGeocodingProvider>();
             services.RemoveAll<IRoadNetworkSource>();
+            services.RemoveAll<IActivitySource>();
+            services.AddSingleton<IActivitySource>(Activity);
             services.AddSingleton<IGeocodingProvider>(Geocoder);
             services.AddSingleton<IReverseGeocodingProvider>(Geocoder);
             services.AddSingleton<IRoadNetworkSource, FakeRoadNetworkSource>();

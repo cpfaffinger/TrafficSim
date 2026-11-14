@@ -12,7 +12,8 @@ public sealed record NetworkBaselineInfo(
     PackageStats Stats,
     IReadOnlyList<string> Attribution,
     GeoPolygon? Polygon = null,
-    string? Name = null)
+    string? Name = null,
+    string? AnalysisJson = null)
 {
     /// <summary>The import area as a polygon (the bounds for rectangular imports).</summary>
     public GeoPolygon Shape => Polygon ?? GeoPolygon.FromBoundingBox(Area);
@@ -49,6 +50,7 @@ public enum ImportStatus
     Fetching,
     Compiling,
     Storing,
+    Generating,
     Completed,
     Failed,
 }

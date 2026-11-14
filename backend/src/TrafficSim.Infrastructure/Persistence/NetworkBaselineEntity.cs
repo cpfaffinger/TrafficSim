@@ -29,6 +29,9 @@ public sealed class NetworkBaselineEntity
     /// <summary>User-facing name of the import (#114).</summary>
     public string? Name { get; set; }
 
+    /// <summary>Data basis of the generated scenarios (ActivitySummary JSON, #115).</summary>
+    public string? Analysis { get; set; }
+
     public DateTimeOffset? OsmTimestamp { get; set; }
 
     public int Nodes { get; set; }
@@ -61,5 +64,6 @@ internal sealed class NetworkBaselineConfiguration : IEntityTypeConfiguration<Ne
         builder.HasIndex(b => new { b.South, b.West, b.North, b.East });
         builder.Property(b => b.Source).HasMaxLength(64);
         builder.Property(b => b.Name).HasMaxLength(120);
+        builder.Property(b => b.Analysis).HasColumnType("jsonb");
     }
 }

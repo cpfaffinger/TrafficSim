@@ -25,12 +25,13 @@ public sealed record ImportJobDto(Guid JobId, string Status, Guid? BaselineId, s
     internal static double[][]? Ring(GeoPolygon? p) => p?.Ring.Select(v => new[] { v.Longitude, v.Latitude }).ToArray();
 }
 
-public sealed record NetworkBaselineDto(Guid Id, double[] Bbox, DateTimeOffset CreatedAt, string Source, DateTimeOffset? OsmTimestamp, PackageStats Stats, IReadOnlyList<string> Attribution, double[][]? Polygon = null, string? Name = null)
+public sealed record NetworkBaselineDto(Guid Id, double[] Bbox, DateTimeOffset CreatedAt, string Source, DateTimeOffset? OsmTimestamp, PackageStats Stats, IReadOnlyList<string> Attribution, double[][]? Polygon = null, string? Name = null, System.Text.Json.JsonElement? Analysis = null)
 {
     public static NetworkBaselineDto From(NetworkBaselineInfo i)
     {
         ArgumentNullException.ThrowIfNull(i);
-        return new(i.Id, ImportJobDto.ToArray(i.Area), i.CreatedAt, i.Source, i.OsmTimestamp, i.Stats, i.Attribution, ImportJobDto.Ring(i.Polygon), i.Name);
+        return new(i.Id, ImportJobDto.ToArray(i.Area), i.CreatedAt, i.Source, i.OsmTimestamp, i.Stats, i.Attribution, ImportJobDto.Ring(i.Polygon), i.Name,
+            i.AnalysisJson is null ? null : System.Text.Json.JsonDocument.Parse(i.AnalysisJson).RootElement.Clone());
     }
 }
 

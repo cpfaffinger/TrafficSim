@@ -236,5 +236,5 @@ public sealed class ScenarioService(INetworkBaselineStore baselines, IScenarioSt
         }
     }
 
-    private static string NewShareToken() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(24)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    internal static string NewShareToken() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(24)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 }

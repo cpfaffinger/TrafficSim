@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Logging;
 using TrafficSim.Application.Providers;
+using System.Text.Json;
 using TrafficSim.Application.RoadSources;
+using TrafficSim.Application.Scenarios;
+using TrafficSim.Domain.Activity;
 using TrafficSim.Domain.Geo;
 using TrafficSim.Domain.Network.Compilation;
 
@@ -35,8 +38,11 @@ public sealed partial class NetworkImportService(
     IImportJobStore jobs,
     IImportQueue queue,
     TimeProvider time,
-    ILogger<NetworkImportService> logger)
+    ILogger<NetworkImportService> logger,
+    IEnumerable<IActivitySource>? activitySources = null,
+    IScenarioStore? scenarios = null)
 {
+    private readonly IReadOnlyList<IActivitySource> _activitySources = ProviderFallback.Order(activitySources ?? []);
     public const double MinAreaSquareKilometers = 0.01;
     public const string OsmAttribution = "© OpenStreetMap contributors (ODbL)";
     public static readonly TimeSpan ReuseWindow = TimeSpan.FromHours(24);
@@ -132,8 +138,14 @@ public sealed partial class NetworkImportService(
             var baselineId = Guid.NewGuid();
             var attribution = new[] { OsmAttribution, answer.Attribution }.Distinct(StringComparer.Ordinal).ToList();
             var package = NetworkPackageWriter.ToPackage(network, baselineId, attribution);
-            var info = new NetworkBaselineInfo(baselineId, job.Area, time.GetUtcNow(), answer.Provider, answer.Value.DataTimestamp, package.Stats, attribution, job.Polygon, job.Name);
+            job = await UpdateAsync(job, ImportStatus.Generating, cancellationToken).ConfigureAwait(false);
+            var pois = await FetchActivityAsync(job.Shape, cancellationToken).ConfigureAwait(false);
+            var (generated, summary) = ScenarioGenerator.Generate(package, pois, job.Shape.AreaSquareKilometers);
+            var analysis = JsonSerializer.Serialize(summary, ScenarioService.JsonOptions);
+
+            var info = new NetworkBaselineInfo(baselineId, job.Area, time.GetUtcNow(), answer.Provider, answer.Value.DataTimestamp, package.Stats, attribution, job.Polygon, job.Name, analysis);
             await baselines.SaveAsync(info, NetworkPackageWriter.SerializeGzip(package), OsmDataCodec.Encode(answer.Value), cancellationToken).ConfigureAwait(false);
+            await CreateScenariosAsync(baselineId, generated, cancellationToken).ConfigureAwait(false);
 
             await jobs.SaveAsync(job with { Status = ImportStatus.Completed, BaselineId = baselineId, UpdatedAt = time.GetUtcNow() }, cancellationToken).ConfigureAwait(false);
             LogImported(job.Id, baselineId, package.Stats.Links, answer.Provider);
@@ -144,6 +156,43 @@ public sealed partial class NetworkImportService(
             await jobs.SaveAsync(job with { Status = ImportStatus.Failed, Error = ex.Message, UpdatedAt = time.GetUtcNow() }, CancellationToken.None).ConfigureAwait(false);
         }
     }
+
+    /// <summary>Buildings, land use and POIs for scenario generation; an import never fails because of them.</summary>
+    private async Task<IReadOnlyList<OsmPoi>> FetchActivityAsync(GeoPolygon area, CancellationToken cancellationToken)
+    {
+        var size = area.AreaSquareKilometers;
+        foreach (var source in _activitySources.Where(s => s.MaxAreaSquareKilometers >= size))
+        {
+            try
+            {
+                return await source.FetchAsync(area, cancellationToken).ConfigureAwait(false);
+            }
+            catch (ProviderUnavailableException ex)
+            {
+                LogActivityFailed(source.Name, ex.Message);
+            }
+        }
+
+        return [];
+    }
+
+    private async Task CreateScenariosAsync(Guid baselineId, IReadOnlyList<GeneratedScenario> generated, CancellationToken cancellationToken)
+    {
+        if (scenarios is null)
+        {
+            return;
+        }
+
+        foreach (var g in generated)
+        {
+            var now = time.GetUtcNow();
+            var scenario = new Scenario(Guid.NewGuid(), g.Name, baselineId, null, [], g.DemandJson, 1, g.DurationSeconds, ScenarioService.NewShareToken(), now, now);
+            await scenarios.SaveAsync(scenario, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Activity source {Source} failed, scenarios use road-class profiles only: {Reason}")]
+    private partial void LogActivityFailed(string source, string reason);
 
     private async Task<ImportJob> UpdateAsync(ImportJob job, ImportStatus status, CancellationToken cancellationToken)
     {

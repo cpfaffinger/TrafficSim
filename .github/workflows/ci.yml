@@ -58,13 +58,16 @@ jobs:
           filters: |
             backend:
               - 'backend/**'
+              - 'docs/architecture/fixtures/**'
               - '.github/workflows/ci.yml'
             simcore:
               - 'sim-core/**'
+              - 'docs/architecture/fixtures/**'
               - '.github/workflows/ci.yml'
             frontend:
               - 'frontend/**'
               - 'sim-core/**'
+              - 'docs/architecture/fixtures/**'
               - '.github/workflows/ci.yml'
             docker:
               - 'Dockerfile'

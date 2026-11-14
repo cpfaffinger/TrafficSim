@@ -58,7 +58,8 @@ public class ScenarioApiTests : IClassFixture<TrafficSimApiFactory>
         var updated = await client.PutAsJsonAsync(new Uri($"/api/v1/scenarios/{scenario.Id}", UriKind.Relative), new ScenarioRequest("Renamed", null, null, null, null, null), Json, Ct);
         Assert.Equal("Renamed", (await updated.Content.ReadFromJsonAsync<ScenarioDto>(Json, Ct))!.Name);
         var list = await client.GetFromJsonAsync<List<ScenarioDto>>(new Uri($"/api/v1/scenarios?baselineId={baselineId}", UriKind.Relative), Json, Ct);
-        Assert.Single(list!);
+        Assert.Single(list!, s => s.Id == scenario.Id);
+        Assert.Contains(list!, s => s.Name == "Weekday morning peak"); // generated at import (#115)
         var clone = await client.PostAsJsonAsync(new Uri($"/api/v1/scenarios/{scenario.Id}/clone", UriKind.Relative), new CloneRequest(null), Json, Ct);
         var variant = (await clone.Content.ReadFromJsonAsync<ScenarioDto>(Json, Ct))!;
         Assert.Equal(scenario.Id, variant.ParentId);

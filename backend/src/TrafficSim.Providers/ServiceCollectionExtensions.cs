@@ -57,6 +57,8 @@ public static class ServiceCollectionExtensions
         {
             services.AddProviderHttpClient<OverpassRoadNetworkSource>(OverpassRoadNetworkSource.ProviderName, options.Overpass, options.Contact);
             services.AddTransient<IRoadNetworkSource>(sp => sp.GetRequiredService<OverpassRoadNetworkSource>());
+            services.AddProviderHttpClient<OverpassActivitySource>(OverpassActivitySource.ProviderName, options.Overpass, options.Contact);
+            services.AddTransient<IActivitySource>(sp => sp.GetRequiredService<OverpassActivitySource>());
         }
 
         if (options.Geofabrik.Enabled && !string.IsNullOrWhiteSpace(options.Geofabrik.Directory))

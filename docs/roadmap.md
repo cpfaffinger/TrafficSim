@@ -16,7 +16,7 @@ Progress is tracked live on the [milestones page](https://github.com/cpfaffinger
 | 7 | [Phase 7 — Network editor](https://github.com/cpfaffinger/TrafficSim/milestone/8) | [#63](https://github.com/cpfaffinger/TrafficSim/issues/63) | ✅ done | City-builder style editing: lanes, turn lanes, speed limits, restrictions, signal plans, new roads — as changesets with undo/redo. |
 | 8 | [Phase 8 — Scenarios & comparison](https://github.com/cpfaffinger/TrafficSim/milestone/9) | [#71](https://github.com/cpfaffinger/TrafficSim/issues/71) | ✅ done | Scenarios (baseline + changeset + demand + seed), batch runs, A/B heatmap comparison, reports and exports. |
 | 9 | [Phase 9 — Scale & performance](https://github.com/cpfaffinger/TrafficSim/milestone/10) | [#77](https://github.com/cpfaffinger/TrafficSim/issues/77) | ✅ done | Motorway and city scale: performance budgets, SharedArrayBuffer, LOD, actuated signals, WebGPU, native batch runner. |
-| 10 | [Phase 10 — Road signs & follow-ups](https://github.com/cpfaffinger/TrafficSim/milestone/11) | [#99](https://github.com/cpfaffinger/TrafficSim/issues/99) | open | Traffic signs end to end (OSM sign tags, signed priority roads, 3D sign models) and follow-ups found while building phases 4–8. Exit: signs are read from all common OSM taggings, rendered in 3D, and the known editor/sim limitations are resolved. |
+| 10 | [Phase 10 — Road signs & follow-ups](https://github.com/cpfaffinger/TrafficSim/milestone/11) | [#99](https://github.com/cpfaffinger/TrafficSim/issues/99) | ✅ done | Traffic signs end to end (OSM sign tags, signed priority roads, 3D sign models) and follow-ups found while building phases 4–8. Exit: signs are read from all common OSM taggings, rendered in 3D, and the known editor/sim limitations are resolved. |
 
 ## Phase 0 — Foundation & walking skeleton
 
@@ -187,8 +187,8 @@ Epic: [#99](https://github.com/cpfaffinger/TrafficSim/issues/99)
 - [x] [#105](https://github.com/cpfaffinger/TrafficSim/issues/105) Editor: attach new roads to any segment of a link
 - [x] [#106](https://github.com/cpfaffinger/TrafficSim/issues/106) Editor: removing inferred signals when control is set to automatic or none
 - [x] [#107](https://github.com/cpfaffinger/TrafficSim/issues/107) Editor: warn before discarding unsaved edits when loading another network
-- [ ] [#108](https://github.com/cpfaffinger/TrafficSim/issues/108) Sim: continuous lateral lane-change motion
-- [ ] [#109](https://github.com/cpfaffinger/TrafficSim/issues/109) Sim: conflict areas instead of single conflict points
+- [x] [#108](https://github.com/cpfaffinger/TrafficSim/issues/108) Sim: continuous lateral lane-change motion
+- [x] [#109](https://github.com/cpfaffinger/TrafficSim/issues/109) Sim: conflict areas instead of single conflict points
 - [x] [#110](https://github.com/cpfaffinger/TrafficSim/issues/110) Polygon import areas (non-rectangular selections)
 - [x] [#114](https://github.com/cpfaffinger/TrafficSim/issues/114) Import management and drawing UX: names, delete, basemap in preview, auto-closing polygon
 

@@ -50,6 +50,7 @@ api.MapProviderEndpoints();
 api.MapNetworkEndpoints();
 api.MapScenarioEndpoints();
 api.MapExportEndpoints();
+api.MapBatchEndpoints();
 
 // SPA fallback: unknown non-API routes serve index.html (client-side routing).
 app.MapFallbackToFile("{*path:nonfile}", "index.html", new StaticFileOptions

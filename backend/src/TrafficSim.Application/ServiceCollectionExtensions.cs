@@ -18,6 +18,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<NetworkImportService>();
         services.AddScoped<ScenarioService>();
         services.AddScoped<Exports.ExportService>();
+        services.AddScoped<Batches.BatchService>();
+        services.TryAddSingleton<Batches.BatchJobStore>();
+        services.TryAddSingleton<Batches.BatchQueue>();
         services.TryAddSingleton<IImportJobStore, InMemoryImportJobStore>();
         services.TryAddSingleton<IImportQueue, ChannelImportQueue>();
         return services;

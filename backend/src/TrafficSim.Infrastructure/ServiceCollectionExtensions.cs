@@ -39,6 +39,9 @@ public static class ServiceCollectionExtensions
         }
 
         services.AddHostedService<ImportWorker>();
+        services.Configure<Batches.BatchRunnerOptions>(configuration.GetSection(Batches.BatchRunnerOptions.SectionName));
+        services.TryAddSingleton<TrafficSim.Application.Batches.IBatchRunner, Batches.NativeBatchRunner>();
+        services.AddHostedService<Batches.BatchWorker>();
         return services;
     }
 }

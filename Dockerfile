@@ -22,6 +22,11 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release --lib --target wasm32-unknown-unknown \
  && wasm-bindgen --target web --out-dir /out target/wasm32-unknown-unknown/release/trafficsim_sim_core.wasm
 
+# ---------- Simulation core: native batch runner (#84) ----------
+FROM rust-base AS sim-tools
+COPY sim-core/ ./
+RUN --mount=type=cache,target=/usr/local/cargo/registry     --mount=type=cache,target=/src/sim-core/target-native     CARGO_TARGET_DIR=/src/sim-core/target-native cargo build --release --bin batch  && mkdir -p /tools && cp /src/sim-core/target-native/release/batch /tools/trafficsim-batch
+
 # ---------- Frontend: Vite build ----------
 FROM node:${NODE_VERSION}-alpine AS frontend
 WORKDIR /src/frontend
@@ -58,6 +63,7 @@ LABEL org.opencontainers.image.source="https://github.com/cpfaffinger/TrafficSim
 WORKDIR /app
 COPY --from=backend /app ./
 COPY --from=frontend /src/frontend/dist ./wwwroot
+COPY --from=sim-tools /tools/trafficsim-batch ./tools/trafficsim-batch
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     DOTNET_gcServer=0
 EXPOSE 8080

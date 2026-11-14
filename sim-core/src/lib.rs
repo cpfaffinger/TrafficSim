@@ -6,10 +6,19 @@
 
 pub mod detmath;
 pub mod idm;
+pub mod network;
+pub mod package;
 pub mod ring;
 pub mod rng;
+pub mod signals;
+pub mod vehicle;
 pub mod wasm;
 
+#[cfg(test)]
+pub(crate) mod testnet;
+
 pub use idm::IdmParams;
+pub use network::{Network, NetworkError};
 pub use ring::{RingRoad, RingRoadConfig};
 pub use rng::Pcg32;
+pub use vehicle::{VehicleClass, VehicleParams};

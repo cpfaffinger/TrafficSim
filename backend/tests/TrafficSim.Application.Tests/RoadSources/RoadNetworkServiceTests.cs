@@ -1,10 +1,10 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using TrafficSim.Application.Providers;
-using TrafficSim.Application.RoadNetwork;
+using TrafficSim.Application.RoadSources;
 using TrafficSim.Domain.Geo;
 using TrafficSim.Domain.Osm;
 
-namespace TrafficSim.Application.Tests.RoadNetwork;
+namespace TrafficSim.Application.Tests.RoadSources;
 
 public class RoadNetworkServiceTests
 {

@@ -25,6 +25,7 @@ public sealed class TrafficSimApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<IRoadNetworkSource>();
             services.AddSingleton<IGeocodingProvider>(Geocoder);
             services.AddSingleton<IReverseGeocodingProvider>(Geocoder);
+            services.AddSingleton<IRoadNetworkSource, FakeRoadNetworkSource>();
         });
     }
 }

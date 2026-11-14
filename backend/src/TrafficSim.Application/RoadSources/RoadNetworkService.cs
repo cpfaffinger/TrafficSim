@@ -3,7 +3,7 @@ using TrafficSim.Application.Providers;
 using TrafficSim.Domain.Geo;
 using TrafficSim.Domain.Osm;
 
-namespace TrafficSim.Application.RoadNetwork;
+namespace TrafficSim.Application.RoadSources;
 
 /// <summary>Raised when no road network source accepts an area of the requested size.</summary>
 public sealed class AreaTooLargeException : Exception

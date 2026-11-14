@@ -114,6 +114,9 @@ Epic: [#49](https://github.com/cpfaffinger/TrafficSim/issues/49)
 - [ ] [#53](https://github.com/cpfaffinger/TrafficSim/issues/53) Demand model: zones, OD matrix, time-of-day curves
 - [ ] [#54](https://github.com/cpfaffinger/TrafficSim/issues/54) Demand editor UI
 - [ ] [#55](https://github.com/cpfaffinger/TrafficSim/issues/55) Commuter re-routing on experienced travel times
+- [ ] [#111](https://github.com/cpfaffinger/TrafficSim/issues/111) Road-class demand profiles: default volumes and time-of-day curves per road type
+- [ ] [#112](https://github.com/cpfaffinger/TrafficSim/issues/112) Residential trip generation: access roads of residential areas as sources and sinks
+- [ ] [#113](https://github.com/cpfaffinger/TrafficSim/issues/113) Default demand generated at import and editable per scenario
 
 ## Phase 6 — Metrics & heatmaps
 
@@ -185,6 +188,7 @@ Epic: [#99](https://github.com/cpfaffinger/TrafficSim/issues/99)
 - [x] [#107](https://github.com/cpfaffinger/TrafficSim/issues/107) Editor: warn before discarding unsaved edits when loading another network
 - [ ] [#108](https://github.com/cpfaffinger/TrafficSim/issues/108) Sim: continuous lateral lane-change motion
 - [ ] [#109](https://github.com/cpfaffinger/TrafficSim/issues/109) Sim: conflict areas instead of single conflict points
+- [ ] [#110](https://github.com/cpfaffinger/TrafficSim/issues/110) Polygon import areas (non-rectangular selections)
 
 ## Backlog (unscheduled)
 

@@ -187,4 +187,7 @@ public sealed class RoadNetwork
 
     /// <summary>Stop/give-way signs that could not be attached to a junction approach.</summary>
     public int IgnoredSigns { get; init; }
+
+    /// <summary>Terrain the network was compiled on (ADR-0018); null for flat networks.</summary>
+    public TerrainGrid? Terrain { get; init; }
 }

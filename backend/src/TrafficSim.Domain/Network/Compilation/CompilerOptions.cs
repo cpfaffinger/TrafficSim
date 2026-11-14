@@ -17,4 +17,7 @@ public sealed class CompilerOptions
     public double AmberSeconds { get; init; } = 3;
 
     public double AllRedSeconds { get; init; } = 2;
+
+    /// <summary>Terrain under the network (ADR-0018); null keeps the network flat apart from grade separation.</summary>
+    public TerrainGrid? Terrain { get; init; }
 }

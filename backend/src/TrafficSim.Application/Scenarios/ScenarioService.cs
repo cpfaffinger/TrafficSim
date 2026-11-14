@@ -132,7 +132,8 @@ public sealed class ScenarioService(INetworkBaselineStore baselines, IScenarioSt
         var osm = await baselines.GetOsmDataAsync(baselineId, cancellationToken).ConfigureAwait(false)
             ?? throw new NotFoundException($"baseline {baselineId} has no OSM data (imported before editing was available); import the area again");
         var result = ChangesetApplier.Apply(OsmDataCodec.Decode(osm), changeset);
-        var network = NetworkCompiler.Compile(result.Data, info.Shape, overrides: result.Overrides);
+        var terrain = await BaselineTerrainAsync(baselineId, cancellationToken).ConfigureAwait(false);
+        var network = NetworkCompiler.Compile(result.Data, info.Shape, new CompilerOptions { Terrain = terrain }, result.Overrides);
         var bytes = NetworkPackageWriter.SerializeGzip(NetworkPackageWriter.ToPackage(network, baselineId, info.Attribution));
 
         Cache[key] = (bytes, result.Issues, Interlocked.Increment(ref _tick));
@@ -170,6 +171,21 @@ public sealed class ScenarioService(INetworkBaselineStore baselines, IScenarioSt
 
     public async Task<byte[]> GetRunBucketsAsync(Guid id, CancellationToken cancellationToken) =>
         await runs.GetBucketsAsync(id, cancellationToken).ConfigureAwait(false) ?? throw new NotFoundException($"run {id} not found");
+
+    /// <summary>Edits reuse the baseline's terrain (ADR-0018) instead of sampling it again; unreadable packages count as flat.</summary>
+    private async Task<Domain.Network.TerrainGrid?> BaselineTerrainAsync(Guid baselineId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await baselines.GetPackageAsync(baselineId, cancellationToken).ConfigureAwait(false) is { } stored
+                ? NetworkPackageWriter.DeserializeGzip(stored).Terrain?.ToGrid()
+                : null;
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidDataException)
+        {
+            return null;
+        }
+    }
 
     internal static string CacheKey(Guid baselineId, IReadOnlyList<EditOperation> changeset)
     {

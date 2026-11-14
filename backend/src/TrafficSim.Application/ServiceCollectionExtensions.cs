@@ -16,6 +16,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ReverseGeocodingService>();
         services.AddScoped<RoadNetworkService>();
         services.AddScoped<NetworkImportService>();
+        services.AddScoped<TerrainService>();
         services.AddScoped<ScenarioService>();
         services.AddScoped<Exports.ExportService>();
         services.AddScoped<Batches.BatchService>();

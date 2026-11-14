@@ -5,6 +5,7 @@ using TrafficSim.Providers.Google;
 using TrafficSim.Providers.Nominatim;
 using TrafficSim.Providers.Overpass;
 using TrafficSim.Providers.Photon;
+using TrafficSim.Providers.TerrainTiles;
 
 namespace TrafficSim.Providers;
 
@@ -34,6 +35,8 @@ public sealed class ProviderCatalog(IOptions<ProvidersOptions> options) : IProvi
                 o.Google.Priority, GoogleGeocodingProvider.AttributionText, o.Google.BaseUrl, Commercial: true),
             new("openfreemap", [ProviderCapability.Basemap], o.Basemap.Enabled, 10,
                 "OpenFreeMap © OpenMapTiles · Data © OpenStreetMap contributors (ODbL)", o.Basemap.StyleUrl, Commercial: false),
+            new(TerrainTilesElevationProvider.ProviderName, [ProviderCapability.Elevation], o.TerrainTiles.Enabled, o.TerrainTiles.Priority,
+                TerrainTilesElevationProvider.AttributionText, o.TerrainTiles.BaseUrl, Commercial: false),
         ];
     }
 }

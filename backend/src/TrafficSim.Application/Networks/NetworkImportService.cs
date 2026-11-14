@@ -40,7 +40,8 @@ public sealed partial class NetworkImportService(
     TimeProvider time,
     ILogger<NetworkImportService> logger,
     IEnumerable<IActivitySource>? activitySources = null,
-    IScenarioStore? scenarios = null)
+    IScenarioStore? scenarios = null,
+    TerrainService? terrain = null)
 {
     private readonly IReadOnlyList<IActivitySource> _activitySources = ProviderFallback.Order(activitySources ?? []);
     public const double MinAreaSquareKilometers = 0.01;
@@ -131,12 +132,16 @@ public sealed partial class NetworkImportService(
             job = await UpdateAsync(job, ImportStatus.Fetching, cancellationToken).ConfigureAwait(false);
             var answer = await sources.FetchAsync(job.Shape, cancellationToken).ConfigureAwait(false);
 
+            // Terrain is optional (ADR-0018): without it the network stays flat.
+            var ground = terrain is null ? null : await terrain.SampleAsync(job.Shape, cancellationToken).ConfigureAwait(false);
+
             job = await UpdateAsync(job, ImportStatus.Compiling, cancellationToken).ConfigureAwait(false);
-            var network = NetworkCompiler.Compile(answer.Value, job.Shape);
+            var network = NetworkCompiler.Compile(answer.Value, job.Shape, new CompilerOptions { Terrain = ground?.Grid });
 
             job = await UpdateAsync(job, ImportStatus.Storing, cancellationToken).ConfigureAwait(false);
             var baselineId = Guid.NewGuid();
-            var attribution = new[] { OsmAttribution, answer.Attribution }.Distinct(StringComparer.Ordinal).ToList();
+            var attribution = new[] { OsmAttribution, answer.Attribution, ground?.Attribution }
+                .OfType<string>().Distinct(StringComparer.Ordinal).ToList();
             var package = NetworkPackageWriter.ToPackage(network, baselineId, attribution);
             job = await UpdateAsync(job, ImportStatus.Generating, cancellationToken).ConfigureAwait(false);
             var pois = await FetchActivityAsync(job.Shape, cancellationToken).ConfigureAwait(false);

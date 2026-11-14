@@ -7,6 +7,7 @@ public enum ProviderCapability
     ReverseGeocoding,
     RoadNetwork,
     Basemap,
+    Elevation,
 }
 
 /// <summary>Public description of a configured provider (registry entry, ADR-0004).</summary>

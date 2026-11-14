@@ -488,6 +488,11 @@ code 1 on a violation; local only, timing on shared CI runners is too noisy). Re
 | motorway (40 weaving units) | 3 400 | 0.15 | 194× | ≈ 10 % |
 | city (16 × 16 signalised, mixed fleet/drivers) | 4 100 | 0.21 | 115× | ≈ 8 % |
 
+Continuous lane changes (#108) and conflict zones (#109) cost about 40 % on the junction-heavy
+scenarios and 15 % on the motorway (same machine, best of 3, without / with metrics):
+grid 0.164 / 0.183 → 0.232 / 0.248 µs, motorway 0.111 / 0.121 → 0.128 / 0.137 µs, city
+0.166 / 0.183 → 0.195 / 0.211 µs per vehicle-step; metrics overhead now ≈ 7–8 %.
+
 Budget: ≥ 10 000 vehicles at ≥ 1× real time single-threaded means ≤ 10 µs per vehicle-step; the
 checked budgets (≤ 1 µs, minimum real-time factors per scenario, metrics overhead ≤ 15 % with
 timing noise) leave room for the WASM slowdown (typically 1.5–2×).

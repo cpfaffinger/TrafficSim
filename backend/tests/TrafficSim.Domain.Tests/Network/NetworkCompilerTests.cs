@@ -260,6 +260,24 @@ public class NetworkCompilerTests
     }
 
     [Fact]
+    public void Motorway_on_ramp_merges_into_the_rightmost_lane()
+    {
+        var b = new OsmBuilder()
+            .Node(1, -250, 0).Node(2, 0, 0).Node(3, 250, 0).Node(4, -200, -60)
+            .Way(10, [1, 2], ("highway", "motorway"), ("lanes", "2"))
+            .Way(11, [2, 3], ("highway", "motorway"), ("lanes", "3"))
+            .Way(12, [4, 2], ("highway", "motorway_link"), ("oneway", "yes"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+        var main = net.Links.Single(l => l.OsmWayId == 10);
+        var ramp = net.Links.Single(l => l.OsmWayId == 12);
+
+        Assert.Equal([(0, 1), (1, 2)], net.Connectors.Where(c => c.FromLink == main.Id).Select(c => (c.FromLane, c.ToLane)).Order());
+        var rampConnector = Assert.Single(net.Connectors, c => c.FromLink == ramp.Id);
+        Assert.Equal(0, rampConnector.ToLane);
+        Assert.Equal(ConnectorPriority.Minor, rampConnector.Priority);
+    }
+
+    [Fact]
     public void Compilation_is_deterministic()
     {
         var (a, _) = Cross();

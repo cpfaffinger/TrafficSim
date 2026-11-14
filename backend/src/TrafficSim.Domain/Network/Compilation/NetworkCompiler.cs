@@ -601,6 +601,7 @@ public static class NetworkCompiler
                 }
 
                 var majorPieces = node.Control == NodeControl.Priority ? MajorPieces(g) : [];
+                var merge = MergeLanes(g);
                 foreach (var incoming in g.Incoming)
                 {
                     var candidates = g.Outgoing.Where(o => o.Id != incoming.OppositeLinkId).ToList();
@@ -629,7 +630,7 @@ public static class NetworkCompiler
                         var pairs = key is { } k && overrides.LaneConnections.TryGetValue(k, out var map)
                             ? map.Where(kv => kv.Key < incoming.Lanes.Count)
                                 .SelectMany(kv => kv.Value.Where(t => t < outgoing.Lanes.Count).Select(t => (kv.Key, t)))
-                            : MapLanes(incoming, outgoing, turn, movements.Count);
+                            : merge?.GetValueOrDefault(incoming) ?? MapLanes(incoming, outgoing, turn, movements.Count);
                         foreach (var (fromLane, toLane) in pairs.ToList())
                         {
                             AddConnector(g, incoming, fromLane, outgoing, toLane, turn, majorPieces);
@@ -722,6 +723,47 @@ public static class NetworkCompiler
                 Priority = priority,
                 Geometry = geometry,
             });
+        }
+
+        /// <summary>
+        /// Lane mapping where several roads merge into one (motorway on-ramps, #81): the main road keeps the
+        /// lanes counted from the left, roads joining from the right map onto the rightmost lanes.
+        /// Returns null when the node is not a pure merge.
+        /// </summary>
+        private Dictionary<Link, IEnumerable<(int From, int To)>>? MergeLanes(GraphNode g)
+        {
+            if (g.Incoming.Count < 2 || g.Node!.Control is NodeControl.Signal or NodeControl.Roundabout)
+            {
+                return null;
+            }
+
+            var targets = g.Incoming.Select(i => g.Outgoing.Where(o => o.Id != i.OppositeLinkId).ToList()).ToList();
+            if (targets.Any(t => t.Count != 1) || targets.Select(t => t[0]).Distinct().Count() != 1)
+            {
+                return null;
+            }
+
+            var outgoing = targets[0][0];
+            var outDir = Polyline.Direction(outgoing.Geometry, atEnd: false);
+            var main = g.Incoming
+                .OrderByDescending(l => RoadClasses.Rank(l.RoadClass))
+                .ThenBy(l => Math.Abs(Polyline.SignedAngle(Polyline.Direction(l.Geometry, atEnd: true), outDir)))
+                .First();
+            var mainAngle = Polyline.SignedAngle(Polyline.Direction(main.Geometry, atEnd: true), outDir);
+            var m = outgoing.Lanes.Count;
+            var result = new Dictionary<Link, IEnumerable<(int From, int To)>>();
+            foreach (var incoming in g.Incoming)
+            {
+                var n = incoming.Lanes.Count;
+                var angle = Polyline.SignedAngle(Polyline.Direction(incoming.Geometry, atEnd: true), outDir);
+                // A road that must turn right (clockwise) to join comes from the right-hand side.
+                var fromRight = incoming != main && angle < mainAngle;
+                result[incoming] = Enumerable.Range(0, n)
+                    .Select(i => fromRight || (incoming != main && n >= m) ? (i, Math.Min(i, m - 1)) : (i, Math.Max(0, m - n + i)))
+                    .ToList();
+            }
+
+            return result;
         }
 
         /// <summary>The (up to two) pieces forming the priority road through a junction.</summary>

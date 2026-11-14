@@ -7,7 +7,7 @@ import { EditError, splitsWay, type Changeset, type RemoveWayOp, type SetWayTags
  * changes (ADR-0010).
  *
  * Direction: a two-way way compiles into a forward link (in way node order) and a backward link; the
- * compiler emits the forward link first. A one-way link uses the direction-free keys (`lanes`,
+ * package says which via `osmForward`; older packages fall back to the compiler emitting the forward link first. A one-way link uses the direction-free keys (`lanes`,
  * `turn:lanes`, …), which the compiler reads for `oneway=yes` and `oneway=-1` alike.
  */
 export type WayDirection = 'forward' | 'backward' | 'oneway';
@@ -25,6 +25,7 @@ export interface WayPart {
 export function wayDirection(index: PackageIndex, link: Link): WayDirection {
   const opposite = link.oppositeLink ? index.links.get(link.oppositeLink) : undefined;
   if (!opposite) return 'oneway';
+  if (link.osmForward !== undefined) return link.osmForward ? 'forward' : 'backward';
   const links = index.pkg.links;
   return links.indexOf(link) <= links.indexOf(opposite) ? 'forward' : 'backward';
 }

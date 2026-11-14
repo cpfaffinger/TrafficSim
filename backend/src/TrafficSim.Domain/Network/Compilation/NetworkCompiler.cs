@@ -402,6 +402,7 @@ public static class NetworkCompiler
                 ? (piece.NodeIds[1], piece.NodeIds[^2])
                 : (piece.NodeIds[^2], piece.NodeIds[1]);
             link.OsmAfterFrom = _neighbours[link].Start;
+            link.OsmForward = direction == TravelDirection.Forward;
             link.OsmBeforeTo = _neighbours[link].End;
             var startKey = direction == TravelDirection.Forward ? piece.StartKey : piece.EndKey;
             var endKey = direction == TravelDirection.Forward ? piece.EndKey : piece.StartKey;

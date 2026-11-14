@@ -33,6 +33,8 @@ public class NetworkCompilerTests
         Assert.Equal(2, eastbound.Lanes.Count);
         Assert.Equal("Main", eastbound.Name);
         Assert.NotNull(eastbound.OppositeLinkId);
+        Assert.True(eastbound.OsmForward);
+        Assert.False(net.Links.Single(l => l.Id == eastbound.OppositeLinkId).OsmForward);
         Assert.Equal(30, eastbound.NoLaneChangeZone);
         Assert.Contains("speedLimit", eastbound.Assumed);
         Assert.Equal(EdgeMarking.CentreSolid, eastbound.LeftEdge);

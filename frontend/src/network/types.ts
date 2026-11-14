@@ -144,6 +144,8 @@ export interface Link {
   /** OSM nodes next to `from`/`to` along the way; with the node `osmId` they key a movement for edits (ADR-0010). */
   osmAfterFrom?: number | null;
   osmBeforeTo?: number | null;
+  /** Link runs in OSM way node order (package field since v1.1 of the spec; absent in older packages). */
+  osmForward?: boolean;
 }
 
 export interface Connector {

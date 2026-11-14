@@ -34,6 +34,11 @@ describe('way context', () => {
     expect(wayDirection(index, link('l4'))).toBe('oneway');
   });
 
+  it('prefers the explicit osmForward flag of the package', () => {
+    expect(wayDirection(index, { ...link('l0'), osmForward: false })).toBe('backward');
+    expect(wayDirection(index, { ...link('l1'), osmForward: true })).toBe('forward');
+  });
+
   it('addresses the link part with its ends in way order', () => {
     expect(linkPart(index, link('l0'))).toEqual({ wayId: 1000, fromNode: 101, toNode: 100 });
     expect(linkPart(index, link('l1'))).toEqual({ wayId: 1000, fromNode: 101, toNode: 100 });

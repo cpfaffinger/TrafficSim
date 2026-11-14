@@ -76,7 +76,8 @@ public static class NetworkPackageWriter
         R(l.NoLaneChangeZone),
         l.Assumed.ToList(),
         l.OsmAfterFrom,
-        l.OsmBeforeTo);
+        l.OsmBeforeTo,
+        l.OsmForward);
 
     private static List<double[]> Points(IReadOnlyList<Vec3> points) => points.Select(p => new[] { R(p.X), R(p.Y), R(p.Z) }).ToList();
 

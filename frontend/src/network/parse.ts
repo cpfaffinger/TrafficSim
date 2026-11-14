@@ -195,6 +195,7 @@ function link(value: unknown, path: string): Link {
     assumed: list(o.assumed ?? [], `${path}.assumed`, str),
     osmAfterFrom: nullable(o.osmAfterFrom, `${path}.osmAfterFrom`, num),
     osmBeforeTo: nullable(o.osmBeforeTo, `${path}.osmBeforeTo`, num),
+    ...(o.osmForward === undefined ? {} : { osmForward: bool(o.osmForward, `${path}.osmForward`) }),
   };
 }
 

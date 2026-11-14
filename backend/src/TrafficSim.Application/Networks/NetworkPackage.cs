@@ -43,7 +43,8 @@ public sealed record PackageLink(
     double NoLaneChangeZone,
     IReadOnlyList<string> Assumed,
     long? OsmAfterFrom = null,
-    long? OsmBeforeTo = null);
+    long? OsmBeforeTo = null,
+    bool OsmForward = true);
 
 public sealed record PackageConnector(
     string Id,

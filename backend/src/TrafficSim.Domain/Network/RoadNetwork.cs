@@ -61,6 +61,9 @@ public sealed class Link
 
     public long? OsmWayId { get; init; }
 
+    /// <summary>True when the link runs in the OSM way's node order (false: against it).</summary>
+    public bool OsmForward { get; set; } = true;
+
     /// <summary>OSM node following <see cref="From"/> along the way (identifies movements for edits, ADR-0010).</summary>
     public long? OsmAfterFrom { get; set; }
 

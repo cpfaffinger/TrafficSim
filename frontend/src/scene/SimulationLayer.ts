@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { toScene } from '../network/geo';
 import type { NetworkPackage } from '../network/types';
-import { NETWORK_SNAPSHOT_STRIDE, VEHICLE_CLASSES, VEHICLE_DIMENSIONS, vehicleColor } from '../sim/networkProtocol';
+import { busColor, NETWORK_SNAPSHOT_STRIDE, VEHICLE_CLASSES, VEHICLE_DIMENSIONS, vehicleColor } from '../sim/networkProtocol';
 import { aspectColor, signalMarkers, type SignalMarker } from '../sim/signalMarkers';
 
 /**
@@ -63,7 +63,8 @@ export class SimulationLayer {
       this.scale.set(Math.max(0.5, snapshot[o + 5]!) * Math.min(2, s), dims.height * s, dims.width * s);
       this.matrix.compose(this.position, this.quaternion, this.scale);
       this.vehicles.setMatrixAt(i, this.matrix);
-      this.vehicles.setColorAt(i, this.color.setRGB(...vehicleColor({ speed: snapshot[o + 4]!, flags: Math.round(snapshot[o + 7]!) })));
+      const flags = Math.round(snapshot[o + 7]!);
+      this.vehicles.setColorAt(i, this.color.setRGB(...(cls === 'bus' ? busColor(flags) : vehicleColor({ speed: snapshot[o + 4]!, flags }))));
     }
     this.vehicles.count = count;
     this.vehicles.instanceMatrix.needsUpdate = true;

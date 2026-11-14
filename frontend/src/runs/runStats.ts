@@ -53,9 +53,9 @@ export function asSummary(raw: unknown): SummaryLike {
 }
 
 /** Mean ± sd of every KPI over the given run summaries (runs lacking a KPI are skipped for it). */
-export function aggregate(summaries: readonly unknown[]): Map<string, Stat | null> {
+export function aggregate(summaries: readonly unknown[], kpis: readonly RunKpi[] = RUN_KPIS): Map<string, Stat | null> {
   const out = new Map<string, Stat | null>();
-  for (const kpi of RUN_KPIS) {
+  for (const kpi of kpis) {
     const values = summaries.map((s) => kpi.get(asSummary(s))).filter((v): v is number => v !== null);
     out.set(kpi.key, stat(values));
   }

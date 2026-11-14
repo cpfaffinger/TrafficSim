@@ -14,6 +14,7 @@ import { DEFAULT_OD_VIEW, type OdView } from './odTable';
 import { demandTotals } from './totals';
 import { mixNames as allMixNames, validateDemand, type DemandSection } from './validate';
 import { zonesAt } from './zones';
+import { TransitTab } from '../transit/TransitTab';
 
 /** What the map should emphasise. */
 export interface DemandHighlight {
@@ -50,6 +51,7 @@ const TABS: { id: DemandSection; label: string }[] = [
   { id: 'entries', label: 'Entries' },
   { id: 'curves', label: 'Curves' },
   { id: 'mixes', label: 'Mixes' },
+  { id: 'transit', label: 'Transit' },
 ];
 
 const json = (m: DemandModel) => JSON.stringify(serializeDemand(m));
@@ -84,6 +86,7 @@ export function DemandEditor({ scenario, pkg, builtins, readOnly = false, picked
   const entries = useMemo(() => (pkg ? boundaryEntries(pkg, model, builtins) : []), [pkg, model, builtins]);
   const totals = useMemo(() => demandTotals(model, scenario.durationSeconds, builtins, pkg), [model, scenario.durationSeconds, builtins, pkg]);
   const timeWindow = { start: model.startTimeOfDay, duration: scenario.durationSeconds };
+  const transitLines = pkg?.transitLines ?? [];
 
   const change = (next: DemandModel) => {
     setModel(next);
@@ -155,7 +158,7 @@ export function DemandEditor({ scenario, pkg, builtins, readOnly = false, picked
         </button>
       </header>
       <div className="demand-tabs" role="tablist" aria-label="Demand sections">
-        {TABS.map((t) => (
+        {TABS.filter((t) => t.id !== 'transit' || transitLines.length > 0).map((t) => (
           <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={tab === t.id ? 'active' : undefined} onClick={() => setTab(t.id)}>
             {t.label}
             {t.id === 'od' ? ` (${model.od.length})` : ''}
@@ -192,6 +195,9 @@ export function DemandEditor({ scenario, pkg, builtins, readOnly = false, picked
             invalid={invalid}
             readOnly={readOnly}
           />
+        )}
+        {tab === 'transit' && (
+          <TransitTab lines={transitLines} value={model.rest.transit} readOnly={readOnly} onChange={(transit) => change({ ...model, rest: { ...model.rest, transit } })} />
         )}
         {tab === 'curves' && <CurvesTab model={model} onChange={change} curveNames={curveNames} window={timeWindow} invalid={invalid} readOnly={readOnly} />}
         {tab === 'mixes' && (

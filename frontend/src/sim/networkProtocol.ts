@@ -61,7 +61,7 @@ export type FromNetworkWorker =
 
 export const NETWORK_SNAPSHOT_STRIDE = 9;
 
-export const VEHICLE_FLAGS = { braking: 1, waiting: 2, changingLane: 4, inJunction: 8, holding: 16 } as const;
+export const VEHICLE_FLAGS = { braking: 1, waiting: 2, changingLane: 4, inJunction: 8, holding: 16, dwelling: 32 } as const;
 
 export const VEHICLE_CLASSES = ['car', 'van', 'truck', 'bus', 'motorcycle'] as const;
 export type VehicleClassName = (typeof VEHICLE_CLASSES)[number];
@@ -108,6 +108,11 @@ export function readVehicle(snapshot: Float32Array, index: number): VehicleView 
     flags: Math.round(snapshot[o + 7]!),
     id: Math.round(snapshot[o + 8]!),
   };
+}
+
+/** Colour of a bus (#85): violet, lighter while dwelling at a stop, so buses stand out from traffic. */
+export function busColor(flags: number): [number, number, number] {
+  return flags & VEHICLE_FLAGS.dwelling ? [0.8, 0.6, 0.95] : [0.55, 0.27, 0.78];
 }
 
 /** Colour of a vehicle: red when braking or holding, otherwise green→yellow by speed (km/h bands). */

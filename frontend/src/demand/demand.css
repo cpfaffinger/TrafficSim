@@ -323,3 +323,12 @@
     grid-template-columns: 90px 1fr 64px auto;
   }
 }
+
+/* Bus line colour in the transit tab (#85). */
+.line-swatch {
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  border-radius: 2px;
+  vertical-align: baseline;
+}

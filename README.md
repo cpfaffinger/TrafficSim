@@ -10,7 +10,7 @@ congestion, queue and speed **heatmaps**.
 > [milestones](https://github.com/cpfaffinger/TrafficSim/milestones).
 > Staging: <https://stagecompose00.pulseone.dev>
 
-## Features (so far)
+## Features
 
 - **Search and import** any area (Photon/Nominatim search, Overpass for small areas, Geofabrik
   extracts for large ones) and compile it into a lane-accurate network: lanes per direction,
@@ -23,6 +23,23 @@ congestion, queue and speed **heatmaps**.
   markings, new roads/bridges, roundabout conversion, lane connections, turn bans, signal plans
   ([ADR-0010](docs/adr/0010-changesets-over-immutable-baseline.md)) — saved as **scenarios** with
   variants, read-only share links, run results and GeoJSON/CSV exports.
+- **Rectangles or hand-drawn polygons** as import areas, named imports that can be renamed and
+  deleted.
+- **Scenarios generated at import** from OSM buildings, land use and POIs (dwellings, jobs, shops,
+  schools, venues, parking): zones, a gravity OD matrix and morning/midday/evening/Saturday/night/
+  stress scenarios, plus event and freight scenarios where the data supports them. Road-class
+  profiles (motorway ≫ primary ≫ residential) and residential access-road profiles fill in the rest.
+- **Demand editor** per scenario: OD matrix, boundary entries, time-of-day curves, vehicle and
+  driver mixes, zones on the map.
+- **Microscopic simulation in the browser** (Rust → WebAssembly in a worker): IDM car following,
+  MOBIL lane changes with continuous lateral motion, signals incl. actuated control, priority and
+  gap acceptance, conflict areas, rerouting, heterogeneous vehicles and drivers, deterministic per
+  seed.
+- **Lane-accurate heatmaps** (speed ratio, density, queues, delay, flow, stops) with a timeline and
+  replay of 30 s buckets.
+- **Stored runs**: save the browser run or run several seeds on the server with the native sim
+  core, KPIs as mean ± sd, **A/B comparison** of runs as a diff heatmap (same lane layout) or as
+  per-link deltas matched by OSM way.
 
 ## API (v1)
 
@@ -30,10 +47,13 @@ congestion, queue and speed **heatmaps**.
 |----------|---------|
 | `GET /api/v1/geocode?q=`, `GET /api/v1/geocode/reverse?lat=&lon=` | place search |
 | `GET /api/v1/providers`, `GET /api/v1/meta` | provider registry, version, attributions |
-| `POST /api/v1/networks/import` `{bbox}` → job; `GET /api/v1/networks/import/{jobId}` | import an area |
+| `POST /api/v1/networks/import` `{bbox \| polygon, name}` → job; `GET /api/v1/networks/import/{jobId}` | import an area (generates scenarios) |
+| `PATCH /api/v1/networks/{id}` `{name}`, `DELETE /api/v1/networks/{id}` | rename / delete an import with its scenarios and runs |
 | `GET /api/v1/networks`, `GET /api/v1/networks/{id}`, `GET /api/v1/networks/{id}/package` | baselines and their [network package](docs/architecture/network-package.md) |
 | `POST /api/v1/networks/{id}/preview` `{changeset}` | compile a changeset without saving |
 | `/api/v1/scenarios[/{id}[/clone\|/package\|/runs]]`, `/api/v1/shared/{token}` | scenarios, variants, share links, runs |
+| `GET /api/v1/runs/{id}`, `GET /api/v1/runs/{id}/buckets` | a stored run and its `lane-cells-v1` heatmap history |
+| `POST /api/v1/scenarios/{id}/batch` `{seeds, durationSeconds, warmupSeconds}` → job; `GET /api/v1/batches/{jobId}`; `GET /api/v1/batch-runner` | multi-seed runs on the server |
 | `/api/v1/scenarios/{id}/export/network.geojson`, `/api/v1/runs/{id}/export/*` | exports (ODbL) |
 
 OpenAPI: `/api/openapi/v1.json`.

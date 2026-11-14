@@ -62,8 +62,27 @@ export function insertAfterNode(index: PackageIndex, link: Link, segment: number
   return wayDirection(index, link) === 'backward' ? pair[1] : pair[0];
 }
 
+/** Attach via the link's OSM nodes (#105): the clicked OSM segment, `afterNode` in way order. */
+function attachViaOsmNodes(index: PackageIndex, link: Link, p: XY): (DraftPoint & { kind: 'insert' }) | null {
+  const nodes = link.osmNodes;
+  if (link.osmWayId === null || !nodes || nodes.length < 2) return null;
+  let best: { k: number; x: number; y: number; distance: number } | null = null;
+  for (let k = 0; k < nodes.length - 1; k++) {
+    const a = nodes[k]!;
+    const b = nodes[k + 1]!;
+    if (a.id === null || b.id === null) continue;
+    const pr = projectOnSegment(p, [a.x, a.y], [b.x, b.y]);
+    if (!best || pr.distance < best.distance) best = { k, ...pr };
+  }
+  if (!best) return null;
+  const forward = link.osmForward ?? wayDirection(index, link) !== 'backward';
+  const afterNode = forward ? nodes[best.k]!.id! : nodes[best.k + 1]!.id!;
+  return { kind: 'insert', wayId: link.osmWayId, afterNode, linkId: link.id, x: best.x, y: best.y };
+}
+
 function attachToLink(index: PackageIndex, link: Link, p: XY): (DraftPoint & { kind: 'insert' }) | null {
   if (link.osmWayId === null) return null;
+  if (link.osmNodes && link.osmNodes.length >= 2) return attachViaOsmNodes(index, link, p);
   const g = link.geometry;
   const last = g.length - 2;
   // Middle segments have no known OSM nodes: use the nearest addressable (first or last) segment.

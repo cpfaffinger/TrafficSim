@@ -18,6 +18,7 @@ import { useNetworkSimulation } from './useNetworkSimulation';
 import { ScenarioPanel } from '../scenarios/ScenarioPanel';
 import { SharedScenarioPanel } from '../scenarios/SharedScenarioPanel';
 import { useNetworkEditor } from './useNetworkEditor';
+import { confirmDiscard } from '../editor/discard';
 import '../editor/editor.css';
 
 export interface NetworkViewerProps {
@@ -89,10 +90,11 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
 
   const onPackage = useCallback(
     (p: NetworkPackage) => {
+      if (!confirmDiscard(editor.session.dirty, (m) => window.confirm(m))) return;
       showPackage(p, false);
       if (p.baselineId) startBaseline(p, p.baselineId);
     },
-    [showPackage, startBaseline],
+    [showPackage, startBaseline, editor.session.dirty],
   );
   const onSharedPackage = useCallback((p: NetworkPackage) => showPackage(p, false), [showPackage]);
 

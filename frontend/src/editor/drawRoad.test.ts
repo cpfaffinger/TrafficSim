@@ -19,6 +19,23 @@ describe('road drawing (#69)', () => {
     expect(snapPoint(index, [4, -3])).toEqual({ kind: 'node', osmId: 100, nodeId: 'n0', x: 0, y: 0 });
   });
 
+  it('attaches to any OSM segment when the package lists the link nodes (#105)', () => {
+    const pkg = editorNetwork();
+    // way 1000 [101, 201, 202, 100] from x = -100 to 0; the backward link lists nodes in travel order.
+    const nodes = [
+      { id: 101, x: -100, y: 0 },
+      { id: 201, x: -66, y: 0 },
+      { id: 202, x: -33, y: 0 },
+      { id: 100, x: 0, y: 0 },
+    ];
+    const links = pkg.links.map((l) =>
+      l.osmWayId === 1000 ? { ...l, osmNodes: l.from === 'n0' ? [...nodes].reverse() : nodes, osmForward: l.from !== 'n0' } : l,
+    );
+    const withNodes = new PackageIndex({ ...pkg, links });
+    expect(snapPoint(withNodes, [-50, -1])).toMatchObject({ kind: 'insert', wayId: 1000, afterNode: 201, x: -50 });
+    expect(snapPoint(withNodes, [-80, -1])).toMatchObject({ kind: 'insert', wayId: 1000, afterNode: 101 });
+  });
+
   it('attaches to roads on their first or last segment', () => {
     // East road (way 2000): forward link l2 from the junction, a click on its second segment.
     expect(snapPoint(index, [60, -2])).toMatchObject({ kind: 'insert', wayId: 2000, afterNode: 301, x: 60, y: 0 });

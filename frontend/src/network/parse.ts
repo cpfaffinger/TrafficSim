@@ -19,8 +19,7 @@ import {
   type Polyline,
   type SignalController,
   type SignalGroup,
-  type Vec3,
-} from './types';
+  type Vec3, END_SIGNS } from './types';
 
 /** Thrown when a network package does not conform to format v1. `path` points at the offending value. */
 export class NetworkPackageError extends Error {
@@ -196,6 +195,16 @@ function link(value: unknown, path: string): Link {
     osmAfterFrom: nullable(o.osmAfterFrom, `${path}.osmAfterFrom`, num),
     osmBeforeTo: nullable(o.osmBeforeTo, `${path}.osmBeforeTo`, num),
     ...(o.osmForward === undefined ? {} : { osmForward: bool(o.osmForward, `${path}.osmForward`) }),
+    ...(o.endSign === undefined ? {} : { endSign: oneOf(END_SIGNS)(o.endSign, `${path}.endSign`) }),
+    ...(o.osmNodes === undefined
+      ? {}
+      : {
+          osmNodes: list(o.osmNodes, `${path}.osmNodes`, (v: unknown, p: string) => {
+            const n = v as Record<string, unknown>;
+            if (typeof n !== 'object' || n === null) throw new Error(`${p} must be an object`);
+            return { id: nullable(n.id, `${p}.id`, num), x: num(n.x, `${p}.x`), y: num(n.y, `${p}.y`) };
+          }),
+        }),
   };
 }
 

@@ -146,6 +146,10 @@ export interface Link {
   osmBeforeTo?: number | null;
   /** Link runs in OSM way node order (package field since v1.1 of the spec; absent in older packages). */
   osmForward?: boolean;
+  /** Sign at the approach to `to` (#104); absent in older packages. */
+  endSign?: EndSign;
+  /** OSM nodes along the link in travel direction, untrimmed (#105); absent in older packages. */
+  osmNodes?: readonly OsmNodeRef[];
 }
 
 export interface Connector {
@@ -196,4 +200,14 @@ export interface NetworkPackage {
   connectors: Connector[];
   signals: SignalController[];
   stats: PackageStats;
+}
+
+export const END_SIGNS = ['none', 'stop', 'give_way', 'priority_road'] as const;
+export type EndSign = (typeof END_SIGNS)[number];
+
+/** An OSM node along a link (null id for clip points at the area border). */
+export interface OsmNodeRef {
+  id: number | null;
+  x: number;
+  y: number;
 }

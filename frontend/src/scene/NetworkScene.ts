@@ -10,6 +10,7 @@ import { buildNetworkMeshes, type NetworkMeshes } from '../network/networkMeshes
 import type { BBox, GeoOrigin, NetworkPackage } from '../network/types';
 import { disposeGroup, subsetGeometry, toBufferGeometry } from './geometry';
 import { RtsCameraController } from './RtsCameraController';
+import { SignLayer } from './SignLayer';
 import { SimulationLayer } from './SimulationLayer';
 
 /** Positron-inspired palette. */
@@ -64,6 +65,7 @@ export class NetworkScene {
   private readonly overlayGroup = new THREE.Group();
   private readonly highlightGroup = new THREE.Group();
   private readonly simulation = new SimulationLayer();
+  private readonly signs = new SignLayer();
   private lodMeshes: { markings: THREE.Object3D[]; buildings: THREE.Object3D[] } = { markings: [], buildings: [] };
   private lod: LodState = lodFor(0);
   private readonly lastCamera = new THREE.Matrix4();
@@ -102,7 +104,7 @@ export class NetworkScene {
     this.ground.rotation.x = -Math.PI / 2;
     this.ground.position.y = -0.3;
     this.ground.scale.set(20_000, 20_000, 1);
-    this.scene.add(this.ground, this.basemapGroup, this.networkGroup, this.tunnelGroup, this.overlayGroup, this.highlightGroup, this.simulation.group);
+    this.scene.add(this.ground, this.basemapGroup, this.networkGroup, this.tunnelGroup, this.overlayGroup, this.highlightGroup, this.simulation.group, this.signs.group);
 
     this.controls = new RtsCameraController(this.camera, this.renderer.domElement, (x, y) => this.pick(x, y));
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -148,7 +150,8 @@ export class NetworkScene {
       new THREE.MeshLambertMaterial({ color: COLORS.marking, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     );
     markings.renderOrder = 1;
-    this.lodMeshes.markings = [markings];
+    this.lodMeshes.markings = [markings, this.signs.group];
+    this.signs.load(pkg);
     const structures = this.addMesh(this.networkGroup, m.structures, new THREE.MeshLambertMaterial({ color: COLORS.concrete }));
     const ghost = (opacity: number, color: number) =>
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
@@ -268,6 +271,7 @@ export class NetworkScene {
   dispose(): void {
     cancelAnimationFrame(this.frameHandle);
     this.simulation.dispose();
+    this.signs.clear();
     this.basemapAbort?.abort();
     this.resizeObserver.disconnect();
     this.controls.dispose();

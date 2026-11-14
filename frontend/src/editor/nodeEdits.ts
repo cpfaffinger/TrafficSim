@@ -14,13 +14,16 @@ export const CONTROL_LABELS: Record<ControlChoice, string> = {
   mini_roundabout: 'Mini roundabout',
 };
 
+// `trafficsim:signals=no` stops the compiler from inferring signals from traffic-signal nodes on the
+// approaches (ADR-0016); any explicit non-signal choice sets it, choosing signals clears it.
+const SUPPRESS = 'trafficsim:signals';
 const CONTROL_TAGS: Record<ControlChoice, TagChanges> = {
-  auto: { highway: null, stop: null },
-  signal: { highway: 'traffic_signals', stop: null },
-  stop: { highway: 'stop', stop: null },
-  all_way_stop: { highway: 'stop', stop: 'all' },
-  give_way: { highway: 'give_way', stop: null },
-  mini_roundabout: { highway: 'mini_roundabout', stop: null },
+  auto: { highway: null, stop: null, [SUPPRESS]: null },
+  signal: { highway: 'traffic_signals', stop: null, [SUPPRESS]: null },
+  stop: { highway: 'stop', stop: null, [SUPPRESS]: 'no' },
+  all_way_stop: { highway: 'stop', stop: 'all', [SUPPRESS]: 'no' },
+  give_way: { highway: 'give_way', stop: null, [SUPPRESS]: 'no' },
+  mini_roundabout: { highway: 'mini_roundabout', stop: null, [SUPPRESS]: 'no' },
 };
 
 /** Best guess of the current choice from the compiled control (signs on the node itself are not in the package). */
@@ -45,7 +48,14 @@ export function requireOsmNode(node: NetworkNode): number {
 export function setNodeControl(node: NetworkNode, choice: ControlChoice): EditResult {
   return {
     label: `Junction control: ${CONTROL_LABELS[choice].toLowerCase()}`,
-    ops: [{ op: 'set_node_tags', nodeId: requireOsmNode(node), tags: { ...CONTROL_TAGS[choice] } }],
+    ops: [
+      {
+        op: 'set_node_tags',
+        nodeId: requireOsmNode(node),
+        // "automatic" on a signalised junction means: remove the signals, including inferred ones.
+        tags: { ...CONTROL_TAGS[choice], ...(choice === 'auto' && node.control === 'signal' ? { [SUPPRESS]: 'no' } : {}) },
+      },
+    ],
   };
 }
 

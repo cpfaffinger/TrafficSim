@@ -23,9 +23,14 @@ const movement = (ms: Movement[], id: string) => ms.find((m) => m.id === id)!;
 
 describe('junction control (#68)', () => {
   it('writes node tags for each control', () => {
-    expect(setNodeControl(node, 'signal').ops).toEqual([{ op: 'set_node_tags', nodeId: 100, tags: { highway: 'traffic_signals', stop: null } }]);
+    expect(setNodeControl(node, 'signal').ops).toEqual([
+      { op: 'set_node_tags', nodeId: 100, tags: { highway: 'traffic_signals', stop: null, 'trafficsim:signals': null } },
+    ]);
+    expect(setNodeControl(node, 'stop').ops[0]).toMatchObject({ tags: { highway: 'stop', 'trafficsim:signals': 'no' } });
+    // "automatic" on a signalised junction removes inferred signals too (#106)
+    expect(setNodeControl({ ...node, control: 'signal' }, 'auto').ops[0]).toMatchObject({ tags: { highway: null, 'trafficsim:signals': 'no' } });
     expect(setNodeControl(node, 'all_way_stop').ops[0]).toMatchObject({ tags: { highway: 'stop', stop: 'all' } });
-    expect(setNodeControl(node, 'auto').ops[0]).toMatchObject({ tags: { highway: null, stop: null } });
+    expect(setNodeControl(node, 'auto').ops[0]).toMatchObject({ tags: { highway: null, stop: null, 'trafficsim:signals': null } });
     expect(setNodeControl(node, 'give_way').label).toBe('Junction control: give way sign');
     expect(() => setNodeControl({ ...node, osmId: null }, 'stop')).toThrow(EditError);
   });

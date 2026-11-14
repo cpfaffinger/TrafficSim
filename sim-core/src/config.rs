@@ -4,7 +4,10 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::demand::{OdEntry, TimeOfDay, TimeProfile, Zone, resolve_profile};
+use crate::demand::{
+    EntrySpec, OdEntry, ResidentialConfig, RoadClassProfilePatch, RoadClassProfiles, TimeOfDay, TimeProfile,
+    Zone, resolve_profile,
+};
 use crate::driver::{DriverProfilePatch, Fleet};
 use crate::vehicle::VehicleTypePatch;
 
@@ -162,10 +165,18 @@ impl Default for MetricsConfig {
 pub struct SimConfig {
     /// Fixed time step Δt (s), in (0, 1].
     pub time_step: f64,
-    /// Arrival rate (vehicles per hour) of every entry node not listed in `demand`.
-    pub default_demand: f64,
-    /// Arrival rate per entry node id (vehicles per hour).
+    /// Uniform arrival rate (vehicles per hour) of every entry node not listed in `entries` /
+    /// `demand`. Absent: road-class profiles (`profiles`) decide.
+    pub default_demand: Option<f64>,
+    /// Arrival rate per entry node id (vehicles per hour); `entries` takes precedence.
     pub demand: BTreeMap<String, f64>,
+    /// Explicit demand per entry (boundary) node id: vehicles per hour or `{vph, curve}` (#111).
+    pub entries: BTreeMap<String, EntrySpec>,
+    /// Entry nodes without explicit demand get `volumePerLane × lanes` of the road class of
+    /// their entry link. Default: true unless an `od` matrix is given.
+    pub auto_entries: Option<bool>,
+    /// Road-class demand profiles (`volumePerLane`, `curve`), patching the built-ins (#111).
+    pub profiles: BTreeMap<String, RoadClassProfilePatch>,
     /// Relative destination weight per exit node id (default 1).
     pub destination_weights: BTreeMap<String, f64>,
     /// Vehicle type shares (catalogue names, e.g. `car`, `truck`, `articulatedTruck`);
@@ -186,18 +197,22 @@ pub struct SimConfig {
     pub driver_mix: BTreeMap<String, f64>,
     pub perception: PerceptionConfig,
     /// Time of day at simulation time 0 (seconds or `"HH:MM"`, default 07:00).
-    pub start_time: TimeOfDay,
-    /// Custom time-of-day profiles (in addition to the built-in ones).
-    pub time_profiles: BTreeMap<String, TimeProfile>,
-    /// Time-of-day profile applied to the boundary demand (`demand` / `defaultDemand`).
-    pub demand_profile: Option<String>,
-    /// Demand zones for the OD matrix.
+    pub start_time_of_day: TimeOfDay,
+    /// Custom time-of-day curves (in addition to the built-in ones).
+    pub curves: BTreeMap<String, TimeProfile>,
+    /// Curve applied to all boundary demand (overrides the road-class / entry curves).
+    pub demand_curve: Option<String>,
+    /// Demand zones for the OD matrix: `{id: zone}` or `[{"id": …, …}]`.
+    #[serde(deserialize_with = "crate::demand::deserialize_zones")]
     pub zones: BTreeMap<String, Zone>,
-    /// OD matrix. When present, `defaultDemand` is ignored; `demand` adds boundary traffic.
+    /// Residential trip generation from residential / living-street / service links (#112).
+    pub auto_zones: bool,
+    pub residential: ResidentialConfig,
+    /// OD matrix. When present, `defaultDemand` is ignored and `autoEntries` defaults to false.
     pub od: Vec<OdEntry>,
-    /// Time-of-day profile per vehicle type: its share in every mix is multiplied by the profile
+    /// Time-of-day curve per vehicle type: its share in every mix is multiplied by the curve
     /// factor (e.g. `{"articulatedTruck": "freight"}`).
-    pub vehicle_mix_profiles: BTreeMap<String, String>,
+    pub vehicle_mix_curves: BTreeMap<String, String>,
     pub re_routing: ReRoutingConfig,
     pub metrics: MetricsConfig,
 }
@@ -206,8 +221,11 @@ impl Default for SimConfig {
     fn default() -> Self {
         Self {
             time_step: 0.1,
-            default_demand: 300.0,
+            default_demand: None,
             demand: BTreeMap::new(),
+            entries: BTreeMap::new(),
+            auto_entries: None,
+            profiles: BTreeMap::new(),
             destination_weights: BTreeMap::new(),
             vehicle_mix: BTreeMap::new(),
             heterogeneity: 0.0,
@@ -218,12 +236,14 @@ impl Default for SimConfig {
             driver_profiles: BTreeMap::new(),
             driver_mix: BTreeMap::new(),
             perception: PerceptionConfig::default(),
-            start_time: TimeOfDay::default(),
-            time_profiles: BTreeMap::new(),
-            demand_profile: None,
+            start_time_of_day: TimeOfDay::default(),
+            curves: BTreeMap::new(),
+            demand_curve: None,
             zones: BTreeMap::new(),
+            auto_zones: false,
+            residential: ResidentialConfig::default(),
             od: Vec::new(),
-            vehicle_mix_profiles: BTreeMap::new(),
+            vehicle_mix_curves: BTreeMap::new(),
             re_routing: ReRoutingConfig::default(),
             metrics: MetricsConfig::default(),
         }
@@ -247,7 +267,10 @@ impl SimConfig {
             return Err("timeStep must be in (0, 1] seconds".into());
         }
         let rate_ok = |v: f64| v.is_finite() && v >= 0.0;
-        if !rate_ok(self.default_demand) || !self.demand.values().all(|&v| rate_ok(v)) {
+        if !self.default_demand.is_none_or(rate_ok)
+            || !self.demand.values().all(|&v| rate_ok(v))
+            || !self.entries.values().all(|e| rate_ok(e.vph()))
+        {
             return Err("demand values must be finite and non-negative".into());
         }
         if !self.destination_weights.values().all(|&v| rate_ok(v)) {
@@ -316,17 +339,29 @@ impl SimConfig {
     /// Checks profiles, zones and the OD matrix (references to the network are checked when the
     /// simulation is built).
     fn validate_demand(&self, fleet: &Fleet) -> Result<(), String> {
-        for (name, p) in &self.time_profiles {
+        for (name, p) in &self.curves {
             p.validate(name)?;
         }
-        if let Some(name) = &self.demand_profile {
-            resolve_profile(&self.time_profiles, name)?;
+        let curve = |name: &str| resolve_profile(&self.curves, name).map(|_| ());
+        if let Some(name) = &self.demand_curve {
+            curve(name)?;
         }
-        for (ty, profile) in &self.vehicle_mix_profiles {
-            if fleet.catalogue.index(ty).is_none() {
-                return Err(format!("unknown vehicle type '{ty}' in vehicleMixProfiles"));
+        for e in self.entries.values() {
+            if let Some(c) = e.curve() {
+                curve(c)?;
             }
-            resolve_profile(&self.time_profiles, profile)?;
+        }
+        for p in RoadClassProfiles::with_overrides(&self.profiles)?.iter() {
+            curve(&p.curve)?;
+        }
+        self.residential.validate()?;
+        curve(&self.residential.outbound_curve)?;
+        curve(&self.residential.inbound_curve)?;
+        for (ty, c) in &self.vehicle_mix_curves {
+            if fleet.catalogue.index(ty).is_none() {
+                return Err(format!("unknown vehicle type '{ty}' in vehicleMixCurves"));
+            }
+            curve(c)?;
         }
         for (i, od) in self.od.iter().enumerate() {
             for zone in [&od.from, &od.to] {
@@ -337,8 +372,8 @@ impl SimConfig {
             if !(od.vph.is_finite() && od.vph >= 0.0) {
                 return Err(format!("od[{i}].vph must be finite and non-negative"));
             }
-            if let Some(p) = &od.profile {
-                resolve_profile(&self.time_profiles, p)?;
+            if let Some(p) = &od.curve {
+                curve(p)?;
             }
             if let Some(mix) = &od.vehicle_mix {
                 fleet.type_cdf(mix)?;
@@ -401,20 +436,14 @@ mod tests {
                 r#"{"driverProfiles": {"x": {"reactionTime": 9}}}"#,
                 "invalid parameters",
             ),
-            (r#"{"startTime": "25:00"}"#, "invalid time of day"),
-            (r#"{"demandProfile": "rush"}"#, "unknown time profile"),
+            (r#"{"startTimeOfDay": "25:00"}"#, "invalid time of day"),
+            (r#"{"demandCurve": "rush"}"#, "unknown curve"),
+            (r#"{"curves": {"x": {"interval": 0, "factors": [1]}}}"#, "invalid"),
             (
-                r#"{"timeProfiles": {"x": {"interval": 0, "factors": [1]}}}"#,
-                "invalid",
-            ),
-            (
-                r#"{"vehicleMixProfiles": {"tram": "flat"}}"#,
+                r#"{"vehicleMixCurves": {"tram": "flat"}}"#,
                 "unknown vehicle type",
             ),
-            (
-                r#"{"vehicleMixProfiles": {"car": "rush"}}"#,
-                "unknown time profile",
-            ),
+            (r#"{"vehicleMixCurves": {"car": "rush"}}"#, "unknown curve"),
             (
                 r#"{"od": [{"from": "a", "to": "b", "vph": 1}]}"#,
                 "unknown zone 'a'",
@@ -424,8 +453,8 @@ mod tests {
                 "non-negative",
             ),
             (
-                r#"{"zones": {"a": {}}, "od": [{"from": "a", "to": "a", "vph": 1, "profile": "x"}]}"#,
-                "unknown time profile",
+                r#"{"zones": {"a": {}}, "od": [{"from": "a", "to": "a", "vph": 1, "curve": "x"}]}"#,
+                "unknown curve",
             ),
             (
                 r#"{"zones": {"a": {}}, "od": [{"from": "a", "to": "a", "vph": 1, "vehicleMix": {"tram": 1}}]}"#,

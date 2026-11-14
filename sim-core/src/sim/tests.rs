@@ -7,14 +7,14 @@ use crate::synth::{
 
 fn quiet() -> SimConfig {
     SimConfig {
-        default_demand: 0.0,
+        default_demand: Some(0.0),
         ..SimConfig::default()
     }
 }
 
 fn with_demand(vph: f64) -> SimConfig {
     SimConfig {
-        default_demand: vph,
+        default_demand: Some(vph),
         ..SimConfig::default()
     }
 }
@@ -122,7 +122,8 @@ fn builds_from_json_and_rejects_bad_input() {
     let sim = Simulation::from_json(FIXTURE, "{}", 1).unwrap();
     assert_eq!(sim.network().links.len(), 10);
     assert_eq!(sim.time_step(), 0.1);
-    assert_eq!(sim.config().default_demand, 300.0);
+    assert_eq!(sim.config().default_demand, None);
+    assert_eq!(sim.demand("n1"), Some(2.0 * 600.0), "primary road, two lanes");
     assert!(
         Simulation::from_json("{}", "{}", 1)
             .unwrap_err()
@@ -436,7 +437,7 @@ fn mixed_driver_populations_never_collide() {
     let stats = s.stats();
     assert!(stats.arrived > 200 && stats.lapses > 0, "{stats:?}");
     let moderate = SimConfig {
-        default_demand: 400.0,
+        default_demand: Some(400.0),
         ..s.config().clone()
     };
     let mut t = sim(&t_junction(Priority::Minor), moderate.clone());
@@ -497,7 +498,7 @@ fn max_vehicles_caps_insertion() {
     let mut s = sim(
         &b,
         SimConfig {
-            default_demand: 3600.0,
+            default_demand: Some(3600.0),
             max_vehicles: 3,
             ..SimConfig::default()
         },
@@ -513,7 +514,7 @@ fn vehicle_mix_and_heterogeneity_shape_the_fleet() {
     let mut s = Simulation::new(
         fixture_network(),
         SimConfig {
-            default_demand: 900.0,
+            default_demand: Some(900.0),
             vehicle_mix: BTreeMap::from([("car".into(), 1.0), ("truck".into(), 1.0)]),
             heterogeneity: 0.2,
             ..SimConfig::default()
@@ -636,9 +637,9 @@ fn od_matrix_routes_between_zones_and_replaces_the_default_demand() {
 #[test]
 fn time_of_day_profiles_shape_the_arrivals() {
     let config = SimConfig::from_json(
-        r#"{"startTime": "06:00", "defaultDemand": 0, "demand": {"n1": 3600},
-            "timeProfiles": {"gate": {"interval": 300, "factors": [0, 1]}},
-            "demandProfile": "gate"}"#,
+        r#"{"startTimeOfDay": "06:00", "defaultDemand": 0, "demand": {"n1": 3600},
+            "curves": {"gate": {"interval": 300, "factors": [0, 1]}},
+            "demandCurve": "gate"}"#,
     )
     .unwrap();
     let mut s = Simulation::new(fixture_network(), config, 5).unwrap();
@@ -656,7 +657,7 @@ fn time_of_day_profiles_shape_the_arrivals() {
     // The built-in weekday curve: the evening peak carries far more traffic than the night.
     let count = |start: &str| {
         let config = SimConfig::from_json(&format!(
-            r#"{{"startTime": "{start}", "demandProfile": "weekday", "defaultDemand": 1800}}"#
+            r#"{{"startTimeOfDay": "{start}", "demandCurve": "weekday", "defaultDemand": 1800}}"#
         ))
         .unwrap();
         let mut s = Simulation::new(fixture_network(), config, 5).unwrap();
@@ -698,8 +699,8 @@ fn vehicle_mixes_per_od_and_time_of_day() {
     let config = SimConfig::from_json(
         r#"{"zones": {"w": {"nodes": ["n1"]}, "e": {"nodes": ["n2"]}, "s": {"nodes": ["n4"]}},
             "vehicleMix": {"car": 1, "articulatedTruck": 1},
-            "vehicleMixProfiles": {"articulatedTruck": "night"},
-            "timeProfiles": {"night": {"interval": 3600, "factors": [1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1]}},
+            "vehicleMixCurves": {"articulatedTruck": "night"},
+            "curves": {"night": {"interval": 3600, "factors": [1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1]}},
             "od": [{"from": "w", "to": "e", "vph": 1200},
                    {"from": "e", "to": "w", "vph": 600, "vehicleMix": {"bus": 1}, "driverMix": {"aggressive": 1}}]}"#,
     )
@@ -718,7 +719,7 @@ fn vehicle_mixes_per_od_and_time_of_day() {
         }
     }
     let night = SimConfig {
-        start_time: crate::demand::TimeOfDay(2.0 * 3600.0),
+        start_time_of_day: crate::demand::TimeOfDay(2.0 * 3600.0),
         ..config
     };
     let mut s = Simulation::new(fixture_network(), night, 8).unwrap();
@@ -728,6 +729,149 @@ fn vehicle_mixes_per_od_and_time_of_day() {
             .iter()
             .any(|v| s.fleet().catalogue.name(v.params.vehicle_type) == "articulatedTruck")
     );
+}
+
+/// A two-lane motorway corridor A → B and a residential street C → D, both through plain joints.
+fn motorway_and_residential() -> NetBuilder {
+    let mut b = NetBuilder::new();
+    b.node("A", 0.0, 0.0, NodeControl::Boundary)
+        .node("M", 500.0, 0.0, NodeControl::None)
+        .node("B", 1000.0, 0.0, NodeControl::Boundary)
+        .node("C", 0.0, 300.0, NodeControl::Boundary)
+        .node("N", 300.0, 300.0, NodeControl::None)
+        .node("D", 600.0, 300.0, NodeControl::Boundary)
+        .link("am", "A", "M", 2, 33.3)
+        .link("mb", "M", "B", 2, 33.3)
+        .link("cn", "C", "N", 1, 8.333)
+        .link("nd", "N", "D", 1, 8.333)
+        .connect("m0", "am", 0, "mb", 0, Priority::Major)
+        .connect("m1", "am", 1, "mb", 1, Priority::Major)
+        .connect("r0", "cn", 0, "nd", 0, Priority::Major);
+    for l in ["am", "mb"] {
+        b.link_mut(l).road_class = crate::package::RoadClass::Motorway;
+    }
+    for l in ["cn", "nd"] {
+        b.link_mut(l).road_class = crate::package::RoadClass::Residential;
+    }
+    b
+}
+
+#[test]
+fn entry_demand_defaults_to_road_class_profiles() {
+    let net = motorway_and_residential();
+    let build = |json: &str| Simulation::new(net.network(), SimConfig::from_json(json).unwrap(), 2).unwrap();
+    let s = build(r#"{"startTimeOfDay": "17:00"}"#);
+    assert_eq!(s.demand("A"), Some(2.0 * 1400.0));
+    assert_eq!(s.demand("C"), Some(60.0));
+    let sources = s.demand_sources();
+    assert!(sources.iter().all(|d| d.kind == "boundary" && d.factor == 1.0));
+    let mut s = s;
+    s.run(6000);
+    let count = |s: &Simulation, link: &str| s.vehicles().iter().filter(|v| link_of(s, v) == link).count();
+    assert!(s.stats().spawned > 300);
+    assert!(count(&s, "am") + count(&s, "mb") > 5 * (count(&s, "cn") + count(&s, "nd")).max(1));
+    // Overrides: profiles patch the class, entries / demand / defaultDemand take precedence.
+    let s = build(r#"{"profiles": {"residential": {"volumePerLane": 200, "curve": "flat"}}}"#);
+    assert_eq!(s.demand("C"), Some(200.0));
+    assert_eq!(s.demand_sources()[1].factor, 1.0);
+    let s = build(r#"{"entries": {"A": {"vph": 100, "curve": "freight"}}, "demand": {"A": 7, "C": 50}}"#);
+    assert_eq!((s.demand("A"), s.demand("C")), (Some(100.0), Some(50.0)));
+    let s = build(r#"{"defaultDemand": 300}"#);
+    assert_eq!((s.demand("A"), s.demand("C")), (Some(300.0), Some(300.0)));
+    let s = build(r#"{"autoEntries": false, "entries": {"C": 5}}"#);
+    assert_eq!((s.demand("A"), s.demand("C")), (Some(0.0), Some(5.0)));
+    let err = |json: &str| {
+        Simulation::new(net.network(), SimConfig::from_json(json).unwrap_or_default(), 1)
+            .err()
+            .unwrap_or_default()
+    };
+    assert!(err(r#"{"entries": {"M": 5}}"#).contains("not an entry node"));
+    assert!(SimConfig::from_json(r#"{"profiles": {"tram": {"volumePerLane": 1}}}"#).is_err());
+    assert!(SimConfig::from_json(r#"{"profiles": {"primary": {"volumePerLane": -1}}}"#).is_err());
+    assert!(SimConfig::from_json(r#"{"profiles": {"primary": {"curve": "x"}}}"#).is_err());
+}
+
+/// Primary road A → X → B with a residential dead-end street X → R → X (U-turn at R).
+fn residential_street() -> NetBuilder {
+    let mut b = NetBuilder::new();
+    b.node("A", 0.0, 0.0, NodeControl::Boundary)
+        .node("X", 400.0, 0.0, NodeControl::Priority)
+        .node("B", 800.0, 0.0, NodeControl::Boundary)
+        .node("R", 400.0, 250.0, NodeControl::Priority)
+        .link("ax", "A", "X", 1, 13.889)
+        .link("xb", "X", "B", 1, 13.889)
+        .link("xr", "X", "R", 1, 8.333)
+        .link("rx", "R", "X", 1, 8.333)
+        .connect("through", "ax", 0, "xb", 0, Priority::Major)
+        .connect("in", "ax", 0, "xr", 0, Priority::Major)
+        .connect("out", "rx", 0, "xb", 0, Priority::Minor)
+        .connect("turn", "xr", 0, "rx", 0, Priority::Major)
+        .auto_conflicts("X");
+    for l in ["xr", "rx"] {
+        b.link_mut(l).road_class = crate::package::RoadClass::Residential;
+    }
+    b
+}
+
+#[test]
+fn residential_trips_start_and_end_inside_the_network() {
+    let config = SimConfig::from_json(
+        r#"{"autoZones": true, "autoEntries": false, "entries": {"A": 300},
+            "residential": {"outboundPerKm": 1500, "inboundPerKm": 1500}}"#,
+    )
+    .unwrap();
+    let mut s = sim(&residential_street(), config.clone());
+    let sources = s.demand_sources();
+    let kinds: Vec<&str> = sources.iter().map(|d| d.kind).collect();
+    assert_eq!(kinds, ["boundary", "residentialOut", "residentialIn"]);
+    let homes_km = 2.0 * (250.0 - 8.0 - 8.0) / 1000.0;
+    assert!((sources[1].vph - 1500.0 * homes_km).abs() < 1e-6);
+    assert_eq!((sources[1].factor, sources[2].factor), (1.0, 0.30), "07:00");
+    let mut along = 0;
+    let mut seen = std::collections::BTreeSet::new();
+    for _ in 0..6000 {
+        s.step();
+        check_invariants(&mut s);
+        for v in s.vehicles() {
+            if seen.insert(v.id) && ["xr", "rx"].contains(&link_of(&s, v).as_str()) && v.pos > 5.0 {
+                along += 1;
+            }
+        }
+    }
+    assert!(along > 50, "outbound trips start along the street: {along}");
+    let stats = s.stats();
+    assert!(stats.arrived > 100 && stats.stranded == 0, "{stats:?}");
+    // Inbound trips end on the residential links.
+    let ends_home = s
+        .vehicles()
+        .iter()
+        .filter(|v| ["xr", "rx"].contains(&link_ids(&s, s.route_of(v)).last().unwrap().as_str()))
+        .count();
+    assert!(ends_home > 0);
+    // Deterministic.
+    let mut again = sim(&residential_street(), config);
+    again.run(6000);
+    assert_eq!(again.state_checksum(), s.state_checksum());
+    assert!(
+        SimConfig::from_json(r#"{"residential": {"classes": ["tram"]}}"#)
+            .unwrap_err()
+            .contains("unknown road class")
+    );
+    assert!(SimConfig::from_json(r#"{"residential": {"exitWeight": -1}}"#).is_err());
+    assert!(SimConfig::from_json(r#"{"residential": {"inboundCurve": "x"}}"#).is_err());
+}
+
+#[test]
+fn zones_also_parse_as_a_list() {
+    let config = SimConfig::from_json(
+        r#"{"zones": [{"id": "w", "nodes": ["n1"]}, {"id": "e", "nodes": ["n2"]}],
+            "od": [{"from": "w", "to": "e", "vph": 600}]}"#,
+    )
+    .unwrap();
+    assert_eq!(config.zones.len(), 2);
+    assert!(Simulation::new(fixture_network(), config, 1).is_ok());
+    let dup = SimConfig::from_json(r#"{"zones": [{"id": "w"}, {"id": "w"}]}"#);
+    assert!(dup.is_err());
 }
 
 #[test]
@@ -757,7 +901,7 @@ fn refresh_signals(s: &mut Simulation) {
 #[test]
 fn vehicles_stop_at_red_and_enter_only_on_green_or_amber() {
     let config = SimConfig {
-        default_demand: 900.0,
+        default_demand: Some(900.0),
         ..SimConfig::default()
     };
     let mut s = Simulation::new(fixture_network(), config, 11).unwrap();
@@ -1136,7 +1280,7 @@ fn keep_right_bias_on_motorways() {
 #[test]
 fn lane_changes_obey_boundaries_and_no_change_zones() {
     let config = SimConfig {
-        default_demand: 900.0,
+        default_demand: Some(900.0),
         ..SimConfig::default()
     };
     let mut s = Simulation::new(fixture_network(), config, 2).unwrap();
@@ -1253,7 +1397,7 @@ fn bridge_traffic_never_interacts_with_the_road_below() {
 
 fn busy_fixture(seed: u64) -> Simulation {
     let config = SimConfig {
-        default_demand: 800.0,
+        default_demand: Some(800.0),
         vehicle_mix: BTreeMap::from([
             ("car".into(), 8.0),
             ("truck".into(), 1.0),
@@ -1302,10 +1446,10 @@ fn golden_runs() {
     )
     .unwrap();
     let od = SimConfig::from_json(
-        r#"{"startTime": "16:30", "demand": {"n7": 600}, "demandProfile": "weekday",
+        r#"{"startTimeOfDay": "16:30", "demand": {"n7": 600}, "demandCurve": "weekday",
             "zones": {"w": {"nodes": ["n1"]}, "e": {"nodes": ["n2"]}, "ns": {"nodes": ["n3", "n4"]}},
-            "vehicleMix": {"car": 9, "articulatedTruck": 1}, "vehicleMixProfiles": {"articulatedTruck": "freight"},
-            "od": [{"from": "w", "to": "e", "vph": 900, "profile": "eveningPeak"},
+            "vehicleMix": {"car": 9, "articulatedTruck": 1}, "vehicleMixCurves": {"articulatedTruck": "freight"},
+            "od": [{"from": "w", "to": "e", "vph": 900, "curve": "eveningPeak"},
                    {"from": "ns", "to": "ns", "vph": 500, "driverMix": {"commuter": 1}},
                    {"from": "e", "to": "ns", "vph": 400, "vehicleMix": {"van": 1}}]}"#,
     )

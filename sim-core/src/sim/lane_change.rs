@@ -89,7 +89,7 @@ impl Simulation {
 
     /// Leader and follower on `lane` around position `s` (occupant lists are sorted downstream
     /// first; equal positions sort by id).
-    fn neighbours(&self, lane: u32, s: f64, id: u32) -> (Option<u32>, Option<u32>) {
+    pub(super) fn neighbours(&self, lane: u32, s: f64, id: u32) -> (Option<u32>, Option<u32>) {
         let list = &self.seg_vehicles[lane as usize];
         let k = list.partition_point(|&j| {
             let v = &self.vehicles[j as usize];

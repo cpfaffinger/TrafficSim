@@ -16,6 +16,7 @@
 
 mod demand;
 mod junction;
+pub use demand::DemandSource;
 mod lane_change;
 mod perception;
 mod reroute;

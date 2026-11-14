@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Seconds per day.
 pub const DAY: f64 = 86_400.0;
@@ -76,7 +76,15 @@ pub struct TimeProfile {
 }
 
 /// Names of the built-in profiles (hourly factors, peak hour = 1).
-pub const BUILTIN_PROFILES: [&str; 5] = ["flat", "weekday", "morningPeak", "eveningPeak", "freight"];
+pub const BUILTIN_PROFILES: [&str; 7] = [
+    "flat",
+    "weekday",
+    "morningPeak",
+    "eveningPeak",
+    "commuterOut",
+    "commuterIn",
+    "freight",
+];
 
 impl TimeProfile {
     pub fn builtin(name: &str) -> Option<Self> {
@@ -88,12 +96,12 @@ impl TimeProfile {
                 0.83, 0.95, 1.00, 0.83, 0.60, 0.45, 0.35, 0.28, 0.18,
             ],
             // Commuters towards the centre: strong morning peak.
-            "morningPeak" => &[
+            "morningPeak" | "commuterOut" => &[
                 0.05, 0.03, 0.02, 0.02, 0.05, 0.20, 0.60, 1.00, 0.90, 0.45, 0.30, 0.30, 0.30, 0.30, 0.30,
                 0.35, 0.40, 0.40, 0.30, 0.20, 0.15, 0.10, 0.08, 0.06,
             ],
             // Commuters going home: strong evening peak.
-            "eveningPeak" => &[
+            "eveningPeak" | "commuterIn" => &[
                 0.06, 0.04, 0.03, 0.03, 0.04, 0.08, 0.15, 0.30, 0.35, 0.30, 0.30, 0.32, 0.35, 0.35, 0.40,
                 0.60, 0.90, 1.00, 0.70, 0.45, 0.30, 0.20, 0.12, 0.08,
             ],
@@ -192,6 +200,276 @@ pub struct Zone {
     pub links: Vec<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ZoneWithId {
+    id: String,
+    #[serde(default)]
+    nodes: Vec<String>,
+    #[serde(default)]
+    links: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ZonesRepr {
+    Map(BTreeMap<String, Zone>),
+    List(Vec<ZoneWithId>),
+}
+
+/// Zones as an object `{id: zone}` or as an array `[{"id": …, "nodes": […], "links": […]}]`.
+pub fn deserialize_zones<'de, D: serde::Deserializer<'de>>(d: D) -> Result<BTreeMap<String, Zone>, D::Error> {
+    match ZonesRepr::deserialize(d)? {
+        ZonesRepr::Map(m) => Ok(m),
+        ZonesRepr::List(list) => {
+            let mut m = BTreeMap::new();
+            for z in list {
+                if m.insert(
+                    z.id.clone(),
+                    Zone {
+                        nodes: z.nodes,
+                        links: z.links,
+                    },
+                )
+                .is_some()
+                {
+                    return Err(serde::de::Error::custom(format!("duplicate zone id '{}'", z.id)));
+                }
+            }
+            Ok(m)
+        }
+    }
+}
+
+/// Explicit demand of an entry node: vehicles per hour, or `{"vph": …, "curve": …}`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(untagged)]
+pub enum EntrySpec {
+    Rate(f64),
+    #[serde(rename_all = "camelCase")]
+    Full {
+        vph: f64,
+        #[serde(default)]
+        curve: Option<String>,
+    },
+}
+
+impl EntrySpec {
+    pub fn vph(&self) -> f64 {
+        match self {
+            Self::Rate(v) | Self::Full { vph: v, .. } => *v,
+        }
+    }
+
+    pub fn curve(&self) -> Option<&str> {
+        match self {
+            Self::Rate(_) => None,
+            Self::Full { curve, .. } => curve.as_deref(),
+        }
+    }
+}
+
+/// Demand profile of a road class (#111): peak-hour volume per lane and a time-of-day curve.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoadClassProfile {
+    /// Vehicles per hour and lane at curve factor 1.
+    pub volume_per_lane: f64,
+    /// Name of a time-of-day curve (built-in or `curves`).
+    pub curve: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RoadClassProfilePatch {
+    pub volume_per_lane: Option<f64>,
+    pub curve: Option<String>,
+}
+
+/// Road-class keys of the network package, in profile order.
+pub const ROAD_CLASSES: [&str; 17] = [
+    "motorway",
+    "motorway_link",
+    "trunk",
+    "trunk_link",
+    "primary",
+    "primary_link",
+    "secondary",
+    "secondary_link",
+    "tertiary",
+    "tertiary_link",
+    "unclassified",
+    "residential",
+    "living_street",
+    "service",
+    "road",
+    "busway",
+    "unknown",
+];
+
+/// Road-class profiles: built-ins with configuration patches.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RoadClassProfiles {
+    list: Vec<(&'static str, RoadClassProfile)>,
+}
+
+impl RoadClassProfiles {
+    pub fn builtin() -> Self {
+        let volume = |class: &str| match class {
+            "motorway" => 1400.0,
+            "trunk" => 1000.0,
+            "motorway_link" => 600.0,
+            "primary" => 600.0,
+            "trunk_link" => 400.0,
+            "secondary" => 400.0,
+            "primary_link" => 300.0,
+            "tertiary" => 250.0,
+            "secondary_link" => 200.0,
+            "tertiary_link" => 150.0,
+            "unclassified" => 120.0,
+            "residential" => 60.0,
+            "service" => 30.0,
+            "busway" => 30.0,
+            "living_street" => 20.0,
+            _ => 150.0,
+        };
+        Self {
+            list: ROAD_CLASSES
+                .iter()
+                .map(|&c| {
+                    (
+                        c,
+                        RoadClassProfile {
+                            volume_per_lane: volume(c),
+                            curve: "weekday".into(),
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    pub fn with_overrides(patches: &BTreeMap<String, RoadClassProfilePatch>) -> Result<Self, String> {
+        let mut all = Self::builtin();
+        for (class, patch) in patches {
+            let (_, p) = all
+                .list
+                .iter_mut()
+                .find(|(c, _)| c == class)
+                .ok_or_else(|| format!("unknown road class '{class}' in profiles"))?;
+            if let Some(v) = patch.volume_per_lane {
+                if !(v.is_finite() && v >= 0.0) {
+                    return Err(format!(
+                        "profiles.{class}.volumePerLane must be finite and non-negative"
+                    ));
+                }
+                p.volume_per_lane = v;
+            }
+            if let Some(c) = &patch.curve {
+                p.curve = c.clone();
+            }
+        }
+        Ok(all)
+    }
+
+    /// Profile of a road class key (unknown keys use `unknown`).
+    pub fn get(&self, class: &str) -> &RoadClassProfile {
+        self.list
+            .iter()
+            .find(|(c, _)| *c == class)
+            .or_else(|| self.list.last())
+            .map(|(_, p)| p)
+            .unwrap_or_else(|| unreachable!("the built-in list is never empty"))
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &RoadClassProfile> {
+        self.list.iter().map(|(_, p)| p)
+    }
+
+    /// All profiles as JSON `{class: {volumePerLane, curve}}`.
+    pub fn to_json(&self) -> String {
+        let map: BTreeMap<&str, &RoadClassProfile> = self.list.iter().map(|(c, p)| (*c, p)).collect();
+        serde_json::to_string(&map).unwrap_or_default()
+    }
+}
+
+/// Residential trip generation (#112), active with `autoZones`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+pub struct ResidentialConfig {
+    /// Road classes whose links form the residential zones.
+    pub classes: Vec<String>,
+    /// Trips leaving the residential links (vehicles per hour per km of link at factor 1).
+    pub outbound_per_km: f64,
+    /// Trips returning to the residential links (vehicles per hour per km at factor 1).
+    pub inbound_per_km: f64,
+    pub outbound_curve: String,
+    pub inbound_curve: String,
+    /// Weight of a non-residential link as trip destination (outbound) or origin (inbound) by
+    /// road class; classes not listed weigh 1.
+    pub destination_weights: BTreeMap<String, f64>,
+    /// Extra factor for links that leave the network (exits) or enter it (entries).
+    pub exit_weight: f64,
+    /// Outbound trips start at a random position along the link (driveways) instead of its start.
+    pub insert_along_link: bool,
+    /// Driver mix of residential trips (default: `driverMix`).
+    pub driver_mix: Option<BTreeMap<String, f64>>,
+}
+
+impl Default for ResidentialConfig {
+    fn default() -> Self {
+        let w = [
+            ("motorway", 8.0),
+            ("motorway_link", 4.0),
+            ("trunk", 6.0),
+            ("trunk_link", 3.0),
+            ("primary", 4.0),
+            ("primary_link", 2.0),
+            ("secondary", 3.0),
+            ("secondary_link", 1.5),
+            ("tertiary", 2.0),
+            ("tertiary_link", 1.0),
+            ("unclassified", 1.0),
+        ];
+        Self {
+            classes: vec!["residential".into(), "living_street".into(), "service".into()],
+            outbound_per_km: 40.0,
+            inbound_per_km: 40.0,
+            outbound_curve: "commuterOut".into(),
+            inbound_curve: "commuterIn".into(),
+            destination_weights: w.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
+            exit_weight: 4.0,
+            insert_along_link: true,
+            driver_mix: None,
+        }
+    }
+}
+
+impl ResidentialConfig {
+    pub fn validate(&self) -> Result<(), String> {
+        let ok = |v: f64| v.is_finite() && v >= 0.0;
+        if !(ok(self.outbound_per_km)
+            && ok(self.inbound_per_km)
+            && ok(self.exit_weight)
+            && self.destination_weights.values().all(|&v| ok(v)))
+        {
+            return Err("residential rates and weights must be finite and non-negative".into());
+        }
+        for class in self.classes.iter().chain(self.destination_weights.keys()) {
+            if !ROAD_CLASSES.contains(&class.as_str()) {
+                return Err(format!("unknown road class '{class}' in residential"));
+            }
+        }
+        Ok(())
+    }
+
+    /// Destination/origin weight of a link of road class `class`.
+    pub fn weight(&self, class: &str, boundary: bool) -> f64 {
+        let w = self.destination_weights.get(class).copied().unwrap_or(1.0);
+        if boundary { w * self.exit_weight } else { w }
+    }
+}
+
 /// One OD matrix entry.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -200,9 +478,9 @@ pub struct OdEntry {
     pub to: String,
     /// Vehicles per hour (at time-of-day factor 1).
     pub vph: f64,
-    /// Time-of-day profile (built-in or `timeProfiles`); constant if absent.
+    /// Time-of-day curve (built-in or `curves`); constant if absent.
     #[serde(default)]
-    pub profile: Option<String>,
+    pub curve: Option<String>,
     /// Vehicle type shares for this pair (default: `vehicleMix`).
     #[serde(default)]
     pub vehicle_mix: Option<BTreeMap<String, f64>>,
@@ -211,13 +489,13 @@ pub struct OdEntry {
     pub driver_mix: Option<BTreeMap<String, f64>>,
 }
 
-/// Resolves profile names (custom `timeProfiles` first, then built-ins).
+/// Resolves curve names (custom `curves` first, then built-ins).
 pub fn resolve_profile(custom: &BTreeMap<String, TimeProfile>, name: &str) -> Result<TimeProfile, String> {
     custom
         .get(name)
         .cloned()
         .or_else(|| TimeProfile::builtin(name))
-        .ok_or_else(|| format!("unknown time profile '{name}'"))
+        .ok_or_else(|| format!("unknown curve '{name}'"))
 }
 
 #[cfg(test)]
@@ -283,7 +561,7 @@ mod tests {
         assert!(
             resolve_profile(&custom, "nope")
                 .unwrap_err()
-                .contains("unknown time profile")
+                .contains("unknown curve")
         );
     }
 

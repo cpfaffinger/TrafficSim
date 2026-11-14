@@ -194,6 +194,13 @@ impl NetworkSim {
         self.sim.od_demand(index as usize).map(|(vph, f)| vph * f)
     }
 
+    /// Arrival processes as JSON: `[{kind, node, od, vph, factor, origins}]` (`kind`: boundary,
+    /// od, residentialOut, residentialIn; `vph` at curve factor 1, `factor` = current factor).
+    #[wasm_bindgen(js_name = demandJson)]
+    pub fn demand_json(&self) -> String {
+        self.sim.demand_json()
+    }
+
     /// Time of day in seconds since midnight (`startTime` + simulated time, wrapping daily).
     #[wasm_bindgen(getter, js_name = timeOfDay)]
     pub fn time_of_day(&self) -> f64 {
@@ -231,6 +238,12 @@ impl NetworkSim {
 #[wasm_bindgen(js_name = builtinVehicleTypesJson)]
 pub fn builtin_vehicle_types_json() -> String {
     crate::vehicle::VehicleCatalogue::builtin().to_json()
+}
+
+/// The built-in road-class demand profiles as JSON (`{class: {volumePerLane, curve}}`).
+#[wasm_bindgen(js_name = builtinRoadClassProfilesJson)]
+pub fn builtin_road_class_profiles_json() -> String {
+    crate::demand::RoadClassProfiles::builtin().to_json()
 }
 
 /// The built-in driver profiles as JSON (`{name: profile}`).
@@ -282,7 +295,7 @@ mod tests {
         let mut od = NetworkSim::new(
             FIXTURE,
             r#"{"zones": {"a": {"nodes": ["n1"]}, "b": {"nodes": ["n2"]}},
-                "od": [{"from": "a", "to": "b", "vph": 100, "profile": "weekday"}]}"#,
+                "od": [{"from": "a", "to": "b", "vph": 100, "curve": "weekday"}]}"#,
             1,
         )
         .ok()
@@ -292,6 +305,8 @@ mod tests {
             (od.od_demand(0).unwrap() - 200.0 * 0.88).abs() < 1e-9,
             "07:00-08:00 factor"
         );
+        assert!(od.demand_json().contains(r#""kind":"od""#));
+        assert!(builtin_road_class_profiles_json().contains(r#""motorway":{"volumePerLane":1400.0"#));
         assert!(sim.vehicle_types_json().contains("\"articulatedTruck\""));
         assert!(sim.driver_profiles_json().contains("\"distracted\""));
         assert_eq!(builtin_vehicle_types_json(), sim.vehicle_types_json());

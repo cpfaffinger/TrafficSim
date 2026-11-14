@@ -141,6 +141,9 @@ export interface Link {
   leftEdge: LeftEdge;
   noLaneChangeZone: number;
   assumed: string[];
+  /** OSM nodes next to `from`/`to` along the way; with the node `osmId` they key a movement for edits (ADR-0010). */
+  osmAfterFrom?: number | null;
+  osmBeforeTo?: number | null;
 }
 
 export interface Connector {

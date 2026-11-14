@@ -68,6 +68,26 @@ impl Default for LaneChangeConfig {
     }
 }
 
+/// Reaction time and distraction (#52).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PerceptionConfig {
+    /// Apply reaction times and distraction lapses (false = instantaneous perception).
+    pub enabled: bool,
+    /// Emergency reflex: the true state overrides perception when it demands braking harder
+    /// than this multiple of the driver's comfortable deceleration.
+    pub emergency_factor: f64,
+}
+
+impl Default for PerceptionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            emergency_factor: 2.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SimConfig {
@@ -95,6 +115,7 @@ pub struct SimConfig {
     pub driver_profiles: BTreeMap<String, DriverProfilePatch>,
     /// Driver profile shares; empty = legacy average drivers (`heterogeneity` spread).
     pub driver_mix: BTreeMap<String, f64>,
+    pub perception: PerceptionConfig,
 }
 
 impl Default for SimConfig {
@@ -112,6 +133,7 @@ impl Default for SimConfig {
             vehicle_types: BTreeMap::new(),
             driver_profiles: BTreeMap::new(),
             driver_mix: BTreeMap::new(),
+            perception: PerceptionConfig::default(),
         }
     }
 }
@@ -156,6 +178,7 @@ impl SimConfig {
             self.lane_change.cooldown,
             self.lane_change.urgency_distance,
             self.lane_change.visual_duration,
+            self.perception.emergency_factor,
         ];
         if !times.iter().all(|&t| rate_ok(t)) {
             return Err("junction and lane-change parameters must be finite and non-negative".into());

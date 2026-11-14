@@ -169,7 +169,8 @@ impl Simulation {
             let (lead, follow) = self.neighbours(target, s, v.id);
             let new_leader = lead.map(|j| self.neighbour(j, t_limit));
             // Without a follower on the target lane, the nearest vehicle about to enter it from
-            // an incoming connector is the follower (position relative to the lane start).
+            // an incoming connector (or from the lane before it) is the follower (position
+            // relative to the lane start).
             let new_follower = match follow {
                 Some(j) => Some(self.neighbour(j, t_limit)),
                 None => net
@@ -177,9 +178,21 @@ impl Simulation {
                     .iter()
                     .filter_map(|&ic| {
                         let seg = net.connector_segment(ic);
-                        self.seg_vehicles[seg as usize].first().map(|&j| Neighbour {
-                            pos: self.vehicles[j as usize].pos - net.seg_length[seg as usize],
+                        let clen = net.seg_length[seg as usize];
+                        let on_connector = self.seg_vehicles[seg as usize].first().map(|&j| Neighbour {
+                            pos: self.vehicles[j as usize].pos - clen,
                             ..self.neighbour(j, t_limit)
+                        });
+                        on_connector.or_else(|| {
+                            let from = net.connectors[ic as usize].from_lane;
+                            let flen = net.seg_length[from as usize];
+                            self.seg_vehicles[from as usize]
+                                .iter()
+                                .find(|&&j| self.vehicles[j as usize].next_conn == ic)
+                                .map(|&j| Neighbour {
+                                    pos: self.vehicles[j as usize].pos - flen - clen,
+                                    ..self.neighbour(j, t_limit)
+                                })
                         })
                     })
                     .max_by(|a, b| a.pos.total_cmp(&b.pos)),

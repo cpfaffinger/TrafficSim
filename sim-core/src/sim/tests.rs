@@ -318,6 +318,139 @@ fn ballistic_update_never_reverses() {
     assert!((d - 1.005).abs() < 1e-12 && (v - 10.1).abs() < 1e-12);
 }
 
+// ---------------------------------------------------------------- #52 reaction time, distraction
+
+fn without_perception(mut c: SimConfig) -> SimConfig {
+    c.perception.enabled = false;
+    c
+}
+
+/// Two cars at rest bumper to bumper (gap s0); the leader drives off at t = 0. Returns the
+/// follower's position after `steps`.
+fn start_up(config: SimConfig, reaction_time: f64, steps: usize) -> f64 {
+    let b = corridor(1, 1000.0, 15.0);
+    let mut s = sim(&b, config);
+    s.place_vehicle("up", 0, 100.0, 0.0, "down", car()).unwrap();
+    let follower = VehicleParams {
+        reaction_time,
+        ..car()
+    };
+    let id = s
+        .place_vehicle("up", 0, 100.0 - 4.5 - 2.0, 0.0, "down", follower)
+        .unwrap();
+    run_checked(&mut s, steps);
+    vehicle(&s, id).unwrap().pos
+}
+
+#[test]
+fn reaction_time_delays_the_start_up_behind_a_departing_leader() {
+    let instant = start_up(without_perception(quiet()), 0.8, 40);
+    let quick = start_up(quiet(), 0.4, 40);
+    let slow = start_up(quiet(), 1.5, 40);
+    assert!(instant > quick && quick > slow, "{instant} {quick} {slow}");
+    assert_eq!(
+        start_up(quiet(), 0.0, 40),
+        instant,
+        "zero reaction time = instantaneous"
+    );
+}
+
+#[test]
+fn a_braking_leader_is_noticed_after_the_reaction_time() {
+    let run = |config: SimConfig| {
+        let b = corridor(1, 1000.0, 15.0);
+        let mut s = sim(&b, config);
+        let l = s.place_vehicle("up", 0, 300.0, 15.0, "down", car()).unwrap();
+        let f = s.place_vehicle("up", 0, 255.0, 15.0, "down", car()).unwrap();
+        run_checked(&mut s, 20);
+        // The leader slams on the brakes.
+        let li = s.vehicles.iter().position(|v| v.id == l).unwrap();
+        s.vehicles[li].params.max_speed = 0.0;
+        let mut onset = None;
+        for step in 0..100 {
+            s.step();
+            check_invariants(&mut s);
+            if onset.is_none() && vehicle(&s, f).unwrap().acc < -1.0 {
+                onset = Some(step);
+            }
+        }
+        onset.unwrap()
+    };
+    let instant = run(without_perception(quiet()));
+    let delayed = run(quiet());
+    assert!(
+        (instant + 5..=instant + 10).contains(&delayed),
+        "0.8 s reaction time: {instant} vs {delayed} steps"
+    );
+}
+
+#[test]
+fn distraction_lapses_follow_the_profile_rate_and_freeze_the_acceleration() {
+    let config = SimConfig::from_json(
+        r#"{"defaultDemand": 1200, "driverMix": {"distracted": 1},
+            "driverProfiles": {"distracted": {"lapseRate": 360, "lapseDuration": 1.0}}}"#,
+    )
+    .unwrap();
+    let b = corridor(2, 1000.0, 20.0);
+    let mut s = sim(&b, config);
+    let mut vehicle_seconds = 0.0;
+    let mut frozen = 0;
+    for _ in 0..6000 {
+        let before: BTreeMap<u32, f64> = s.vehicles().iter().map(|v| (v.id, v.acc)).collect();
+        s.step();
+        check_invariants(&mut s);
+        vehicle_seconds += s.vehicle_count() as f64 * s.time_step();
+        for v in s.vehicles() {
+            let in_lapse = v.lapse_until > s.time() - s.time_step() && v.lapse_until.is_finite();
+            if in_lapse
+                && let Some(&a) = before.get(&v.id)
+                && v.acc == a
+                && a != 0.0
+            {
+                frozen += 1;
+            }
+        }
+    }
+    let expected = vehicle_seconds * 0.1;
+    let lapses = s.stats().lapses as f64;
+    assert!(
+        (lapses - expected).abs() < 0.25 * expected,
+        "{lapses} vs {expected}"
+    );
+    assert!(frozen > 100, "{frozen}");
+    // Lapses are off when perception is disabled.
+    let mut off = sim(&b, without_perception(s.config().clone()));
+    off.run(3000);
+    assert_eq!(off.stats().lapses, 0);
+}
+
+#[test]
+fn mixed_driver_populations_never_collide() {
+    let config = SimConfig::from_json(
+        r#"{"defaultDemand": 900, "vehicleMix": {"car": 6, "van": 1, "truck": 1, "articulatedTruck": 1, "bus": 1, "motorcycle": 1},
+            "driverMix": {"attentive": 1, "average": 1, "distracted": 2, "aggressive": 2, "commuter": 1}}"#,
+    )
+    .unwrap();
+    let mut s = Simulation::new(fixture_network(), config, 11).unwrap();
+    run_checked(&mut s, 4000);
+    let stats = s.stats();
+    assert!(stats.arrived > 200 && stats.lapses > 0, "{stats:?}");
+    let moderate = SimConfig {
+        default_demand: 400.0,
+        ..s.config().clone()
+    };
+    let mut t = sim(&t_junction(Priority::Minor), moderate.clone());
+    run_checked(&mut t, 3000);
+    let mut r = sim(&roundabout(), moderate);
+    run_checked(&mut r, 3000);
+    assert!(
+        t.stats().arrived > 50 && r.stats().arrived > 50,
+        "{:?} {:?}",
+        t.stats(),
+        r.stats()
+    );
+}
+
 // ---------------------------------------------------------------- #42 sources, sinks, lifecycle
 
 #[test]
@@ -1009,19 +1142,30 @@ fn different_seeds_give_different_runs() {
 /// changes on purpose; update them together with the change (same build ⇒ same values).
 #[test]
 fn golden_runs() {
-    let cases: [(&str, Simulation, usize, u64); 4] = [
-        ("fixture", busy_fixture(42), 3000, 0xdb36_2e7d_eebf_d5bb),
+    let profiles = SimConfig::from_json(
+        r#"{"defaultDemand": 700, "vehicleMix": {"car": 8, "articulatedTruck": 1, "motorcycle": 1},
+            "driverMix": {"attentive": 1, "average": 2, "distracted": 1, "aggressive": 1}}"#,
+    )
+    .unwrap();
+    let cases: [(&str, Simulation, usize, u64); 5] = [
+        ("fixture", busy_fixture(42), 3000, 0x9c63_5587_5f45_d69e),
         (
             "t-junction",
             sim(&t_junction(Priority::Minor), with_demand(600.0)),
             3000,
-            0x046a_a0b9_be0d_e6b9,
+            0xc76d_de54_e710_091d,
         ),
         (
             "roundabout",
             sim(&roundabout(), with_demand(500.0)),
             3000,
-            0x46e8_c79b_665c_4dc7,
+            0x8c0b_2b61_c338_6ce6,
+        ),
+        (
+            "driver-profiles",
+            Simulation::new(fixture_network(), profiles, 42).unwrap(),
+            3000,
+            0x5c67_ef1f_6e9c_1db6,
         ),
         (
             "rbl-crossroads",
@@ -1034,16 +1178,20 @@ fn golden_runs() {
                 with_demand(400.0),
             ),
             3000,
-            0x8b43_edff_bb74_64e3,
+            0x656c_fd2f_a210_6b52,
         ),
     ];
     let mut report = String::new();
+    let mut changed = Vec::new();
     for (name, mut s, steps, expected) in cases {
         s.run(steps);
         let got = s.state_checksum();
         report.push_str(&format!("{name}: {got:#018x} {}\n", s.stats_json()));
-        assert_eq!(got, expected, "golden run '{name}' changed:\n{report}");
+        if got != expected {
+            changed.push(name);
+        }
     }
+    assert!(changed.is_empty(), "golden runs {changed:?} changed:\n{report}");
     println!("{report}");
 }
 

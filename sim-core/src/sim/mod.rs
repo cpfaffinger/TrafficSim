@@ -16,15 +16,14 @@
 
 mod junction;
 mod lane_change;
+mod perception;
 
 use std::collections::{BTreeMap, VecDeque};
 
 use serde::Serialize;
 
 use crate::config::SimConfig;
-use crate::detmath;
 use crate::driver::Fleet;
-use crate::idm::MAX_EMERGENCY_DECELERATION;
 use crate::network::{NONE, Network};
 use crate::rng::Pcg32;
 use crate::routing::Router;
@@ -89,9 +88,17 @@ pub struct Vehicle {
     pub flags: u8,
     /// Re-routing found no way to the destination; removed at the end of its lane.
     pub lost: bool,
+    /// Distance travelled since insertion (m).
+    pub odo: f64,
+    /// End of the current distraction lapse (s); in the past when attentive.
+    pub lapse_until: f64,
+    /// Start of the next distraction lapse (s).
+    pub next_lapse: f64,
     /// Step phase of the staggered discretionary lane-change evaluation (set at insertion, so it
     /// does not depend on other sources' traffic).
     lc_phase: u32,
+    /// Per-vehicle random stream (distraction lapses).
+    rng: Pcg32,
     alive: bool,
 }
 
@@ -122,6 +129,7 @@ struct Counters {
     unroutable: u64,
     lane_changes: u64,
     forced_entries: u64,
+    lapses: u64,
     travel_time_sum: f64,
 }
 
@@ -147,6 +155,8 @@ pub struct Stats {
     pub lane_changes: u64,
     /// Junction entries forced by the deadlock breaker (`junction.maxWait`).
     pub forced_entries: u64,
+    /// Distraction lapses started (#52).
+    pub lapses: u64,
     /// Mean travel time of arrived vehicles (s).
     pub mean_travel_time: f64,
     /// Mean speed of active vehicles (m/s).
@@ -199,6 +209,9 @@ pub struct Simulation {
     dest_cache: BTreeMap<(u32, u8), Vec<(u32, f64)>>,
     counters: Counters,
     fleet: Fleet,
+    seed: u64,
+    /// Perception history per vehicle (same order as `vehicles`).
+    history: Vec<perception::History>,
     scratch_acc: Vec<f64>,
     log_events: bool,
     lane_change_log: Vec<LaneChangeEvent>,
@@ -214,10 +227,7 @@ fn ballistic(speed: f64, acc: f64, dt: f64) -> (f64, f64) {
     }
 }
 
-/// Exponentially distributed inter-arrival time for `rate` events per second.
-fn exponential(rng: &mut Pcg32, rate: f64) -> f64 {
-    -detmath::ln(1.0 - rng.next_f64()) / rate
-}
+use perception::exponential;
 
 impl Simulation {
     /// Builds a simulation from JSON inputs.
@@ -287,6 +297,8 @@ impl Simulation {
             dest_cache: BTreeMap::new(),
             counters: Counters::default(),
             fleet,
+            seed,
+            history: Vec::new(),
             scratch_acc: Vec::new(),
             log_events: false,
             lane_change_log: Vec::new(),
@@ -444,6 +456,12 @@ impl Simulation {
     }
 
     fn new_vehicle(&mut self, params: VehicleParams, lane: u32, pos: f64, speed: f64, route: u32) -> usize {
+        let mut rng = Pcg32::new(self.seed, 0x5000_0000 + u64::from(self.next_id));
+        let next_lapse = if params.lapse_rate > 0.0 && self.config.perception.enabled {
+            self.time + exponential(&mut rng, params.lapse_rate)
+        } else {
+            f64::INFINITY
+        };
         let mut v = Vehicle {
             id: self.next_id,
             params,
@@ -465,12 +483,18 @@ impl Simulation {
             rank: 0,
             flags: 0,
             lost: false,
+            odo: 0.0,
+            lapse_until: f64::NEG_INFINITY,
+            next_lapse,
             lc_phase: (self.steps % u64::from(self.config.lane_change.interval)) as u32,
+            rng,
             alive: true,
         };
         v.next_conn = self.connector_on_route(&v, lane);
         self.next_id += 1;
         self.vehicles.push(v);
+        self.history
+            .push(perception::History::new(self.steps, 0.0, speed, self.dt));
         self.vehicles.len() - 1
     }
 
@@ -516,10 +540,14 @@ impl Simulation {
         self.spawn();
         self.lane_change_phase();
         self.junction_phase();
+        if self.config.perception.enabled {
+            self.update_lapses();
+        }
         self.compute_accelerations();
         self.integrate();
         self.steps += 1;
         self.time = self.steps as f64 * self.dt;
+        self.record_history();
     }
 
     fn rebuild_lists(&mut self) {
@@ -665,18 +693,23 @@ impl Simulation {
         let p = &v.params;
         let speed = v.speed;
         let idm = p.idm(net.seg_speed_limit[v.seg as usize]);
-        let mut a = idm.acceleration(speed, f64::INFINITY, 0.0);
-        let follow =
-            |a: f64, gap: f64, leader_speed: f64| a.min(idm.acceleration(speed, gap, speed - leader_speed));
+        let perceive = self.config.perception.enabled;
+        let delay = if perceive {
+            perception::Delay::new(p.reaction_time, self.dt)
+        } else {
+            None
+        };
+        let mut a = perception::Accel::new(idm.acceleration(speed, f64::INFINITY, 0.0));
 
         let mut leader_found = false;
         if v.rank > 0 {
-            let l = &self.vehicles[self.seg_vehicles[v.seg as usize][v.rank as usize - 1] as usize];
-            a = follow(a, l.pos - l.params.length - v.pos, l.speed);
+            let j = self.seg_vehicles[v.seg as usize][v.rank as usize - 1];
+            let l = &self.vehicles[j as usize];
+            self.follow_vehicle(&mut a, &idm, speed, l.pos - l.params.length - v.pos, j, delay);
             leader_found = true;
         }
         if v.stop_dist.is_finite() {
-            a = follow(a, v.stop_dist - STOP_LINE_MARGIN, 0.0);
+            Self::stop_at(&mut a, &idm, speed, v.stop_dist);
         }
         let mut dist = net.seg_length[v.seg as usize] - v.pos;
         if net.is_lane(v.seg) {
@@ -688,12 +721,12 @@ impl Simulation {
                 if let Some(&j) = self.seg_vehicles[net.connector_segment(c) as usize].last() {
                     let l = &self.vehicles[j as usize];
                     if l.pos < l.params.length {
-                        a = follow(a, dist + l.pos - l.params.length, l.speed);
+                        self.follow_vehicle(&mut a, &idm, speed, dist + l.pos - l.params.length, j, delay);
                     }
                 }
             }
             if v.next_conn == NONE && self.has_next_link(v) && net.lane_outgoing(v.seg).is_empty() {
-                a = follow(a, dist - STOP_LINE_MARGIN, 0.0);
+                Self::stop_at(&mut a, &idm, speed, dist);
             }
         }
         let horizon = (30.0 + speed * 7.0).min(250.0);
@@ -727,18 +760,22 @@ impl Simulation {
             if speed > target {
                 let needed = (speed * speed - target * target) / (2.0 * dist.max(0.1));
                 if needed > 0.5 * p.comfortable_deceleration {
-                    a = a.min(-needed);
+                    a.limit(-needed);
                 }
             }
             if !leader_found && let Some(&j) = self.seg_vehicles[next as usize].last() {
                 let l = &self.vehicles[j as usize];
-                a = follow(a, dist + l.pos - l.params.length, l.speed);
+                self.follow_vehicle(&mut a, &idm, speed, dist + l.pos - l.params.length, j, delay);
                 leader_found = true;
             }
             dist += net.seg_length[next as usize];
             cur = next;
         }
-        a.max(-MAX_EMERGENCY_DECELERATION)
+        let lapse = (perceive && self.time < v.lapse_until).then_some(v.acc);
+        a.resolve(
+            lapse,
+            self.config.perception.emergency_factor * p.comfortable_deceleration,
+        )
     }
 
     fn integrate(&mut self) {
@@ -753,6 +790,7 @@ impl Simulation {
             let (dist, speed) = ballistic(v.speed, v.acc, dt);
             v.speed = speed;
             v.pos += dist;
+            v.odo += dist;
             v.lc_timer = (v.lc_timer - dt).max(0.0);
             let lateral = lateral_rate * dt;
             v.lat_offset = if v.lat_offset.abs() <= lateral {
@@ -829,7 +867,23 @@ impl Simulation {
                 claims[v.claimed as usize] -= 1;
             }
         }
-        self.vehicles.retain(|v| v.alive);
+        self.remove_departed();
+    }
+
+    /// Drops departed vehicles, keeping the order of the others (and their histories).
+    fn remove_departed(&mut self) {
+        let mut w = 0;
+        for r in 0..self.vehicles.len() {
+            if self.vehicles[r].alive {
+                if w != r {
+                    self.vehicles.swap(w, r);
+                    self.history.swap(w, r);
+                }
+                w += 1;
+            }
+        }
+        self.vehicles.truncate(w);
+        self.history.truncate(w);
     }
 
     /// Current statistics.
@@ -847,6 +901,7 @@ impl Simulation {
             unroutable: c.unroutable,
             lane_changes: c.lane_changes,
             forced_entries: c.forced_entries,
+            lapses: c.lapses,
             mean_travel_time: if c.arrived > 0 {
                 c.travel_time_sum / c.arrived as f64
             } else {
@@ -929,6 +984,8 @@ impl Simulation {
             h.u64(u64::from(v.claimed));
             h.f64(v.lat_offset);
             h.f64(v.params.speed_factor);
+            h.f64(v.odo);
+            h.f64(v.lapse_until);
         }
         for &l in &self.conn_claims {
             h.u64(u64::from(l));
@@ -946,6 +1003,7 @@ impl Simulation {
             c.unroutable,
             c.lane_changes,
             c.forced_entries,
+            c.lapses,
         ] {
             h.u64(x);
         }

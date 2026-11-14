@@ -18,6 +18,7 @@ mod demand;
 mod junction;
 mod lane_change;
 mod perception;
+mod reroute;
 
 use std::collections::BTreeMap;
 
@@ -91,6 +92,8 @@ pub struct Vehicle {
     pub lost: bool,
     /// Distance travelled since insertion (m).
     pub odo: f64,
+    /// Time the vehicle entered its current link (s).
+    pub link_enter: f64,
     /// End of the current distraction lapse (s); in the past when attentive.
     pub lapse_until: f64,
     /// Start of the next distraction lapse (s).
@@ -113,6 +116,7 @@ struct Counters {
     lane_changes: u64,
     forced_entries: u64,
     lapses: u64,
+    commuter_reroutes: u64,
     travel_time_sum: f64,
 }
 
@@ -140,6 +144,8 @@ pub struct Stats {
     pub forced_entries: u64,
     /// Distraction lapses started (#52).
     pub lapses: u64,
+    /// Route changes of familiar drivers en route on experienced travel times (#55).
+    pub commuter_reroutes: u64,
     /// Mean travel time of arrived vehicles (s).
     pub mean_travel_time: f64,
     /// Mean speed of active vehicles (m/s).
@@ -172,6 +178,9 @@ pub struct EntryEvent {
 pub struct Simulation {
     net: Network,
     router: Router,
+    /// Router on experienced travel times (familiar drivers).
+    informed: Router,
+    travel_times: reroute::TravelTimes,
     config: SimConfig,
     dt: f64,
     time: f64,
@@ -212,6 +221,13 @@ fn ballistic(speed: f64, acc: f64, dt: f64) -> (f64, f64) {
 
 use perception::exponential;
 
+/// Route cache flag of routes for familiar drivers (bit above the class id).
+const INFORMED: u8 = 0x80;
+
+fn cache_class(class: VehicleClass, informed: bool) -> u8 {
+    class.id() | if informed { INFORMED } else { 0 }
+}
+
 /// Uniform index into a list of `n` items (no random number drawn for a single item).
 fn pick_index(rng: &mut Pcg32, n: usize) -> usize {
     if n <= 1 {
@@ -237,6 +253,8 @@ impl Simulation {
         let connectors = net.connectors.len();
         Ok(Self {
             router: Router::new(&net),
+            informed: Router::new(&net),
+            travel_times: reroute::TravelTimes::new(&net, &config),
             dt: config.time_step,
             config,
             time: 0.0,
@@ -328,22 +346,38 @@ impl Simulation {
             .link_index(link_id)
             .ok_or_else(|| format!("unknown link '{link_id}'"))?;
         self.router.set_link_travel_time(link, seconds);
-        self.route_cache.clear();
-        self.dest_cache.clear();
+        self.route_cache.retain(|k, _| k.2 & INFORMED != 0);
+        self.dest_cache.retain(|k, _| k.1 & INFORMED != 0);
         Ok(())
     }
 
+    /// Router of drivers that do not know the network (free-flow times and
+    /// [`Self::set_link_travel_time`] overrides).
     pub fn router(&self) -> &Router {
         &self.router
     }
 
+    /// Router of familiar drivers (commuters): experienced travel times (#55).
+    pub fn informed_router(&self) -> &Router {
+        &self.informed
+    }
+
+    fn router_for(&self, informed: bool) -> &Router {
+        if informed { &self.informed } else { &self.router }
+    }
+
+    /// Whether a driver routes on experienced travel times.
+    fn is_informed(&self, p: &VehicleParams) -> bool {
+        p.familiar && self.config.re_routing.enabled
+    }
+
     /// Cached route id from `from` to `to` for `class`.
-    fn route_id(&mut self, from: u32, to: u32, class: VehicleClass) -> Option<u32> {
-        let key = (from, to, class.id());
+    fn route_id(&mut self, from: u32, to: u32, class: VehicleClass, informed: bool) -> Option<u32> {
+        let key = (from, to, cache_class(class, informed));
         if let Some(&id) = self.route_cache.get(&key) {
             return (id != NONE).then_some(id);
         }
-        let id = match self.router.route(from, to, class) {
+        let id = match self.router_for(informed).route(from, to, class) {
             Some(route) => {
                 self.routes.push(route);
                 (self.routes.len() - 1) as u32
@@ -395,6 +429,7 @@ impl Simulation {
             flags: 0,
             lost: false,
             odo: 0.0,
+            link_enter: self.time - pos / self.net.seg_speed_limit[lane as usize],
             lapse_until: f64::NEG_INFINITY,
             next_lapse,
             lc_phase: (self.steps % u64::from(self.config.lane_change.interval)) as u32,
@@ -430,7 +465,7 @@ impl Simulation {
             .ok_or_else(|| format!("unknown link '{dest_link_id}'"))?;
         let lane = self.net.link_lane(link, lane_index).ok_or("unknown lane")?;
         let route = self
-            .route_id(link, dest, params.class)
+            .route_id(link, dest, params.class, false)
             .ok_or("destination not reachable")?;
         let i = self.new_vehicle(params, lane, pos, speed, route);
         self.counters.spawned += 1;
@@ -447,6 +482,7 @@ impl Simulation {
     /// Advances the simulation by one time step.
     pub fn step(&mut self) {
         self.rebuild_lists();
+        self.update_travel_times();
         self.net.signals.states_into(self.time, &mut self.signal_state);
         self.spawn();
         self.lane_change_phase();
@@ -595,6 +631,7 @@ impl Simulation {
         let routes = &self.routes;
         let claims = &mut self.conn_claims;
         let counters = &mut self.counters;
+        let travel_times = &mut self.travel_times;
         let lateral_rate = 3.25 / self.config.lane_change.visual_duration.max(dt);
         let arrival_time = self.time + dt;
         for v in &mut self.vehicles {
@@ -622,6 +659,8 @@ impl Simulation {
                             if v.route_pos as usize + 1 >= route.len() && !v.lost {
                                 counters.arrived += 1;
                                 counters.travel_time_sum += arrival_time - v.depart;
+                                travel_times
+                                    .record(net.lanes[v.seg as usize].link, arrival_time - v.link_enter);
                             } else {
                                 counters.stranded += 1;
                             }
@@ -638,6 +677,7 @@ impl Simulation {
                         if v.claimed == c {
                             claims[c as usize] -= 1;
                         }
+                        travel_times.record(info.from_link, arrival_time - v.link_enter);
                         v.claimed = NONE;
                         v.pos -= len;
                         v.prev_seg = v.seg;
@@ -654,6 +694,7 @@ impl Simulation {
                         v.pos -= len;
                         v.prev_seg = v.seg;
                         v.seg = net.connectors[c as usize].to_lane;
+                        v.link_enter = arrival_time;
                     }
                 }
             }
@@ -713,6 +754,7 @@ impl Simulation {
             lane_changes: c.lane_changes,
             forced_entries: c.forced_entries,
             lapses: c.lapses,
+            commuter_reroutes: c.commuter_reroutes,
             mean_travel_time: if c.arrived > 0 {
                 c.travel_time_sum / c.arrived as f64
             } else {
@@ -817,8 +859,12 @@ impl Simulation {
             c.lane_changes,
             c.forced_entries,
             c.lapses,
+            c.commuter_reroutes,
         ] {
             h.u64(x);
+        }
+        for &t in &self.travel_times.smoothed {
+            h.f64(t);
         }
         h.f64(c.travel_time_sum);
         h.0

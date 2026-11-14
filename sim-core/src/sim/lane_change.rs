@@ -309,6 +309,7 @@ impl Simulation {
         let v = &self.vehicles[i];
         let lane = v.seg;
         let class = v.params.class;
+        let informed = self.is_informed(&v.params);
         let mask = class.mask();
         let link = self.net.lanes[lane as usize].link;
         let dest = *self.routes[v.route as usize].last().unwrap_or(&link);
@@ -328,12 +329,12 @@ impl Simulation {
                 let seg = self.net.connector_segment(c) as usize;
                 let conn_time = self.net.seg_length[seg] / self.net.seg_speed_limit[seg];
                 for &target in &targets {
-                    let Some(route) = self.route_id(to, target, class) else {
+                    let Some(route) = self.route_id(to, target, class, informed) else {
                         continue;
                     };
                     let cost = conn_time
-                        + self.router.link_travel_time(to)
-                        + self.router.route_cost(&self.routes[route as usize]);
+                        + self.router_for(informed).link_travel_time(to)
+                        + self.router_for(informed).route_cost(&self.routes[route as usize]);
                     if best.is_none_or(|(b, _, _)| cost < b) {
                         best = Some((cost, c, route));
                     }

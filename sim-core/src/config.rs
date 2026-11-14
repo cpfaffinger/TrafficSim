@@ -89,6 +89,34 @@ impl Default for PerceptionConfig {
     }
 }
 
+/// Re-routing of familiar drivers (commuters) on experienced travel times (#55).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ReRoutingConfig {
+    /// Familiar drivers route on experienced travel times (false = everybody on free flow).
+    pub enabled: bool,
+    /// Period (s) of the travel-time update and en-route re-routing.
+    pub interval: f64,
+    /// Exponential smoothing weight of a new measurement (0, 1].
+    pub smoothing: f64,
+    /// Minimum relative travel-time gain for switching routes en route.
+    pub threshold: f64,
+    /// Also re-route familiar drivers already on their way (at their next decision point).
+    pub en_route: bool,
+}
+
+impl Default for ReRoutingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            interval: 60.0,
+            smoothing: 0.3,
+            threshold: 0.1,
+            en_route: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SimConfig {
@@ -130,6 +158,7 @@ pub struct SimConfig {
     /// Time-of-day profile per vehicle type: its share in every mix is multiplied by the profile
     /// factor (e.g. `{"articulatedTruck": "freight"}`).
     pub vehicle_mix_profiles: BTreeMap<String, String>,
+    pub re_routing: ReRoutingConfig,
 }
 
 impl Default for SimConfig {
@@ -154,6 +183,7 @@ impl Default for SimConfig {
             zones: BTreeMap::new(),
             od: Vec::new(),
             vehicle_mix_profiles: BTreeMap::new(),
+            re_routing: ReRoutingConfig::default(),
         }
     }
 }
@@ -206,6 +236,15 @@ impl SimConfig {
         }
         if self.lane_change.interval == 0 {
             return Err("laneChange.interval must be at least 1".into());
+        }
+        let r = &self.re_routing;
+        if !(r.interval.is_finite() && r.interval >= self.time_step)
+            || !(r.smoothing > 0.0 && r.smoothing <= 1.0)
+            || !(r.threshold.is_finite() && (0.0..1.0).contains(&r.threshold))
+        {
+            return Err(
+                "reRouting needs interval ≥ timeStep, smoothing in (0, 1], threshold in [0, 1)".into(),
+            );
         }
         Ok(())
     }
@@ -332,6 +371,9 @@ mod tests {
                 r#"{"zones": {"a": {}}, "od": [{"from": "a", "to": "a", "vph": 1, "driverMix": {"x": 1}}]}"#,
                 "unknown driver profile",
             ),
+            (r#"{"reRouting": {"interval": 0}}"#, "reRouting"),
+            (r#"{"reRouting": {"smoothing": 0}}"#, "reRouting"),
+            (r#"{"reRouting": {"threshold": 1}}"#, "reRouting"),
         ] {
             let e = SimConfig::from_json(json).unwrap_err();
             assert!(e.contains(needle), "{json}: {e}");

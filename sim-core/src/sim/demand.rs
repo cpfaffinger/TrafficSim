@@ -321,7 +321,8 @@ impl Simulation {
         let src = &mut self.demand.sources[si];
         src.next_arrival = next;
         src.rng = rng;
-        match self.pick_destination(link, class, dest_set, u_dest) {
+        let informed = self.is_informed(&params);
+        match self.pick_destination(link, class, informed, dest_set, u_dest) {
             Some(route) => {
                 let q = self.demand.queue_of_link[link as usize] as usize;
                 self.demand.queues[q].queue.push_back(Pending { params, route });
@@ -332,8 +333,15 @@ impl Simulation {
 
     /// Route to a destination of `set` drawn with `u` among the reachable ones (U-turns back to
     /// the origin node excluded); `None` if none is reachable.
-    fn pick_destination(&mut self, entry: u32, class: VehicleClass, set: u32, u: f64) -> Option<u32> {
-        let key = (entry, class.id(), set);
+    fn pick_destination(
+        &mut self,
+        entry: u32,
+        class: VehicleClass,
+        informed: bool,
+        set: u32,
+        u: f64,
+    ) -> Option<u32> {
+        let key = (entry, super::cache_class(class, informed), set);
         if !self.dest_cache.contains_key(&key) {
             let origin = self.net.links[entry as usize].from;
             let candidates = self.demand.dest_sets[set as usize].clone();
@@ -343,7 +351,7 @@ impl Simulation {
                 if w <= 0.0 || self.net.links[exit as usize].to == origin {
                     continue;
                 }
-                if let Some(route) = self.route_id(entry, exit, class) {
+                if let Some(route) = self.route_id(entry, exit, class, informed) {
                     acc += w;
                     list.push((route, acc));
                 }

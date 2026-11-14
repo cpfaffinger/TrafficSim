@@ -1311,30 +1311,30 @@ fn golden_runs() {
     )
     .unwrap();
     let cases: [(&str, Simulation, usize, u64); 6] = [
-        ("fixture", busy_fixture(42), 3000, 0x10b0_52ff_7865_8b52),
+        ("fixture", busy_fixture(42), 3000, 0x986d_65bf_03a7_73af),
         (
             "t-junction",
             sim(&t_junction(Priority::Minor), with_demand(600.0)),
             3000,
-            0x3f6c_1274_11c2_f7bd,
+            0x92b9_2c8c_6c56_e01f,
         ),
         (
             "roundabout",
             sim(&roundabout(), with_demand(500.0)),
             3000,
-            0xa191_38b9_45d8_97c6,
+            0x5841_55a4_ec98_7ad7,
         ),
         (
             "driver-profiles",
             Simulation::new(fixture_network(), profiles, 42).unwrap(),
             3000,
-            0x7327_8586_ef77_fdde,
+            0xeb4e_022e_b286_932f,
         ),
         (
             "od-matrix",
             Simulation::new(fixture_network(), od, 42).unwrap(),
             3000,
-            0x10f7_e9c2_8e20_b5ac,
+            0xc48e_09c2_2ed3_562b,
         ),
         (
             "rbl-crossroads",
@@ -1347,7 +1347,7 @@ fn golden_runs() {
                 with_demand(400.0),
             ),
             3000,
-            0xf5d4_c455_c41b_c9f2,
+            0x0d54_746d_e68c_0740,
         ),
     ];
     let mut report = String::new();
@@ -1471,6 +1471,90 @@ fn travel_time_updates_affect_new_routes_only() {
     };
     assert_eq!(names(&s, first), ["ax", "xy", "yb"]);
     assert_eq!(names(&s, second), ["ax", "xd", "dy", "yb"]);
+}
+
+// ---------------------------------------------------------------- #55 commuter re-routing
+
+/// A → B directly over `xy` (200 m) or over the detour `xd`, `dy` (≈ 630 m). The approach
+/// `ax` has a lane per direction (right: detour, left: direct).
+fn detour_network() -> NetBuilder {
+    let mut b = NetBuilder::new();
+    b.node("A", -300.0, 0.0, NodeControl::Boundary)
+        .node("X", 300.0, 0.0, NodeControl::Priority)
+        .node("Y", 500.0, 0.0, NodeControl::Priority)
+        .node("D", 400.0, 300.0, NodeControl::Priority)
+        .node("B", 800.0, 0.0, NodeControl::Boundary)
+        .link("ax", "A", "X", 2, 13.889)
+        .link("xy", "X", "Y", 1, 13.889)
+        .link("xd", "X", "D", 1, 13.889)
+        .link("dy", "D", "Y", 1, 13.889)
+        .link("yb", "Y", "B", 1, 13.889)
+        .connect("c1", "ax", 1, "xy", 0, Priority::Major)
+        .connect("c2", "ax", 0, "xd", 0, Priority::Major)
+        .connect("c3", "xd", 0, "dy", 0, Priority::Major)
+        .connect("c4", "xy", 0, "yb", 0, Priority::Major)
+        .connect("c5", "dy", 0, "yb", 0, Priority::Minor)
+        .auto_conflicts("Y");
+    b
+}
+
+/// Blocks `xy` with a crawler and counts the vehicles that took the detour.
+fn detour_run(driver_mix: &str) -> (Simulation, usize) {
+    let config = SimConfig::from_json(&format!(
+        r#"{{"defaultDemand": 600, "driverMix": {driver_mix}, "reRouting": {{"interval": 30}}}}"#
+    ))
+    .unwrap();
+    let mut s = sim(&detour_network(), config);
+    s.place_vehicle("xy", 0, 5.0, 0.0, "xy", crawler()).unwrap();
+    let mut detour = std::collections::BTreeSet::new();
+    for _ in 0..6000 {
+        s.step();
+        check_invariants(&mut s);
+        for v in s.vehicles() {
+            if link_of(&s, v) == "xd" {
+                detour.insert(v.id);
+            }
+        }
+    }
+    (s, detour.len())
+}
+
+#[test]
+fn commuters_avoid_a_congested_link_others_do_not() {
+    let (s, detour) = detour_run(r#"{"commuter": 1}"#);
+    let xy = s.network().link_index("xy").unwrap();
+    let informed = s.informed_router().link_travel_time(xy);
+    assert!(informed > 3.0 * s.router().free_flow_time(xy), "{informed}");
+    assert_eq!(s.router().link_travel_time(xy), s.router().free_flow_time(xy));
+    assert!(detour > 20, "commuters take the detour: {detour}");
+    assert!(s.stats().commuter_reroutes > 0, "{:?}", s.stats());
+    let (unfamiliar, detour) = detour_run(r#"{"average": 1}"#);
+    assert_eq!(detour, 0);
+    assert_eq!(unfamiliar.stats().commuter_reroutes, 0);
+    // Disabled re-routing: commuters behave like everybody else.
+    let config = SimConfig::from_json(
+        r#"{"defaultDemand": 600, "driverMix": {"commuter": 1}, "reRouting": {"enabled": false}}"#,
+    )
+    .unwrap();
+    let mut off = sim(&detour_network(), config);
+    off.place_vehicle("xy", 0, 5.0, 0.0, "xy", crawler()).unwrap();
+    off.run(3000);
+    assert!(off.vehicles().iter().all(|v| link_of(&off, v) != "xd"));
+}
+
+#[test]
+fn experienced_travel_times_track_free_flow_traffic() {
+    let b = corridor(1, 300.0, 15.0);
+    let mut s = sim(&b, with_demand(300.0));
+    s.run(6000);
+    let up = s.network().link_index("up").unwrap();
+    let t = s.informed_router().link_travel_time(up);
+    assert!((20.0..22.0).contains(&t), "{t}");
+    // Without traffic the estimate relaxes towards free flow.
+    s.set_demand("A", 0.0).unwrap();
+    s.run(12_000);
+    let t = s.informed_router().link_travel_time(up);
+    assert!((t - 20.0).abs() < 0.2, "{t}");
 }
 
 /// Throughput benchmark (run with `cargo test --release -- --ignored --nocapture perf`).

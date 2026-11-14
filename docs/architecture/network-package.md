@@ -173,6 +173,10 @@ residential 40, living street 30, service 20, motorway 0; × 0.6 for `uncontroll
 `unmarked`, × 0.75 for implicit crosswalks. Generated scenarios scale it by the activity within 250 m
 (`sim-core/README.md`, `pedestrians` config).
 
+The contract fixture [`fixtures/network-package-crossings-v1.json`](fixtures/network-package-crossings-v1.json)
+(a compiled signalised crossroads with every crossing kind, written by the backend's
+`CrossingFixtureTests`) is run by the sim core and parsed by the frontend.
+
 ## Example
 
 ```jsonc

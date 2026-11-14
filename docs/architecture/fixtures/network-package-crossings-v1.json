@@ -1,0 +1,2121 @@
+{
+  "formatVersion": 1,
+  "baselineId": null,
+  "origin": {
+    "lat": 48.2082,
+    "lon": 16.3738
+  },
+  "bbox": [
+    16.369090926354854,
+    48.205052358652885,
+    16.378509073645144,
+    48.21134764134711
+  ],
+  "osmTimestamp": "2026-11-14T10:00:00+00:00",
+  "attribution": [
+    "\u00A9 OpenStreetMap contributors (ODbL)"
+  ],
+  "nodes": [
+    {
+      "id": "n0",
+      "osmId": 2,
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "control": "signal"
+    },
+    {
+      "id": "n1",
+      "osmId": 12,
+      "x": 150,
+      "y": 0,
+      "z": 0,
+      "control": "signal"
+    },
+    {
+      "id": "n2",
+      "osmId": null,
+      "x": -350,
+      "y": 0,
+      "z": 0,
+      "control": "boundary"
+    },
+    {
+      "id": "n3",
+      "osmId": null,
+      "x": 350,
+      "y": 0,
+      "z": 0,
+      "control": "boundary"
+    },
+    {
+      "id": "n4",
+      "osmId": null,
+      "x": 0,
+      "y": 350,
+      "z": 0,
+      "control": "boundary"
+    },
+    {
+      "id": "n5",
+      "osmId": null,
+      "x": 0,
+      "y": -350,
+      "z": 0,
+      "control": "boundary"
+    }
+  ],
+  "links": [
+    {
+      "id": "l0",
+      "osmWayId": 100,
+      "from": "n2",
+      "to": "n0",
+      "roadClass": "primary",
+      "name": "Ring",
+      "layer": 0,
+      "structure": "none",
+      "roundabout": false,
+      "oppositeLink": "l1",
+      "throughTraffic": true,
+      "length": 345.5,
+      "speedLimit": 13.889,
+      "geometry": [
+        [
+          -350,
+          0,
+          0
+        ],
+        [
+          -150,
+          0,
+          0
+        ],
+        [
+          -4.5,
+          0,
+          0
+        ]
+      ],
+      "lanes": [
+        {
+          "id": "l0:0",
+          "index": 0,
+          "width": 3.5,
+          "speedLimit": 13.889,
+          "allowed": [
+            "car",
+            "van",
+            "truck",
+            "bus",
+            "motorcycle"
+          ],
+          "turns": [],
+          "geometry": [
+            [
+              -350,
+              -1.75,
+              0
+            ],
+            [
+              -150,
+              -1.75,
+              0
+            ],
+            [
+              -4.5,
+              -1.75,
+              0
+            ]
+          ],
+          "length": 345.5
+        }
+      ],
+      "boundaries": [],
+      "leftEdge": "centre_dashed",
+      "noLaneChangeZone": 0,
+      "assumed": [
+        "lanes",
+        "speedLimit",
+        "width"
+      ],
+      "osmAfterFrom": 10,
+      "osmBeforeTo": 10,
+      "osmForward": true,
+      "endSign": "none",
+      "osmNodes": [
+        {
+          "id": null,
+          "x": -350,
+          "y": 0
+        },
+        {
+          "id": 10,
+          "x": -150,
+          "y": 0
+        },
+        {
+          "id": 2,
+          "x": 0,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "id": "l1",
+      "osmWayId": 100,
+      "from": "n0",
+      "to": "n2",
+      "roadClass": "primary",
+      "name": "Ring",
+      "layer": 0,
+      "structure": "none",
+      "roundabout": false,
+      "oppositeLink": "l0",
+      "throughTraffic": true,
+      "length": 345.5,
+      "speedLimit": 13.889,
+      "geometry": [
+        [
+          -4.5,
+          0,
+          0
+        ],
+        [
+          -150,
+          0,
+          0
+        ],
+        [
+          -350,
+          0,
+          0
+        ]
+      ],
+      "lanes": [
+        {
+          "id": "l1:0",
+          "index": 0,
+          "width": 3.5,
+          "speedLimit": 13.889,
+          "allowed": [
+            "car",
+            "van",
+            "truck",
+            "bus",
+            "motorcycle"
+          ],
+          "turns": [],
+          "geometry": [
+            [
+              -4.5,
+              1.75,
+              0
+            ],
+            [
+              -150,
+              1.75,
+              0
+            ],
+            [
+              -350,
+              1.75,
+              0
+            ]
+          ],
+          "length": 345.5
+        }
+      ],
+      "boundaries": [],
+      "leftEdge": "centre_dashed",
+      "noLaneChangeZone": 0,
+      "assumed": [
+        "lanes",
+        "speedLimit",
+        "width"
+      ],
+      "osmAfterFrom": 10,
+      "osmBeforeTo": 10,
+      "osmForward": false,
+      "endSign": "none",
+      "osmNodes": [
+        {
+          "id": 2,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": 10,
+          "x": -150,
+          "y": 0
+        },
+        {
+          "id": null,
+          "x": -350,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "id": "l2",
+      "osmWayId": 100,
+      "from": "n0",
+      "to": "n1",
+      "roadClass": "primary",
+      "name": "Ring",
+      "layer": 0,
+      "structure": "none",
+      "roundabout": false,
+      "oppositeLink": "l3",
+      "throughTraffic": true,
+      "length": 145.5,
+      "speedLimit": 13.889,
+      "geometry": [
+        [
+          4.5,
+          0,
+          0
+        ],
+        [
+          150,
+          0,
+          0
+        ]
+      ],
+      "lanes": [
+        {
+          "id": "l2:0",
+          "index": 0,
+          "width": 3.5,
+          "speedLimit": 13.889,
+          "allowed": [
+            "car",
+            "van",
+            "truck",
+            "bus",
+            "motorcycle"
+          ],
+          "turns": [],
+          "geometry": [
+            [
+              4.5,
+              -1.75,
+              0
+            ],
+            [
+              150,
+              -1.75,
+              0
+            ]
+          ],
+          "length": 145.5
+        }
+      ],
+      "boundaries": [],
+      "leftEdge": "centre_dashed",
+      "noLaneChangeZone": 0,
+      "assumed": [
+        "lanes",
+        "speedLimit",
+        "width"
+      ],
+      "osmAfterFrom": 12,
+      "osmBeforeTo": 2,
+      "osmForward": true,
+      "endSign": "none",
+      "osmNodes": [
+        {
+          "id": 2,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": 12,
+          "x": 150,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "id": "l3",
+      "osmWayId": 100,
+      "from": "n1",
+      "to": "n0",
+      "roadClass": "primary",
+      "name": "Ring",
+      "layer": 0,
+      "structure": "none",
+      "roundabout": false,
+      "oppositeLink": "l2",
+      "throughTraffic": true,
+      "length": 145.5,
+      "speedLimit": 13.889,
+      "geometry": [
+        [
+          150,
+          0,
+          0
+        ],
+        [
+          4.5,
+          0,
+          0
+        ]
+      ],
+      "lanes": [
+        {
+          "id": "l3:0",
+          "index": 0,
+          "width": 3.5,
+          "speedLimit": 13.889,
+          "allowed": [
+            "car",
+            "van",
+            "truck",
+            "bus",
+            "motorcycle"
+          ],
+          "turns": [],
+          "geometry": [
+            [
+              150,
+              1.75,
+              0
+            ],
+            [
+              4.5,
+              1.75,
+              0
+            ]
+          ],
+          "length": 145.5
+        }
+      ],
+      "boundaries": [],
+      "leftEdge": "centre_dashed",
+      "noLaneChangeZone": 0,
+      "assumed": [
+        "lanes",
+        "speedLimit",
+        "width"
+      ],
+      "osmAfterFrom": 2,
+      "osmBeforeTo": 12,
+      "osmForward": false,
+      "endSign": "none",
+      "osmNodes": [
+        {
+          "id": 12,
+          "x": 150,
+          "y": 0
+        },
+        {
+          "id": 2,
+          "x": 0,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "id": "l4",
+      "osmWayId": 100,
+      "from": "n1",
+      "to": "n3",
+      "roadClass": "primary",
+      "name": "Ring",
+      "layer": 0,
+      "structure": "none",
+      "roundabout": false,
+      "oppositeLink": "l5",
+      "throughTraffic": true,
+      "length": 200,
+      "speedLimit": 13.889,
+      "geometry": [
+        [
+          150,
+          0,
+          0
+        ],
+        [
+          350,
+          0,
+          0
+        ]
+      ],
+      "lanes": [
+        {
+          "id": "l4:0",
+          "index": 0,
+          "width": 3.5,
+          "speedLimit": 13.889,
+          "allowed": [
+            "car",
+            "van",
+            "truck",
+            "bus",
+            "motorcycle"
+          ],
+          "turns": [],
+          "geometry": [
+            [
+              150,
+              -1.75,
+              0
+            ],
+            [
+              350,
+              -1.75,
+              0
+            ]
+          ],
+          "length": 200
+        }
+      ],
+      "boundaries": [],
+      "leftEdge": "centre_dashed",
+      "noLaneChangeZone": 0,
+      "assumed": [
+        "lanes",
+        "speedLimit",
+        "width"
+      ],
+      "osmAfterFrom": null,
+      "osmBeforeTo": 12,
+      "osmForward": true,
+      "endSign": "none",
+      "osmNodes": [
+        {
+          "id": 12,
+          "x": 150,
+          "y": 0
+        },
+        {
+          "id": null,
+          "x": 350,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "id": "l5",
+      "osmWayId": 100,
+      "from": "n3",
+      "to": "n1",
+      "roadClass": "primary",
+      "name": "Ring",
+      "layer": 0,
+      "structure": "none",
+      "roundabout": false,
+      "oppositeLink": "l4",
+      "throughTraffic": true,
+      "length": 200,
+      "speedLimit": 13.889,
+      "geometry": [
+        [
+          350,
+          0,
+          0
+        ],
+        [
+          150,
+          0,
+          0
+        ]
+      ],
+      "lanes": [
+        {
+          "id": "l5:0",
+          "index": 0,
+          "width": 3.5,
+          "speedLimit": 13.889,
+          "allowed": [
+            "car",
+            "van",
+            "truck",
+            "bus",
+            "motorcycle"
+          ],
+          "turns": [],
+          "geometry": [
+            [
+              350,
+              1.75,
+              0
+            ],
+            [
+              150,
+              1.75,
+              0
+            ]
+          ],
+          "length": 200
+        }
+      ],
+      "boundaries": [],
+      "leftEdge": "centre_dashed",
+      "noLaneChangeZone": 0,
+      "assumed": [
+        "lanes",
+        "speedLimit",
+        "width"
+      ],
+      "osmAfterFrom": 12,
+      "osmBeforeTo": null,
+      "osmForward": false,
+      "endSign": "none",
+      "osmNodes": [
+        {
+          "id": null,
+          "x": 350,
+          "y": 0
+        },
+        {
+          "id": 12,
+          "x": 150,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "id": "l6",
+      "osmWayId": 101,
+      "from": "n4",
+      "to": "n0",
+      "roadClass": "secondary",
+      "name": "Gasse",
+      "layer": 0,
+      "structure": "none",
+      "roundabout": false,
+      "oppositeLink": "l7",
+      "throughTraffic": true,
+      "length": 345.5,
+      "speedLimit": 13.889,
+      "geometry": [
+        [
+          0,
+          350,
+          0
+        ],
+        [
+          0,
+          150,
+          0
+        ],
+        [
+          0,
+          4.5,
+          0
+        ]
+      ],
+      "lanes": [
+        {
+          "id": "l6:0",
+          "index": 0,
+          "width": 3.5,
+          "speedLimit": 13.889,
+          "allowed": [
+            "car",
+            "van",
+            "truck",
+            "bus",
+            "motorcycle"
+          ],
+          "turns": [],
+          "geometry": [
+            [
+              -1.75,
+              350,
+              0
+            ],
+            [
+              -1.75,
+              150,
+              0
+            ],
+            [
+              -1.75,
+              4.5,
+              0
+            ]
+          ],
+          "length": 345.5
+        }
+      ],
+      "boundaries": [],
+      "leftEdge": "centre_dashed",
+      "noLaneChangeZone": 0,
+      "assumed": [
+        "lanes",
+        "speedLimit",
+        "width"
+      ],
+      "osmAfterFrom": 11,
+      "osmBeforeTo": 11,
+      "osmForward": true,
+      "endSign": "none",
+      "osmNodes": [
+        {
+          "id": null,
+          "x": 0,
+          "y": 350
+        },
+        {
+          "id": 11,
+          "x": 0,
+          "y": 150
+        },
+        {
+          "id": 2,
+          "x": 0,
+          "y": 0
+        }
+      ]
+    },
+    {
+      "id": "l7",
+      "osmWayId": 101,
+      "from": "n0",
+      "to": "n4",
+      "roadClass": "secondary",
+      "name": "Gasse",
+      "layer": 0,
+      "structure": "none",
+      "roundabout": false,
+      "oppositeLink": "l6",
+      "throughTraffic": true,
+      "length": 345.5,
+      "speedLimit": 13.889,
+      "geometry": [
+        [
+          0,
+          4.5,
+          0
+        ],
+        [
+          0,
+          150,
+          0
+        ],
+        [
+          0,
+          350,
+          0
+        ]
+      ],
+      "lanes": [
+        {
+          "id": "l7:0",
+          "index": 0,
+          "width": 3.5,
+          "speedLimit": 13.889,
+          "allowed": [
+            "car",
+            "van",
+            "truck",
+            "bus",
+            "motorcycle"
+          ],
+          "turns": [],
+          "geometry": [
+            [
+              1.75,
+              4.5,
+              0
+            ],
+            [
+              1.75,
+              150,
+              0
+            ],
+            [
+              1.75,
+              350,
+              0
+            ]
+          ],
+          "length": 345.5
+        }
+      ],
+      "boundaries": [],
+      "leftEdge": "centre_dashed",
+      "noLaneChangeZone": 0,
+      "assumed": [
+        "lanes",
+        "speedLimit",
+        "width"
+      ],
+      "osmAfterFrom": 11,
+      "osmBeforeTo": 11,
+      "osmForward": false,
+      "endSign": "none",
+      "osmNodes": [
+        {
+          "id": 2,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": 11,
+          "x": 0,
+          "y": 150
+        },
+        {
+          "id": null,
+          "x": 0,
+          "y": 350
+        }
+      ]
+    },
+    {
+      "id": "l8",
+      "osmWayId": 101,
+      "from": "n0",
+      "to": "n5",
+      "roadClass": "secondary",
+      "name": "Gasse",
+      "layer": 0,
+      "structure": "none",
+      "roundabout": false,
+      "oppositeLink": "l9",
+      "throughTraffic": true,
+      "length": 345.5,
+      "speedLimit": 13.889,
+      "geometry": [
+        [
+          0,
+          -4.5,
+          0
+        ],
+        [
+          0,
+          -350,
+          0
+        ]
+      ],
+      "lanes": [
+        {
+          "id": "l8:0",
+          "index": 0,
+          "width": 3.5,
+          "speedLimit": 13.889,
+          "allowed": [
+            "car",
+            "van",
+            "truck",
+            "bus",
+            "motorcycle"
+          ],
+          "turns": [],
+          "geometry": [
+            [
+              -1.75,
+              -4.5,
+              0
+            ],
+            [
+              -1.75,
+              -350,
+              0
+            ]
+          ],
+          "length": 345.5
+        }
+      ],
+      "boundaries": [],
+      "leftEdge": "centre_dashed",
+      "noLaneChangeZone": 0,
+      "assumed": [
+        "lanes",
+        "speedLimit",
+        "width"
+      ],
+      "osmAfterFrom": null,
+      "osmBeforeTo": 2,
+      "osmForward": true,
+      "endSign": "none",
+      "osmNodes": [
+        {
+          "id": 2,
+          "x": 0,
+          "y": 0
+        },
+        {
+          "id": null,
+          "x": 0,
+          "y": -350
+        }
+      ]
+    },
+    {
+      "id": "l9",
+      "osmWayId": 101,
+      "from": "n5",
+      "to": "n0",
+      "roadClass": "secondary",
+      "name": "Gasse",
+      "layer": 0,
+      "structure": "none",
+      "roundabout": false,
+      "oppositeLink": "l8",
+      "throughTraffic": true,
+      "length": 345.5,
+      "speedLimit": 13.889,
+      "geometry": [
+        [
+          0,
+          -350,
+          0
+        ],
+        [
+          0,
+          -4.5,
+          0
+        ]
+      ],
+      "lanes": [
+        {
+          "id": "l9:0",
+          "index": 0,
+          "width": 3.5,
+          "speedLimit": 13.889,
+          "allowed": [
+            "car",
+            "van",
+            "truck",
+            "bus",
+            "motorcycle"
+          ],
+          "turns": [],
+          "geometry": [
+            [
+              1.75,
+              -350,
+              0
+            ],
+            [
+              1.75,
+              -4.5,
+              0
+            ]
+          ],
+          "length": 345.5
+        }
+      ],
+      "boundaries": [],
+      "leftEdge": "centre_dashed",
+      "noLaneChangeZone": 0,
+      "assumed": [
+        "lanes",
+        "speedLimit",
+        "width"
+      ],
+      "osmAfterFrom": 2,
+      "osmBeforeTo": null,
+      "osmForward": false,
+      "endSign": "none",
+      "osmNodes": [
+        {
+          "id": null,
+          "x": 0,
+          "y": -350
+        },
+        {
+          "id": 2,
+          "x": 0,
+          "y": 0
+        }
+      ]
+    }
+  ],
+  "connectors": [
+    {
+      "id": "c0",
+      "node": "n0",
+      "fromLink": "l0",
+      "fromLane": 0,
+      "toLink": "l7",
+      "toLane": 0,
+      "turn": "left",
+      "priority": "signal",
+      "signalGroup": "n0:g0",
+      "geometry": [
+        [
+          -4.5,
+          -1.75,
+          0
+        ],
+        [
+          -3.386,
+          -1.602,
+          0
+        ],
+        [
+          -2.28,
+          -1.188,
+          0
+        ],
+        [
+          -1.228,
+          -0.549,
+          0
+        ],
+        [
+          -0.27,
+          0.27,
+          0
+        ],
+        [
+          0.549,
+          1.228,
+          0
+        ],
+        [
+          1.188,
+          2.28,
+          0
+        ],
+        [
+          1.602,
+          3.386,
+          0
+        ],
+        [
+          1.75,
+          4.5,
+          0
+        ]
+      ],
+      "length": 9.592,
+      "conflicts": [
+        "c4",
+        "c5",
+        "c6",
+        "c7",
+        "c9",
+        "c10"
+      ]
+    },
+    {
+      "id": "c1",
+      "node": "n0",
+      "fromLink": "l0",
+      "fromLane": 0,
+      "toLink": "l2",
+      "toLane": 0,
+      "turn": "through",
+      "priority": "signal",
+      "signalGroup": "n0:g0",
+      "geometry": [
+        [
+          -4.5,
+          -1.75,
+          0
+        ],
+        [
+          -3.375,
+          -1.75,
+          0
+        ],
+        [
+          -2.25,
+          -1.75,
+          0
+        ],
+        [
+          -1.125,
+          -1.75,
+          0
+        ],
+        [
+          0,
+          -1.75,
+          0
+        ],
+        [
+          1.125,
+          -1.75,
+          0
+        ],
+        [
+          2.25,
+          -1.75,
+          0
+        ],
+        [
+          3.375,
+          -1.75,
+          0
+        ],
+        [
+          4.5,
+          -1.75,
+          0
+        ]
+      ],
+      "length": 9,
+      "conflicts": [
+        "c3",
+        "c6",
+        "c7",
+        "c9",
+        "c10",
+        "c11"
+      ]
+    },
+    {
+      "id": "c2",
+      "node": "n0",
+      "fromLink": "l0",
+      "fromLane": 0,
+      "toLink": "l8",
+      "toLane": 0,
+      "turn": "right",
+      "priority": "signal",
+      "signalGroup": "n0:g0",
+      "geometry": [
+        [
+          -4.5,
+          -1.75,
+          0
+        ],
+        [
+          -4.01,
+          -1.815,
+          0
+        ],
+        [
+          -3.523,
+          -1.997,
+          0
+        ],
+        [
+          -3.06,
+          -2.278,
+          0
+        ],
+        [
+          -2.639,
+          -2.639,
+          0
+        ],
+        [
+          -2.278,
+          -3.06,
+          0
+        ],
+        [
+          -1.997,
+          -3.523,
+          0
+        ],
+        [
+          -1.815,
+          -4.01,
+          0
+        ],
+        [
+          -1.75,
+          -4.5,
+          0
+        ]
+      ],
+      "length": 4.221,
+      "conflicts": [
+        "c3",
+        "c7"
+      ]
+    },
+    {
+      "id": "c3",
+      "node": "n0",
+      "fromLink": "l3",
+      "fromLane": 0,
+      "toLink": "l8",
+      "toLane": 0,
+      "turn": "left",
+      "priority": "signal",
+      "signalGroup": "n0:g0",
+      "geometry": [
+        [
+          4.5,
+          1.75,
+          0
+        ],
+        [
+          3.386,
+          1.602,
+          0
+        ],
+        [
+          2.28,
+          1.188,
+          0
+        ],
+        [
+          1.228,
+          0.549,
+          0
+        ],
+        [
+          0.27,
+          -0.27,
+          0
+        ],
+        [
+          -0.549,
+          -1.228,
+          0
+        ],
+        [
+          -1.188,
+          -2.28,
+          0
+        ],
+        [
+          -1.602,
+          -3.386,
+          0
+        ],
+        [
+          -1.75,
+          -4.5,
+          0
+        ]
+      ],
+      "length": 9.592,
+      "conflicts": [
+        "c1",
+        "c2",
+        "c6",
+        "c7",
+        "c9",
+        "c10"
+      ]
+    },
+    {
+      "id": "c4",
+      "node": "n0",
+      "fromLink": "l3",
+      "fromLane": 0,
+      "toLink": "l1",
+      "toLane": 0,
+      "turn": "through",
+      "priority": "signal",
+      "signalGroup": "n0:g0",
+      "geometry": [
+        [
+          4.5,
+          1.75,
+          0
+        ],
+        [
+          3.375,
+          1.75,
+          0
+        ],
+        [
+          2.25,
+          1.75,
+          0
+        ],
+        [
+          1.125,
+          1.75,
+          0
+        ],
+        [
+          0,
+          1.75,
+          0
+        ],
+        [
+          -1.125,
+          1.75,
+          0
+        ],
+        [
+          -2.25,
+          1.75,
+          0
+        ],
+        [
+          -3.375,
+          1.75,
+          0
+        ],
+        [
+          -4.5,
+          1.75,
+          0
+        ]
+      ],
+      "length": 9,
+      "conflicts": [
+        "c0",
+        "c6",
+        "c7",
+        "c8",
+        "c9",
+        "c10"
+      ]
+    },
+    {
+      "id": "c5",
+      "node": "n0",
+      "fromLink": "l3",
+      "fromLane": 0,
+      "toLink": "l7",
+      "toLane": 0,
+      "turn": "right",
+      "priority": "signal",
+      "signalGroup": "n0:g0",
+      "geometry": [
+        [
+          4.5,
+          1.75,
+          0
+        ],
+        [
+          4.01,
+          1.815,
+          0
+        ],
+        [
+          3.523,
+          1.997,
+          0
+        ],
+        [
+          3.06,
+          2.278,
+          0
+        ],
+        [
+          2.639,
+          2.639,
+          0
+        ],
+        [
+          2.278,
+          3.06,
+          0
+        ],
+        [
+          1.997,
+          3.523,
+          0
+        ],
+        [
+          1.815,
+          4.01,
+          0
+        ],
+        [
+          1.75,
+          4.5,
+          0
+        ]
+      ],
+      "length": 4.221,
+      "conflicts": [
+        "c0",
+        "c10"
+      ]
+    },
+    {
+      "id": "c6",
+      "node": "n0",
+      "fromLink": "l6",
+      "fromLane": 0,
+      "toLink": "l2",
+      "toLane": 0,
+      "turn": "left",
+      "priority": "signal",
+      "signalGroup": "n0:g1",
+      "geometry": [
+        [
+          -1.75,
+          4.5,
+          0
+        ],
+        [
+          -1.602,
+          3.386,
+          0
+        ],
+        [
+          -1.188,
+          2.28,
+          0
+        ],
+        [
+          -0.549,
+          1.228,
+          0
+        ],
+        [
+          0.27,
+          0.27,
+          0
+        ],
+        [
+          1.228,
+          -0.549,
+          0
+        ],
+        [
+          2.28,
+          -1.188,
+          0
+        ],
+        [
+          3.386,
+          -1.602,
+          0
+        ],
+        [
+          4.5,
+          -1.75,
+          0
+        ]
+      ],
+      "length": 9.592,
+      "conflicts": [
+        "c0",
+        "c1",
+        "c3",
+        "c4",
+        "c10",
+        "c11"
+      ]
+    },
+    {
+      "id": "c7",
+      "node": "n0",
+      "fromLink": "l6",
+      "fromLane": 0,
+      "toLink": "l8",
+      "toLane": 0,
+      "turn": "through",
+      "priority": "signal",
+      "signalGroup": "n0:g1",
+      "geometry": [
+        [
+          -1.75,
+          4.5,
+          0
+        ],
+        [
+          -1.75,
+          3.375,
+          0
+        ],
+        [
+          -1.75,
+          2.25,
+          0
+        ],
+        [
+          -1.75,
+          1.125,
+          0
+        ],
+        [
+          -1.75,
+          0,
+          0
+        ],
+        [
+          -1.75,
+          -1.125,
+          0
+        ],
+        [
+          -1.75,
+          -2.25,
+          0
+        ],
+        [
+          -1.75,
+          -3.375,
+          0
+        ],
+        [
+          -1.75,
+          -4.5,
+          0
+        ]
+      ],
+      "length": 9,
+      "conflicts": [
+        "c0",
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c9"
+      ]
+    },
+    {
+      "id": "c8",
+      "node": "n0",
+      "fromLink": "l6",
+      "fromLane": 0,
+      "toLink": "l1",
+      "toLane": 0,
+      "turn": "right",
+      "priority": "signal",
+      "signalGroup": "n0:g1",
+      "geometry": [
+        [
+          -1.75,
+          4.5,
+          0
+        ],
+        [
+          -1.815,
+          4.01,
+          0
+        ],
+        [
+          -1.997,
+          3.523,
+          0
+        ],
+        [
+          -2.278,
+          3.06,
+          0
+        ],
+        [
+          -2.639,
+          2.639,
+          0
+        ],
+        [
+          -3.06,
+          2.278,
+          0
+        ],
+        [
+          -3.523,
+          1.997,
+          0
+        ],
+        [
+          -4.01,
+          1.815,
+          0
+        ],
+        [
+          -4.5,
+          1.75,
+          0
+        ]
+      ],
+      "length": 4.221,
+      "conflicts": [
+        "c4",
+        "c9"
+      ]
+    },
+    {
+      "id": "c9",
+      "node": "n0",
+      "fromLink": "l9",
+      "fromLane": 0,
+      "toLink": "l1",
+      "toLane": 0,
+      "turn": "left",
+      "priority": "signal",
+      "signalGroup": "n0:g1",
+      "geometry": [
+        [
+          1.75,
+          -4.5,
+          0
+        ],
+        [
+          1.602,
+          -3.386,
+          0
+        ],
+        [
+          1.188,
+          -2.28,
+          0
+        ],
+        [
+          0.549,
+          -1.228,
+          0
+        ],
+        [
+          -0.27,
+          -0.27,
+          0
+        ],
+        [
+          -1.228,
+          0.549,
+          0
+        ],
+        [
+          -2.28,
+          1.188,
+          0
+        ],
+        [
+          -3.386,
+          1.602,
+          0
+        ],
+        [
+          -4.5,
+          1.75,
+          0
+        ]
+      ],
+      "length": 9.592,
+      "conflicts": [
+        "c0",
+        "c1",
+        "c3",
+        "c4",
+        "c7",
+        "c8"
+      ]
+    },
+    {
+      "id": "c10",
+      "node": "n0",
+      "fromLink": "l9",
+      "fromLane": 0,
+      "toLink": "l7",
+      "toLane": 0,
+      "turn": "through",
+      "priority": "signal",
+      "signalGroup": "n0:g1",
+      "geometry": [
+        [
+          1.75,
+          -4.5,
+          0
+        ],
+        [
+          1.75,
+          -3.375,
+          0
+        ],
+        [
+          1.75,
+          -2.25,
+          0
+        ],
+        [
+          1.75,
+          -1.125,
+          0
+        ],
+        [
+          1.75,
+          0,
+          0
+        ],
+        [
+          1.75,
+          1.125,
+          0
+        ],
+        [
+          1.75,
+          2.25,
+          0
+        ],
+        [
+          1.75,
+          3.375,
+          0
+        ],
+        [
+          1.75,
+          4.5,
+          0
+        ]
+      ],
+      "length": 9,
+      "conflicts": [
+        "c0",
+        "c1",
+        "c3",
+        "c4",
+        "c5",
+        "c6"
+      ]
+    },
+    {
+      "id": "c11",
+      "node": "n0",
+      "fromLink": "l9",
+      "fromLane": 0,
+      "toLink": "l2",
+      "toLane": 0,
+      "turn": "right",
+      "priority": "signal",
+      "signalGroup": "n0:g1",
+      "geometry": [
+        [
+          1.75,
+          -4.5,
+          0
+        ],
+        [
+          1.815,
+          -4.01,
+          0
+        ],
+        [
+          1.997,
+          -3.523,
+          0
+        ],
+        [
+          2.278,
+          -3.06,
+          0
+        ],
+        [
+          2.639,
+          -2.639,
+          0
+        ],
+        [
+          3.06,
+          -2.278,
+          0
+        ],
+        [
+          3.523,
+          -1.997,
+          0
+        ],
+        [
+          4.01,
+          -1.815,
+          0
+        ],
+        [
+          4.5,
+          -1.75,
+          0
+        ]
+      ],
+      "length": 4.221,
+      "conflicts": [
+        "c1",
+        "c6"
+      ]
+    },
+    {
+      "id": "c12",
+      "node": "n1",
+      "fromLink": "l2",
+      "fromLane": 0,
+      "toLink": "l4",
+      "toLane": 0,
+      "turn": "through",
+      "priority": "signal",
+      "signalGroup": "n1:g0",
+      "geometry": [
+        [
+          150,
+          -1.75,
+          0
+        ],
+        [
+          150,
+          -1.75,
+          0
+        ]
+      ],
+      "length": 0,
+      "conflicts": []
+    },
+    {
+      "id": "c13",
+      "node": "n1",
+      "fromLink": "l5",
+      "fromLane": 0,
+      "toLink": "l3",
+      "toLane": 0,
+      "turn": "through",
+      "priority": "signal",
+      "signalGroup": "n1:g0",
+      "geometry": [
+        [
+          150,
+          1.75,
+          0
+        ],
+        [
+          150,
+          1.75,
+          0
+        ]
+      ],
+      "length": 0,
+      "conflicts": []
+    }
+  ],
+  "signals": [
+    {
+      "node": "n0",
+      "cycle": 90,
+      "offset": 0,
+      "groups": [
+        {
+          "id": "n0:g0",
+          "green": [
+            [
+              0,
+              40
+            ]
+          ],
+          "amber": 3
+        },
+        {
+          "id": "n0:g1",
+          "green": [
+            [
+              45,
+              85
+            ]
+          ],
+          "amber": 3
+        }
+      ]
+    },
+    {
+      "node": "n1",
+      "cycle": 90,
+      "offset": 0,
+      "groups": [
+        {
+          "id": "n1:g0",
+          "green": [
+            [
+              0,
+              60
+            ]
+          ],
+          "amber": 3
+        }
+      ]
+    }
+  ],
+  "stats": {
+    "nodes": 6,
+    "links": 10,
+    "lanes": 10,
+    "connectors": 14,
+    "signals": 2,
+    "ignoredSigns": 0
+  },
+  "area": null,
+  "crossings": [
+    {
+      "id": "x0",
+      "osmId": 10,
+      "kind": "zebra",
+      "node": null,
+      "signalGroup": null,
+      "signalMode": null,
+      "implicit": false,
+      "width": 7,
+      "depth": 3,
+      "demand": 120,
+      "geometry": [
+        [
+          -150,
+          -3.5,
+          0
+        ],
+        [
+          -150,
+          3.5,
+          0
+        ]
+      ],
+      "links": [
+        {
+          "link": "l0",
+          "position": 200,
+          "span": [
+            0,
+            3.5
+          ]
+        },
+        {
+          "link": "l1",
+          "position": 145.5,
+          "span": [
+            3.5,
+            7
+          ]
+        }
+      ]
+    },
+    {
+      "id": "x1",
+      "osmId": 11,
+      "kind": "uncontrolled",
+      "node": null,
+      "signalGroup": null,
+      "signalMode": null,
+      "implicit": false,
+      "width": 7,
+      "depth": 3,
+      "demand": 72,
+      "geometry": [
+        [
+          -3.5,
+          150,
+          0
+        ],
+        [
+          3.5,
+          150,
+          0
+        ]
+      ],
+      "links": [
+        {
+          "link": "l6",
+          "position": 200,
+          "span": [
+            0,
+            3.5
+          ]
+        },
+        {
+          "link": "l7",
+          "position": 145.5,
+          "span": [
+            3.5,
+            7
+          ]
+        }
+      ]
+    },
+    {
+      "id": "x2",
+      "osmId": 12,
+      "kind": "signal",
+      "node": "n1",
+      "signalGroup": "n1:g0",
+      "signalMode": "request",
+      "implicit": false,
+      "width": 7,
+      "depth": 4,
+      "demand": 120,
+      "geometry": [
+        [
+          150,
+          -3.5,
+          0
+        ],
+        [
+          150,
+          3.5,
+          0
+        ]
+      ],
+      "links": [
+        {
+          "link": "l2",
+          "position": 145.5,
+          "span": [
+            0,
+            3.5
+          ]
+        },
+        {
+          "link": "l5",
+          "position": 200,
+          "span": [
+            3.5,
+            7
+          ]
+        }
+      ]
+    },
+    {
+      "id": "x3",
+      "osmId": null,
+      "kind": "signal",
+      "node": "n0",
+      "signalGroup": "n0:g1",
+      "signalMode": "parallel",
+      "implicit": true,
+      "width": 7,
+      "depth": 4,
+      "demand": 90,
+      "geometry": [
+        [
+          -7,
+          3.5,
+          0
+        ],
+        [
+          -7,
+          -3.5,
+          0
+        ]
+      ],
+      "links": [
+        {
+          "link": "l1",
+          "position": 2.5,
+          "span": [
+            0,
+            3.5
+          ]
+        },
+        {
+          "link": "l0",
+          "position": 343,
+          "span": [
+            3.5,
+            7
+          ]
+        }
+      ]
+    },
+    {
+      "id": "x4",
+      "osmId": null,
+      "kind": "signal",
+      "node": "n0",
+      "signalGroup": "n0:g1",
+      "signalMode": "parallel",
+      "implicit": true,
+      "width": 7,
+      "depth": 4,
+      "demand": 90,
+      "geometry": [
+        [
+          7,
+          -3.5,
+          0
+        ],
+        [
+          7,
+          3.5,
+          0
+        ]
+      ],
+      "links": [
+        {
+          "link": "l2",
+          "position": 2.5,
+          "span": [
+            0,
+            3.5
+          ]
+        },
+        {
+          "link": "l3",
+          "position": 143,
+          "span": [
+            3.5,
+            7
+          ]
+        }
+      ]
+    },
+    {
+      "id": "x5",
+      "osmId": null,
+      "kind": "signal",
+      "node": "n0",
+      "signalGroup": "n0:g0",
+      "signalMode": "parallel",
+      "implicit": true,
+      "width": 7,
+      "depth": 4,
+      "demand": 90,
+      "geometry": [
+        [
+          3.5,
+          7,
+          0
+        ],
+        [
+          -3.5,
+          7,
+          0
+        ]
+      ],
+      "links": [
+        {
+          "link": "l7",
+          "position": 2.5,
+          "span": [
+            0,
+            3.5
+          ]
+        },
+        {
+          "link": "l6",
+          "position": 343,
+          "span": [
+            3.5,
+            7
+          ]
+        }
+      ]
+    },
+    {
+      "id": "x6",
+      "osmId": null,
+      "kind": "signal",
+      "node": "n0",
+      "signalGroup": "n0:g0",
+      "signalMode": "parallel",
+      "implicit": true,
+      "width": 7,
+      "depth": 4,
+      "demand": 90,
+      "geometry": [
+        [
+          -3.5,
+          -7,
+          0
+        ],
+        [
+          3.5,
+          -7,
+          0
+        ]
+      ],
+      "links": [
+        {
+          "link": "l8",
+          "position": 2.5,
+          "span": [
+            0,
+            3.5
+          ]
+        },
+        {
+          "link": "l9",
+          "position": 343,
+          "span": [
+            3.5,
+            7
+          ]
+        }
+      ]
+    }
+  ]
+}

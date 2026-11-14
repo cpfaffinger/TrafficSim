@@ -5,8 +5,8 @@
   top: 58px;
   left: 10px;
   bottom: 10px;
-  width: min(560px, calc(100% - 400px));
-  min-width: 320px;
+  /* Up to 560 px, the full scene width (minus margins) on narrow screens. */
+  width: min(560px, calc(100% - 20px));
   display: flex;
   flex-direction: column;
   border-radius: 8px;

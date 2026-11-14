@@ -185,6 +185,8 @@ public class ChangesetApplierTests
         var north = net.Links.Single(l => l.From == junction && l.Geometry[^1].Y > 100);
 
         Assert.Equal(3, result.Issues.Count);
+        Assert.Equal((1L, 2L), (east.OsmBeforeTo, net.Links.Single(l => l.From == east.From && l.To == junction).OsmAfterFrom));
+        Assert.Equal(5, north.OsmAfterFrom);
         Assert.DoesNotContain(net.Connectors, c => c.FromLink == east.Id && c.ToLink == north.Id);
         Assert.Equal([(0, 0)], net.Connectors.Where(c => c.FromLink == east.Id && c.Turn == Turn.Through).Select(c => (c.FromLane, c.ToLane)));
         Assert.DoesNotContain(net.Connectors, c => c.FromLink == west.Id && c.Turn == Turn.Through);

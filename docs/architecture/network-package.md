@@ -69,6 +69,7 @@ geometry; a one-way way produces one.
 | `leftEdge` | enum | Marking left of the leftmost lane: `centre_dashed`, `centre_solid`, `double_solid` (two-way roads), `edge` (one-way). |
 | `noLaneChangeZone` | number | Metres before the link end in which lane changes are forbidden (solid approach, default 30 before signals). |
 | `assumed` | string[] | Attributes filled from defaults, e.g. `lanes`, `speedLimit`, `width`. |
+| `osmAfterFrom`, `osmBeforeTo` | number \| null | OSM nodes next to `from`/`to` along the way. Together with the node `osmId` they identify a movement for edits (ADR-0010): movement key = (junction `osmId`, incoming `osmBeforeTo`, outgoing `osmAfterFrom`). Optional. |
 
 ### Lane
 

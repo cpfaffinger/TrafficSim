@@ -61,6 +61,12 @@ public sealed class Link
 
     public long? OsmWayId { get; init; }
 
+    /// <summary>OSM node following <see cref="From"/> along the way (identifies movements for edits, ADR-0010).</summary>
+    public long? OsmAfterFrom { get; set; }
+
+    /// <summary>OSM node preceding <see cref="To"/> along the way.</summary>
+    public long? OsmBeforeTo { get; set; }
+
     public required string From { get; init; }
 
     public required string To { get; init; }

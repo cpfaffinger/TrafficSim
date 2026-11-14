@@ -41,7 +41,9 @@ public sealed record PackageLink(
     IReadOnlyList<PackageBoundary> Boundaries,
     string LeftEdge,
     double NoLaneChangeZone,
-    IReadOnlyList<string> Assumed);
+    IReadOnlyList<string> Assumed,
+    long? OsmAfterFrom = null,
+    long? OsmBeforeTo = null);
 
 public sealed record PackageConnector(
     string Id,

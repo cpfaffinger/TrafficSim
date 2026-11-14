@@ -401,6 +401,8 @@ public static class NetworkCompiler
             _neighbours[link] = direction == TravelDirection.Forward
                 ? (piece.NodeIds[1], piece.NodeIds[^2])
                 : (piece.NodeIds[^2], piece.NodeIds[1]);
+            link.OsmAfterFrom = _neighbours[link].Start;
+            link.OsmBeforeTo = _neighbours[link].End;
             var startKey = direction == TravelDirection.Forward ? piece.StartKey : piece.EndKey;
             var endKey = direction == TravelDirection.Forward ? piece.EndKey : piece.StartKey;
             _nodes[startKey].Outgoing.Add(link);

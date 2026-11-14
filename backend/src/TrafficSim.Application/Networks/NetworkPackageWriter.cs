@@ -74,7 +74,9 @@ public static class NetworkPackageWriter
         l.Boundaries.Select(b => new PackageBoundary(b.RightLane, b.LeftLane, Snake(b.Marking), b.AllowLeft, b.AllowRight)).ToList(),
         Snake(l.LeftEdge),
         R(l.NoLaneChangeZone),
-        l.Assumed.ToList());
+        l.Assumed.ToList(),
+        l.OsmAfterFrom,
+        l.OsmBeforeTo);
 
     private static List<double[]> Points(IReadOnlyList<Vec3> points) => points.Select(p => new[] { R(p.X), R(p.Y), R(p.Z) }).ToList();
 

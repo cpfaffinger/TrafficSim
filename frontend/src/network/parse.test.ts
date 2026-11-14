@@ -147,7 +147,15 @@ describe('parseNetworkPackage — validation', () => {
     (pkg.connectors as Json[]).forEach((c) => (c.signalGroup = null));
     const parsed = parseNetworkPackage(pkg);
     expect(parsed.stats).toEqual({ nodes: 9, links: 10, lanes: 16, connectors: parsed.connectors.length, signals: 0 });
-    expect(parsed.links[0]).toMatchObject({ layer: 0, structure: 'none', assumed: [] });
+    expect(parsed.links[0]).toMatchObject({ layer: 0, structure: 'none', assumed: [], osmAfterFrom: null, osmBeforeTo: null });
     expect('futureKey' in parsed).toBe(false);
+  });
+
+  it('reads the OSM neighbour nodes that key movements for edits', () => {
+    const pkg = fixture();
+    Object.assign(links(pkg)[0]!, { osmAfterFrom: 1001, osmBeforeTo: 1002 });
+    expect(parseNetworkPackage(pkg).links[0]).toMatchObject({ osmAfterFrom: 1001, osmBeforeTo: 1002 });
+    links(pkg)[0]!.osmBeforeTo = 'x';
+    expectError(pkg, 'links[0].osmBeforeTo');
   });
 });

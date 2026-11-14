@@ -6,6 +6,7 @@ import { ModeTabs, type AppMode } from './components/ModeTabs';
 import { mergeAttributions } from './lib/attribution';
 import { NetworkViewer } from './views/NetworkViewer';
 import { RingDemo } from './views/RingDemo';
+import { shareTokenFrom } from './scenarios/shareUrl';
 
 import { UpdateBanner } from './components/UpdateBanner';
 import { BUILD_ID, isOutdated, VERSION_CHECK_MS } from './lib/version';
@@ -39,6 +40,7 @@ export function App() {
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [api]);
+  const shareToken = useMemo(() => shareTokenFrom(window.location.search), []);
 
   // Backend status and metadata.
   useEffect(() => {
@@ -80,7 +82,7 @@ export function App() {
       {outdated && <UpdateBanner onReload={() => window.location.reload()} />}
       <main className="app-main" id={`panel-${mode}`} role="tabpanel" aria-labelledby={`tab-${mode}`}>
         {mode === 'network' ? (
-          <NetworkViewer api={api} onAttributions={setViewerAttributions} />
+          <NetworkViewer api={api} onAttributions={setViewerAttributions} shareToken={shareToken} />
         ) : (
           <RingDemo status={status} version={version} />
         )}

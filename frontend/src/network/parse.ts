@@ -193,6 +193,8 @@ function link(value: unknown, path: string): Link {
     leftEdge: oneOf(LEFT_EDGES)(o.leftEdge, `${path}.leftEdge`),
     noLaneChangeZone: nonNeg(o.noLaneChangeZone ?? 0, `${path}.noLaneChangeZone`),
     assumed: list(o.assumed ?? [], `${path}.assumed`, str),
+    osmAfterFrom: nullable(o.osmAfterFrom, `${path}.osmAfterFrom`, num),
+    osmBeforeTo: nullable(o.osmBeforeTo, `${path}.osmBeforeTo`, num),
   };
 }
 

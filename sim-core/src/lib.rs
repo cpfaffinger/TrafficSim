@@ -4,6 +4,7 @@
 //! state and metrics out. It compiles natively (for `cargo test` and future batch runners)
 //! and to WebAssembly (for the browser worker, see [`wasm`]).
 
+pub mod config;
 pub mod detmath;
 pub mod idm;
 pub mod network;
@@ -12,6 +13,7 @@ pub mod ring;
 pub mod rng;
 pub mod routing;
 pub mod signals;
+pub mod sim;
 pub mod vehicle;
 pub mod wasm;
 
@@ -23,4 +25,5 @@ pub use network::{Network, NetworkError};
 pub use ring::{RingRoad, RingRoadConfig};
 pub use rng::Pcg32;
 pub use routing::Router;
+pub use sim::{SNAPSHOT_STRIDE, Simulation, Stats};
 pub use vehicle::{VehicleClass, VehicleParams};

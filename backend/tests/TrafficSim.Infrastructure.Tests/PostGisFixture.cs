@@ -27,6 +27,10 @@ public sealed class PostGisFixture : IAsyncLifetime
             _container = new PostgreSqlBuilder(Image).Build();
             await _container.StartAsync().ConfigureAwait(false);
             ConnectionString = _container.GetConnectionString();
+
+            // Migrate once here: test classes run in parallel against the same database.
+            await using var context = CreateContext();
+            await context.Database.MigrateAsync().ConfigureAwait(false);
         }
         catch (Exception ex) when (Environment.GetEnvironmentVariable("CI") is null)
         {

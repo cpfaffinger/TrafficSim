@@ -14,11 +14,7 @@ public class EfScenarioStoreTests(PostGisFixture db)
     [Fact]
     public async Task Scenarios_and_runs_round_trip()
     {
-        await using (var migrate = db.CreateContext())
-        {
-            await migrate.Database.MigrateAsync(Ct);
-        }
-
+        db.RequireDatabase();
         var baselineId = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
         await using (var context = db.CreateContext())

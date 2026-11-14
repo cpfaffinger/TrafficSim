@@ -12,11 +12,7 @@ public class EfNetworkBaselineStoreTests(PostGisFixture db)
     [Fact]
     public async Task Stores_lists_finds_and_serves_packages()
     {
-        await using (var migrate = db.CreateContext())
-        {
-            await migrate.Database.MigrateAsync(Ct);
-        }
-
+        db.RequireDatabase();
         var area = new BoundingBox(48.2, 16.36, 48.21, 16.375);
         var now = DateTimeOffset.UtcNow;
         var info = new NetworkBaselineInfo(Guid.NewGuid(), area, now, "overpass", now.AddHours(-1), new PackageStats(1, 2, 3, 4, 5), ["© OSM", "Overpass"]);

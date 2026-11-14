@@ -4,12 +4,16 @@
 //! order (insertion order, compacted with `retain`):
 //!
 //! 1. rebuild the per-segment occupant lists (sorted by position, ties by vehicle id),
-//! 2. signal aspects for the current time,
-//! 3. arrivals (Poisson per entry, per-entry RNG stream) and insertion when the gap is safe,
-//! 4. lane changes (MOBIL + mandatory route changes), applied sequentially,
-//! 5. junction decisions (signals, priority, gap acceptance), claims applied sequentially,
-//! 6. IDM accelerations for all vehicles from the same state (parallel update),
-//! 7. ballistic integration, segment transitions, arrivals at exits.
+//! 2. periodic travel-time update and commuter re-routing (`reroute`), queue sampling and
+//!    phenomena detection (`observe`),
+//! 3. signal aspects for the current time (fixed time, then `actuated` controllers),
+//! 4. arrivals (one RNG stream per process, `demand`) and insertion when the gap is safe,
+//! 5. lane changes (MOBIL + mandatory route changes + merging courtesy), applied sequentially,
+//! 6. junction decisions (signals, priority, gap acceptance), claims applied sequentially,
+//! 7. distraction lapses, then accelerations for all vehicles from the same state (IDM with
+//!    perception delay, `perception`; cooperative yielding to mergers),
+//! 8. ballistic integration, segment transitions, arrivals at exits, travel-time reports and
+//!    metric accumulation; perception history; lane-cell bucket flush.
 //!
 //! The core has no I/O, no wall clock and no global RNG; identical package, config and seed
 //! give bit-identical states (see [`Simulation::state_checksum`]).

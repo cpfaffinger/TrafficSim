@@ -1,0 +1,34 @@
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vs/
+.vscode/*
+!.vscode/extensions.json
+*.user
+*.suo
+
+# Environment & runtime data
+.env
+!.env.example
+data/*
+!data/README.md
+
+# .NET
+bin/
+obj/
+TestResults/
+coverage/
+*.coverage
+*.cobertura.xml
+backend/src/TrafficSim.Api/wwwroot/*
+!backend/src/TrafficSim.Api/wwwroot/.gitkeep
+
+# Rust
+sim-core/target/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/src/generated/

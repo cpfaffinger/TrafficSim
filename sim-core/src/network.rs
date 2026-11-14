@@ -22,6 +22,14 @@ const CURVE_LATERAL_ACCELERATION: f64 = 2.5;
 const MIN_CURVE_SPEED: f64 = 3.0;
 /// Shortest segment length; zero-length connectors are stretched to this (m).
 const MIN_SEGMENT_LENGTH: f64 = 0.01;
+/// Widest swept path of a connector for conflict zones (m): widest vehicle (2.55 m) plus 0.25 m
+/// lateral clearance on each side.
+const MAX_SWEPT_WIDTH: f64 = 3.05;
+/// Two swept paths overlap when their centrelines are closer than the sum of their half widths
+/// minus this tolerance (m), so parallel paths of adjacent lanes never overlap.
+const ZONE_TOLERANCE: f64 = 0.05;
+/// Sampling step (m) of conflict-zone detection along a connector (at most 256 samples).
+const ZONE_SAMPLE_STEP: f64 = 0.25;
 
 /// A package that cannot be turned into a runtime network.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,6 +108,7 @@ pub struct ConnectorInfo {
     /// Vehicles must decide (signal, stop sign, conflicts) before entering.
     pub needs_decision: bool,
     conflict_range: (u32, u32),
+    merge_range: (u32, u32),
 }
 
 /// The runtime network: topology, geometry and signal plans.
@@ -122,6 +131,11 @@ pub struct Network {
     conflict_list: Vec<u32>,
     /// Per conflict_list entry: distance along the owning connector to the conflict point.
     conflict_pos: Vec<f64>,
+    /// Per conflict_list entry: conflict zone on the owning connector (entry, exit distance).
+    conflict_zone: Vec<(f64, f64)>,
+    /// Conflicting connectors that merge into the same lane, per connector (subset of the
+    /// conflicts, same order).
+    merge_list: Vec<u32>,
     node_index: BTreeMap<String, u32>,
     link_index: BTreeMap<String, u32>,
     connector_index: BTreeMap<String, u32>,
@@ -197,6 +211,8 @@ impl Network {
             lane_in: Vec::new(),
             conflict_list: Vec::new(),
             conflict_pos: Vec::new(),
+            conflict_zone: Vec::new(),
+            merge_list: Vec::new(),
             node_index: BTreeMap::new(),
             link_index: BTreeMap::new(),
             connector_index: BTreeMap::new(),
@@ -390,6 +406,7 @@ impl Network {
                 approach: direction(&from_geom.0, &from_geom.1),
                 needs_decision: false,
                 conflict_range: (0, 0),
+                merge_range: (0, 0),
             });
             net.seg_length.push(length);
             net.seg_speed_limit.push(curve_speed.min(lane_limit));
@@ -427,26 +444,37 @@ impl Network {
             list.dedup();
             let start = net.conflict_list.len() as u32;
             for &k in &list {
-                let pos = conflict_point(
-                    &connector_geometries[c],
-                    &connector_geometries[k as usize],
-                    net.connectors[c].to_lane == net.connectors[k as usize].to_lane,
-                );
+                let merge = net.connectors[c].to_lane == net.connectors[k as usize].to_lane;
+                let (a, b) = (&connector_geometries[c], &connector_geometries[k as usize]);
+                let pos = conflict_point(a, b, merge);
                 let seg = net.connector_segment(c as u32) as usize;
                 // Geometric distance mapped onto the nominal connector length.
-                let geom_len: f64 = connector_geometries[c]
-                    .windows(2)
-                    .map(|w| distance(&w[0], &w[1]))
-                    .sum();
+                let geom_len: f64 = a.windows(2).map(|w| distance(&w[0], &w[1])).sum();
                 let nominal = net.seg_length[seg];
+                let scale = if geom_len > 1e-9 { nominal / geom_len } else { 0.0 };
                 net.conflict_pos.push(match pos {
-                    Some(p) if geom_len > 1e-9 => (p * nominal / geom_len).min(nominal),
+                    Some(p) if geom_len > 1e-9 => (p * scale).min(nominal),
                     _ => nominal,
+                });
+                let reach = 0.5 * (net.zone_width(c as u32) + net.zone_width(k)) - ZONE_TOLERANCE;
+                net.conflict_zone.push(if geom_len > 1e-9 {
+                    let (entry, exit) = conflict_zone(a, b, reach, pos, merge);
+                    ((entry * scale).min(nominal), (exit * scale).min(nominal))
+                } else {
+                    (0.0, nominal)
                 });
             }
             net.conflict_list.extend_from_slice(&list);
+            net.connectors[c].conflict_range = (start, net.conflict_list.len() as u32);
+            let merge_start = net.merge_list.len() as u32;
+            let to_lane = net.connectors[c].to_lane;
+            for &k in &list {
+                if net.connectors[k as usize].to_lane == to_lane {
+                    net.merge_list.push(k);
+                }
+            }
+            net.connectors[c].merge_range = (merge_start, net.merge_list.len() as u32);
             let info = &mut net.connectors[c];
-            info.conflict_range = (start, net.conflict_list.len() as u32);
             info.needs_decision =
                 !list.is_empty() || matches!(info.priority, Priority::Signal | Priority::Stop);
         }
@@ -554,6 +582,43 @@ impl Network {
             .map(|i| self.conflict_pos[a as usize + i])
     }
 
+    /// Conflict zone of `connector` with conflicting connector `other` (#109): (entry, exit)
+    /// distances along `connector`. A vehicle occupies it from the moment its front passes the
+    /// entry until its rear passes the exit. `None` if they do not conflict.
+    pub fn conflict_zone(&self, connector: u32, other: u32) -> Option<(f64, f64)> {
+        let (a, _) = self.connectors[connector as usize].conflict_range;
+        let list = self.conflicts(connector);
+        list.binary_search(&other)
+            .ok()
+            .map(|i| self.conflict_zone[a as usize + i])
+    }
+
+    /// Conflicting connectors merging into the same lane as `connector` (sorted).
+    pub fn merging(&self, connector: u32) -> &[u32] {
+        let (a, b) = self.connectors[connector as usize].merge_range;
+        &self.merge_list[a as usize..b as usize]
+    }
+
+    /// Whether two connectors merge into the same lane.
+    pub fn merges(&self, a: u32, b: u32) -> bool {
+        self.connectors[a as usize].to_lane == self.connectors[b as usize].to_lane
+    }
+
+    /// Conflict zones of `connector`, in the order of [`Self::conflicts`].
+    pub fn conflict_zones(&self, connector: u32) -> &[(f64, f64)] {
+        let (a, b) = self.connectors[connector as usize].conflict_range;
+        &self.conflict_zone[a as usize..b as usize]
+    }
+
+    /// Width (m) of the swept path of a connector for conflict zones: its lane width, at most
+    /// the widest vehicle plus lateral clearance.
+    fn zone_width(&self, c: u32) -> f64 {
+        let info = &self.connectors[c as usize];
+        let lanes =
+            0.5 * (self.lanes[info.from_lane as usize].width + self.lanes[info.to_lane as usize].width);
+        lanes.min(MAX_SWEPT_WIDTH)
+    }
+
     /// Whether `lane` ends inside the network without a connector (acceleration lane, lane drop):
     /// vehicles on it have to change lanes.
     pub fn lane_ends(&self, lane: u32) -> bool {
@@ -654,6 +719,97 @@ fn conflict_point(a: &[Point], b: &[Point], same_target: bool) -> Option<f64> {
         along += seg_len;
     }
     None
+}
+
+/// Point at geometric distance `t` along a polyline.
+fn point_along(path: &[Point], t: f64) -> Point {
+    let mut along = 0.0;
+    for w in path.windows(2) {
+        let len = distance(&w[0], &w[1]);
+        if t <= along + len && len > 1e-12 {
+            let f = ((t - along) / len).clamp(0.0, 1.0);
+            return [
+                w[0][0] + (w[1][0] - w[0][0]) * f,
+                w[0][1] + (w[1][1] - w[0][1]) * f,
+                w[0][2] + (w[1][2] - w[0][2]) * f,
+            ];
+        }
+        along += len;
+    }
+    path[path.len() - 1]
+}
+
+/// Planar (x/y) distance from `p` to a polyline.
+fn distance_to_path(p: &Point, path: &[Point]) -> f64 {
+    path.windows(2)
+        .map(|w| {
+            let (ax, ay) = (w[0][0], w[0][1]);
+            let (dx, dy) = (w[1][0] - ax, w[1][1] - ay);
+            let len2 = dx * dx + dy * dy;
+            let f = if len2 > 1e-18 {
+                (((p[0] - ax) * dx + (p[1] - ay) * dy) / len2).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let (ex, ey) = (p[0] - ax - f * dx, p[1] - ay - f * dy);
+            (ex * ex + ey * ey).sqrt()
+        })
+        .fold(f64::INFINITY, f64::min)
+}
+
+/// Conflict zone on path `a` with path `b` (#109), as geometric distances (entry, exit) along `a`:
+/// the stretch where the centreline of `a` is closer than `reach` (the sum of both half widths)
+/// to the centreline of `b`, i.e. where vehicles on both paths would overlap. Crossings take the
+/// stretch around their crossing point `cross`, merges the stretch that reaches the end of `a`
+/// (merge point to connector end); other declared conflicts the hull of all overlapping
+/// stretches, or the whole path if the paths never come close.
+fn conflict_zone(a: &[Point], b: &[Point], reach: f64, cross: Option<f64>, merge: bool) -> (f64, f64) {
+    let total: f64 = a.windows(2).map(|w| distance(&w[0], &w[1])).sum();
+    let n = ((total / ZONE_SAMPLE_STEP).ceil() as usize).clamp(8, 256);
+    let samples: Vec<(f64, f64)> = (0..=n)
+        .map(|i| {
+            let t = total * i as f64 / n as f64;
+            (t, distance_to_path(&point_along(a, t), b) - reach)
+        })
+        .collect();
+    // Overlapping stretches; boundaries interpolated between samples.
+    let mut zones: Vec<(f64, f64)> = Vec::new();
+    let mut start: Option<f64> = None;
+    for (i, &(t, d)) in samples.iter().enumerate() {
+        let boundary = || {
+            let (t0, d0) = samples[i - 1];
+            t0 + (t - t0) * d0 / (d0 - d)
+        };
+        match (start, d < 0.0) {
+            (None, true) => start = Some(if i == 0 { 0.0 } else { boundary() }),
+            (Some(s), false) => {
+                zones.push((s, boundary()));
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    if let Some(s) = start {
+        zones.push((s, total));
+    }
+    let (Some(first), Some(last)) = (zones.first(), zones.last()) else {
+        return match cross {
+            Some(p) => ((p - reach).max(0.0), (p + reach).min(total)),
+            None if merge => (total, total),
+            None => (0.0, total),
+        };
+    };
+    match cross {
+        Some(p) => *zones
+            .iter()
+            .min_by(|x, y| {
+                let gap = |z: &&(f64, f64)| (z.0 - p).max(p - z.1).max(0.0);
+                gap(x).total_cmp(&gap(y))
+            })
+            .unwrap_or(first),
+        None if merge => *last,
+        None => (first.0, last.1),
+    }
 }
 
 /// Last two points of a lane geometry (for the approach direction and connector fallback).
@@ -887,6 +1043,66 @@ mod tests {
         assert_eq!(net.seg_speed_limit[0], net.links[0].speed_limit);
         assert_eq!(net.lanes[0].width, 3.25);
         assert_eq!(net.links[0].no_lane_change_zone, 0.0);
+    }
+
+    #[test]
+    fn conflict_zones_span_the_overlap_of_both_swept_paths() {
+        use crate::synth::{crossroads, t_junction};
+        let x = crossroads(NodeControl::Priority, Priority::Major, Priority::Minor).network();
+        let c = |id: &str| x.connector_index(id).unwrap();
+        let len = |id: &str| x.seg_length[x.connector_segment(c(id)) as usize];
+        // Perpendicular through movements: the zone extends ±(3.05 − 0.05) m around the crossing.
+        let point = x.conflict_point(c("WE"), c("SN")).unwrap();
+        let (entry, exit) = x.conflict_zone(c("WE"), c("SN")).unwrap();
+        assert!(entry < point && point < exit, "{entry} {point} {exit}");
+        assert!((exit - entry - 6.0).abs() < 0.5, "{entry} {exit}");
+        assert!(entry > 0.0 && exit < len("WE"));
+        let (e2, x2) = x.conflict_zone(c("SN"), c("WE")).unwrap();
+        assert!((x2 - e2 - 6.0).abs() < 0.5, "symmetric extent: {e2} {x2}");
+        assert_eq!(x.conflict_zone(c("WE"), c("WS")), None, "no conflict");
+        assert_eq!(x.conflict_zones(c("WE")).len(), x.conflicts(c("WE")).len());
+
+        // Merge: from where the paths come within reach to the end of the connector.
+        let t = t_junction(Priority::Minor).network();
+        let c = |id: &str| t.connector_index(id).unwrap();
+        let end = t.seg_length[t.connector_segment(c("sj_e")) as usize];
+        let (entry, exit) = t.conflict_zone(c("sj_e"), c("we_e")).unwrap();
+        assert!(entry > 0.2 * end && entry < 0.8 * end, "{entry} of {end}");
+        assert_eq!(exit, end);
+        let end = t.seg_length[t.connector_segment(c("we_e")) as usize];
+        let (entry, exit) = t.conflict_zone(c("we_e"), c("sj_e")).unwrap();
+        assert!(entry > 0.0 && entry < end && exit == end, "{entry} {exit} {end}");
+    }
+
+    #[test]
+    fn conflict_zone_fallbacks() {
+        let line = |y: f64| vec![[0.0, y, 0.0], [10.0, y, 0.0]];
+        // Parallel paths farther apart than the reach: whole path (declared conflict), the end
+        // (merge) or around the crossing point.
+        assert_eq!(
+            conflict_zone(&line(0.0), &line(5.0), 3.0, None, false),
+            (0.0, 10.0)
+        );
+        assert_eq!(
+            conflict_zone(&line(0.0), &line(5.0), 3.0, None, true),
+            (10.0, 10.0)
+        );
+        assert_eq!(
+            conflict_zone(&line(0.0), &line(5.0), 3.0, Some(4.0), false),
+            (1.0, 7.0)
+        );
+        // Parallel overlapping paths: the hull of the overlap.
+        let (a, b) = conflict_zone(&line(0.0), &line(1.0), 3.0, None, false);
+        assert_eq!((a, b), (0.0, 10.0));
+        // Paths that converge: overlap starts where the distance drops below the reach.
+        let converging = vec![[0.0, 10.0, 0.0], [10.0, 0.0, 0.0]];
+        let (a, b) = conflict_zone(&line(0.0), &converging, 3.0 * 2f64.sqrt(), None, true);
+        assert!((a - 4.0).abs() < 0.05 && b == 10.0, "{a} {b}");
+        assert_eq!(point_along(&line(0.0), 99.0), [10.0, 0.0, 0.0]);
+        assert_eq!(
+            distance_to_path(&[0.0, 3.0, 0.0], &[[1.0, 1.0, 0.0], [1.0, 1.0, 0.0]]),
+            5f64.sqrt()
+        );
     }
 
     #[test]

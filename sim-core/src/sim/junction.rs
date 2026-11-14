@@ -1,21 +1,58 @@
-//! Junction control (#44, #45): fixed-time signals with the amber dilemma-zone rule, priority
-//! rules, gap acceptance and deadlock avoidance.
+//! Junction control (#44, #45, #109): fixed-time signals with the amber dilemma-zone rule,
+//! priority rules, gap acceptance on conflict zones and deadlock avoidance.
 //!
 //! Model: a vehicle that is first in line for its next controlled connector decides every step
 //! whether it may enter. A positive decision is turned into a *claim* once the vehicle reaches
-//! its point of no return (comfortable braking distance + 3 m). A claim counts as occupancy of
-//! the connector until the vehicle has left it; no vehicle claims a connector while a
-//! conflicting connector is claimed or occupied, so conflicting movements never overlap.
-//! Claims are applied sequentially in vehicle order, which also breaks ties deterministically.
-//! A negative decision puts a virtual standing obstacle at the stop line.
+//! its point of no return (yielding movements: comfortable braking distance + 3 m + its length;
+//! prioritised movements: just before the line). Claims are applied sequentially in vehicle
+//! order, which also breaks ties deterministically. A negative decision puts a virtual standing
+//! obstacle at the stop line.
+//!
+//! Conflict zones (#109): every conflicting connector pair has a zone on each connector (entry
+//! and exit distance, see [`crate::network::Network::conflict_zone`]); a vehicle occupies it from
+//! the moment its front passes the entry until its rear passes the exit. A decision compares
+//! occupancy *times* (kinematic estimates: entries as early as possible, exits as late as
+//! plausible):
+//!
+//! - **committed** vehicles of a conflicting connector (claimed, on it, or with the rear still on
+//!   it) block a crossing unless the deciding vehicle enters its zone at least
+//!   `junction.clearanceTime` after they have left theirs, or leaves its zone that long before
+//!   they can reach theirs; on a merge the zone entries must be `clearanceTime` apart (the second
+//!   vehicle then follows the first, see [`Simulation::merging_leader`]);
+//! - **approaching** prioritised vehicles are subject to gap acceptance (HCM definition): the
+//!   deciding vehicle goes if the next one reaches its conflict zone at least the critical gap
+//!   after the deciding vehicle departs from the line. A vehicle still approaching (a queue
+//!   follower rolling up, or one arriving at speed) adds how much later than a standing vehicle
+//!   it reaches its own zone. A higher-ranked stream that is queued at its line offers no gap.
+//! - a yielding merge leaves room on the exit lane for the prioritised vehicles about to merge
+//!   and never fills the exit lane completely (no gridlock on a congested roundabout ring).
+//!
+//! Physical safety net, computed sequentially here and applied by the IDM: a committed vehicle
+//! stops before a crossing zone while its counterpart is occupied, before a merge zone until the
+//! vehicle in the counterpart has moved far enough ahead to be followed, and - within
+//! [`HOLD_HORIZON`] - lets a committed conflicting vehicle go first that reaches its zone earlier.
+//! So two vehicles are never inside the two zones of a crossing at the same time, and vehicles
+//! inside a merge never overlap towards the common end.
 
 use super::{EntryEvent, STOP_LINE_MARGIN, Simulation};
 use crate::network::NONE;
 use crate::package::{Priority, Turn};
 use crate::signals::SignalState;
 
-/// A vehicle releases a conflict once its rear is this far past the conflict point (m).
-const CONFLICT_CLEARANCE: f64 = 1.0;
+/// Within this time (s) of its conflict zone, a committed vehicle lets a committed conflicting
+/// vehicle go first that can reach its own zone earlier.
+const HOLD_HORIZON: f64 = 2.0;
+/// Lowest speed (m/s) assumed for vehicles in occupancy-time estimates.
+const MIN_ESTIMATE_SPEED: f64 = 0.5;
+/// A prioritised vehicle slower than this (m/s) within [`QUEUE_DISTANCE`] of its stop line is
+/// queued: its stream offers no gap.
+const QUEUE_SPEED: f64 = 2.0;
+const QUEUE_DISTANCE: f64 = 15.0;
+/// A yielding merge keeps exit-lane room for a prioritised vehicle this close (m) to its line.
+const RESERVE_DISTANCE: f64 = 30.0;
+/// Vehicles behind a connector end overlap it with their rear up to this distance (m, longer
+/// than any vehicle).
+const MAX_OVERHANG: f64 = 30.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Decision {
@@ -43,7 +80,7 @@ fn priority_level(p: Priority) -> u8 {
 }
 
 /// Time to cover `d` metres from speed `v` accelerating with `a` (pure arithmetic).
-fn time_to_reach(d: f64, v: f64, a: f64) -> f64 {
+pub(super) fn time_to_reach(d: f64, v: f64, a: f64) -> f64 {
     if d <= 0.0 {
         return 0.0;
     }
@@ -51,11 +88,42 @@ fn time_to_reach(d: f64, v: f64, a: f64) -> f64 {
     (-v + (v * v + 2.0 * a * d).sqrt()) / a
 }
 
+/// Time to cover `d` metres from speed `v`, accelerating with `a` (0 = constant speed) up to
+/// `vmax`; faster vehicles are assumed to slow down to `vmax` at once. Speeds below
+/// [`MIN_ESTIMATE_SPEED`] count as that speed.
+pub(super) fn travel_time(d: f64, v: f64, a: f64, vmax: f64) -> f64 {
+    if d <= 0.0 {
+        return 0.0;
+    }
+    let vmax = vmax.max(MIN_ESTIMATE_SPEED);
+    if v >= vmax {
+        return d / vmax;
+    }
+    if a <= 0.0 {
+        return d / v.max(MIN_ESTIMATE_SPEED);
+    }
+    let t1 = (vmax - v) / a;
+    let d1 = 0.5 * (v + vmax) * t1;
+    if d <= d1 {
+        time_to_reach(d, v, a)
+    } else {
+        t1 + (d - d1) / vmax
+    }
+}
+
+/// Occupancy window of a conflict zone: (earliest entry, latest plausible exit) in seconds.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct Window {
+    pub enter: f64,
+    pub leave: f64,
+}
+
 impl Simulation {
     pub(super) fn junction_phase(&mut self) {
         let max_wait = self.config.junction.max_wait;
         for i in 0..self.vehicles.len() {
             self.vehicles[i].stop_dist = f64::INFINITY;
+            self.vehicles[i].zone_hold = self.zone_hold(i);
             let Some((c, d)) = self.upcoming_decision(i) else {
                 continue;
             };
@@ -72,7 +140,7 @@ impl Simulation {
             // claim only when about to cross the stop line, so they do not block others early.
             let yielding = self.net.conflicts(c).iter().any(|&k| self.yields(c, k));
             let commit = if yielding {
-                v.speed * v.speed / (2.0 * v.params.comfortable_deceleration) + 3.0
+                v.speed * v.speed / (2.0 * v.params.comfortable_deceleration) + 3.0 + v.params.length
             } else {
                 v.speed * self.dt + 2.0
             };
@@ -104,7 +172,7 @@ impl Simulation {
             None => net.seg_length[v.seg as usize] - v.pos,
             Some(cur) => {
                 let lane = net.connectors[cur as usize].to_lane;
-                if !self.seg_vehicles[lane as usize].is_empty() {
+                if self.last_on(lane).is_some() {
                     return None;
                 }
                 net.seg_length[v.seg as usize] - v.pos + net.seg_length[lane as usize]
@@ -141,14 +209,14 @@ impl Simulation {
         let v = &self.vehicles[i];
         let b = v.params.comfortable_deceleration;
         let conflicts = net.conflicts(c);
-        let blocked = conflicts.iter().any(|&k| self.blocks(k, c));
+        let blocked = || conflicts.iter().any(|&k| !self.zone_clear(i, c, d, k));
         match info.priority {
             Priority::Signal => match self.signal_state[info.signal_group as usize] {
                 SignalState::Red => return Decision::Stop,
                 // Dilemma zone: stop if a comfortable stop is possible, otherwise go - unless
                 // the junction is physically blocked, then the hard stop line applies.
                 SignalState::Amber => {
-                    return if v.speed * v.speed / (2.0 * b) <= d || blocked {
+                    return if v.speed * v.speed / (2.0 * b) <= d || blocked() {
                         Decision::Stop
                     } else {
                         Decision::EnterNow
@@ -159,7 +227,7 @@ impl Simulation {
             Priority::Stop if !v.stop_done => return Decision::Stop,
             _ => {}
         }
-        if blocked || !self.exit_space_ok(c, i) {
+        if blocked() || !self.exit_space_ok(c, i) {
             return Decision::Stop;
         }
         if forced {
@@ -170,7 +238,7 @@ impl Simulation {
         }
         let j = &self.config.junction;
         if info.priority != Priority::Signal
-            && self.time - self.conn_last_claim[c as usize] < j.follow_up_time
+            && self.time - self.conn_last_claim[c as usize] < j.follow_up_time - 1e-6
         {
             return Decision::Stop;
         }
@@ -181,18 +249,29 @@ impl Simulation {
             Priority::Signal => j.critical_gap_permissive,
             _ => j.critical_gap_minor,
         } * v.params.gap_acceptance_factor;
-        // Time until the vehicle reaches its holding position just before the line (critical gaps
-        // are measured from a vehicle waiting at the line).
+        // Critical gaps are measured from a vehicle departing from its holding position just
+        // before the line: `own` is how much later than such a departure this vehicle reaches the
+        // conflict zone (#109; zero for a vehicle waiting at the line, small for a queue follower
+        // rolling up, larger for one approaching from far away).
         let hold = STOP_LINE_MARGIN + v.params.minimum_gap;
-        let own = time_to_reach(d - hold, v.speed, v.params.max_acceleration);
-        for &k in conflicts {
+        let p = &v.params;
+        let vmax = p.desired_speed(net.seg_speed_limit[net.connector_segment(c) as usize]);
+        for (&k, zone) in conflicts.iter().zip(net.conflict_zones(c)) {
             if !self.yields(c, k) || !self.active(k) {
                 continue;
             }
+            let own = (travel_time(d + zone.0, v.speed, p.max_acceleration, vmax.max(v.speed))
+                - travel_time(hold + zone.0, 0.0, p.max_acceleration, vmax))
+            .max(0.0);
             let from_lane = net.connectors[k as usize].from_lane;
-            let budget =
-                ((critical_gap + own) * net.seg_speed_limit[from_lane as usize] * 1.3 + 20.0).min(400.0);
-            let arrival = self.arrival_time(from_lane, k, 0.0, budget, i as u32, 0);
+            // Arrival at the conflict zone on `k` (#109), not at its stop line.
+            let entry = net.conflict_zone(k, c).map_or(0.0, |z| z.0);
+            let budget = ((critical_gap + own) * net.seg_speed_limit[from_lane as usize] * 1.3 + 20.0)
+                .min(400.0)
+                + entry;
+            // Vehicles of a higher-ranked stream always count, even while queued at their line.
+            let strict = priority_level(net.connectors[k as usize].priority) > priority_level(info.priority);
+            let arrival = self.arrival_time(from_lane, k, entry, budget, (i as u32, strict), 0);
             if arrival - own < critical_gap {
                 return Decision::Stop;
             }
@@ -200,19 +279,232 @@ impl Simulation {
         Decision::Enter
     }
 
-    /// Whether traffic on connector `k` currently blocks conflicting connector `c`: `k` is
-    /// claimed, or a vehicle on `k` has not yet cleared the conflict point with `c`.
-    pub(super) fn blocks(&self, k: u32, c: u32) -> bool {
-        if self.conn_claims[k as usize] > 0 {
+    /// Calls `f(vehicle, front position along k)` for every vehicle physically on connector `k`:
+    /// on it, or (with `overhang`) already on its exit lane with the rear still on `k`. Merging
+    /// connectors pass `overhang = false`: once a vehicle has left the merge, followers from both
+    /// connectors see it as their leader on the common lane.
+    pub(super) fn on_connector(&self, k: u32, overhang: bool, mut f: impl FnMut(u32, f64)) {
+        let net = &self.net;
+        let seg = net.connector_segment(k);
+        for &j in &self.seg_vehicles[seg as usize] {
+            f(j, self.vehicles[j as usize].pos);
+        }
+        if !overhang {
+            return;
+        }
+        let clen = net.seg_length[seg as usize];
+        for &j in self.seg_vehicles[net.connectors[k as usize].to_lane as usize]
+            .iter()
+            .rev()
+        {
+            let v = &self.vehicles[j as usize];
+            if v.pos > MAX_OVERHANG {
+                break;
+            }
+            if v.prev_seg == seg && v.pos < v.params.length {
+                f(j, clen + v.pos);
+            }
+        }
+    }
+
+    /// Calls `f(vehicle, front position along k)` for every vehicle committed to connector `k`:
+    /// physically on it ([`Self::on_connector`]) or claimed and approaching (negative position:
+    /// distance to its start).
+    fn committed(&self, k: u32, overhang: bool, mut f: impl FnMut(u32, f64)) {
+        self.on_connector(k, overhang, &mut f);
+        let claims = self.conn_claims[k as usize];
+        if claims == 0 {
+            return;
+        }
+        let net = &self.net;
+        let lane = net.connectors[k as usize].from_lane;
+        let len = net.seg_length[lane as usize];
+        let mut found = 0;
+        for &j in &self.seg_vehicles[lane as usize] {
+            let v = &self.vehicles[j as usize];
+            if v.claimed == k {
+                f(j, v.pos - len);
+                found += 1;
+                if found == claims {
+                    return;
+                }
+            }
+        }
+        // Claimed from the connector before an empty lane.
+        for &ic in net.lane_incoming(lane) {
+            let seg = net.connector_segment(ic);
+            let clen = net.seg_length[seg as usize];
+            for &j in &self.seg_vehicles[seg as usize] {
+                let v = &self.vehicles[j as usize];
+                if v.claimed == k {
+                    f(j, v.pos - clen - len);
+                }
+            }
+        }
+    }
+
+    /// Cheap pre-check of [`Self::committed`]: false if certainly no vehicle is committed to `k`.
+    fn may_be_committed(&self, k: u32) -> bool {
+        let net = &self.net;
+        self.conn_claims[k as usize] > 0
+            || !self.seg_vehicles[net.connector_segment(k) as usize].is_empty()
+            || self.seg_vehicles[net.connectors[k as usize].to_lane as usize]
+                .last()
+                .is_some_and(|&j| self.vehicles[j as usize].pos <= MAX_OVERHANG)
+    }
+
+    /// Occupancy window of vehicle `j` (front at `front` along connector `k`) for `zone` on `k`.
+    /// The exit assumes acceleration if the vehicle `goes` (it is deciding to enter, or has just
+    /// been released by its claim) or is accelerating; a vehicle held on the connector may stay.
+    fn window(&self, j: u32, k: u32, front: f64, zone: (f64, f64), goes: bool) -> Window {
+        let v = &self.vehicles[j as usize];
+        let p = &v.params;
+        let vmax = p.desired_speed(self.net.seg_speed_limit[self.net.connector_segment(k) as usize]);
+        let enter = travel_time(zone.0 - front, v.speed, p.max_acceleration, vmax.max(v.speed));
+        let free = goes || v.claimed == k || (v.acc > 0.0 && v.zone_hold.is_infinite());
+        let a = if free { p.max_acceleration } else { 0.0 };
+        let leave = travel_time(zone.1 + p.length - front, v.speed, a, vmax);
+        Window { enter, leave }
+    }
+
+    /// Whether vehicle `i`, `d` metres before connector `c`, can pass its conflict zone with `k`
+    /// without conflicting with a vehicle committed to `k`: for crossings the occupancy windows
+    /// must be apart by `junction.clearanceTime`; for merges the zone entries must be (the second
+    /// vehicle then follows the first as its leader, see [`Self::follow_merging`]).
+    pub(super) fn zone_clear(&self, i: usize, c: u32, d: f64, k: u32) -> bool {
+        let net = &self.net;
+        if !self.may_be_committed(k) {
             return true;
         }
-        let point = self.net.conflict_point(k, c).unwrap_or(f64::INFINITY);
-        self.seg_vehicles[self.net.connector_segment(k) as usize]
-            .last()
-            .is_some_and(|&j| {
-                let v = &self.vehicles[j as usize];
-                v.pos - v.params.length < point + CONFLICT_CLEARANCE
-            })
+        let (Some(mine), Some(theirs)) = (net.conflict_zone(c, k), net.conflict_zone(k, c)) else {
+            return true;
+        };
+        let clearance = self.config.junction.clearance_time;
+        let merge = net.merges(c, k);
+        let mut own: Option<Window> = None;
+        let mut clear = true;
+        self.committed(k, !merge, |j, front| {
+            if !clear || j == i as u32 || front - self.vehicles[j as usize].params.length >= theirs.1 {
+                return;
+            }
+            let own = *own.get_or_insert_with(|| self.window(i as u32, c, -d, mine, true));
+            let w = self.window(j, k, front, theirs, false);
+            clear = if merge {
+                (own.enter - w.enter).abs() >= clearance
+            } else {
+                own.enter >= w.leave + clearance || own.leave + clearance <= w.enter
+            };
+        });
+        clear
+    }
+
+    /// Nearest vehicle ahead of a vehicle with `remaining` metres to the end of connector `c`
+    /// among the vehicles inside the merge zones of connectors merging with `c` (#109), measured
+    /// towards the common end: (index, net gap). Vehicles on different connectors of a merge do
+    /// not see each other as leaders on their own segments.
+    pub(super) fn merging_leader(&self, c: u32, remaining: f64, me: u32) -> Option<(u32, f64)> {
+        let net = &self.net;
+        let mut best: Option<(u32, f64)> = None;
+        for &k in net.merging(c) {
+            let seg = net.connector_segment(k);
+            if self.seg_vehicles[seg as usize].is_empty() {
+                continue;
+            }
+            let klen = net.seg_length[seg as usize];
+            let entry = net.conflict_zone(k, c).map_or(0.0, |z| z.0);
+            for &j in self.seg_vehicles[seg as usize].iter().rev() {
+                let q = &self.vehicles[j as usize];
+                let rem = klen - q.pos;
+                if j == me
+                    || q.pos < entry
+                    || rem > remaining
+                    || (rem == remaining && q.id > self.vehicles[me as usize].id)
+                {
+                    continue;
+                }
+                let gap = remaining - rem - q.params.length;
+                if best.is_none_or(|(_, g)| gap < g) {
+                    best = Some((j, gap));
+                }
+                // Upstream first: the first one ahead of us is the nearest.
+                break;
+            }
+        }
+        best
+    }
+
+    /// Distance from vehicle `i`'s front to the entry of the nearest conflict zone ahead on its
+    /// connector (the one it is on or has claimed) that it must not enter yet; `INFINITY` if none
+    /// (safety net, #109). A crossing zone is blocked while a conflicting vehicle is inside its
+    /// counterpart; a merge zone while a vehicle in the counterpart has not moved far enough
+    /// ahead (towards the common end) to be followed. Within [`HOLD_HORIZON`] of its zone, a
+    /// vehicle also lets a committed conflicting vehicle go first that can reach its own zone
+    /// earlier (ties by index), so two vehicles never enter conflicting zones at the same time.
+    pub(super) fn zone_hold(&self, i: usize) -> f64 {
+        let net = &self.net;
+        let v = &self.vehicles[i];
+        let (c, front) = match net.segment_connector(v.seg) {
+            Some(c) => (c, v.pos),
+            None if v.claimed != NONE => (v.claimed, v.pos - net.seg_length[v.seg as usize]),
+            None => return f64::INFINITY,
+        };
+        let horizon = v.speed * v.speed / v.params.comfortable_deceleration + 10.0;
+        let clen = net.seg_length[net.connector_segment(c) as usize];
+        let early = |j: u32, d: f64, seg: u32| {
+            let q = &self.vehicles[j as usize];
+            let vmax = q
+                .params
+                .desired_speed(net.seg_speed_limit[seg as usize])
+                .max(q.speed);
+            travel_time(d, q.speed, q.params.max_acceleration, vmax)
+        };
+        let mut hold = f64::INFINITY;
+        for (&k, &zone) in net.conflicts(c).iter().zip(net.conflict_zones(c)) {
+            let dist = zone.0 - front;
+            if dist <= 0.0 || dist > horizon || dist >= hold || !self.may_be_committed(k) {
+                continue;
+            }
+            let Some(theirs) = net.conflict_zone(k, c) else {
+                continue;
+            };
+            let merge = net.merges(c, k);
+            let klen = net.seg_length[net.connector_segment(k) as usize];
+            // Merges: the counterpart must have moved ahead of our zone entry (by s0).
+            let entry_rem = clen - zone.0 - v.params.minimum_gap;
+            let mine = early(i as u32, dist, net.connector_segment(c));
+            let mut blocked = false;
+            self.committed(k, !merge, |j, f| {
+                let q = &self.vehicles[j as usize];
+                if blocked || j == i as u32 || f - q.params.length >= theirs.1 {
+                    return;
+                }
+                if f >= theirs.0 {
+                    blocked = !merge || klen - f + q.params.length > entry_rem;
+                } else if mine <= HOLD_HORIZON {
+                    let t = early(j, theirs.0 - f, net.connector_segment(k));
+                    blocked = t < mine || (t == mine && (j as usize) < i);
+                }
+            });
+            if blocked {
+                hold = dist;
+            }
+        }
+        hold
+    }
+
+    #[cfg(test)]
+    /// A vehicle (other than `except`) physically inside the conflict zone of connector `k` with
+    /// connector `c`.
+    pub(super) fn zone_occupant(&self, k: u32, c: u32, except: u32) -> Option<u32> {
+        let zone = self.net.conflict_zone(k, c)?;
+        let mut inside = None;
+        self.on_connector(k, !self.net.merges(c, k), |j, front| {
+            let rear = front - self.vehicles[j as usize].params.length;
+            if inside.is_none() && j != except && front >= zone.0 && rear < zone.1 {
+                inside = Some(j);
+            }
+        });
+        inside
     }
 
     /// Whether movement `c` has to give way to conflicting movement `k`.
@@ -249,22 +541,44 @@ impl Simulation {
 
     /// Whether vehicle `j` counts as approaching for vehicle `me`: a vehicle that is itself
     /// holding at a stop line defers to vehicles that have waited longer (first come, first
-    /// served), which resolves mutual yielding (e.g. four right-before-left approaches).
-    fn counts_for(&self, j: u32, me: u32) -> bool {
+    /// served), which resolves mutual yielding (e.g. four right-before-left approaches) - unless
+    /// it belongs to a higher-ranked stream (`strict`).
+    fn counts_for(&self, j: u32, (me, strict): (u32, bool)) -> bool {
         if j == me {
             return false;
         }
         let (o, m) = (&self.vehicles[j as usize], &self.vehicles[me as usize]);
-        let holding = o.stop_dist.is_finite() && o.speed < 0.5;
-        !holding || o.wait > m.wait || (o.wait == m.wait && o.id < m.id)
+        strict || !o.holding() || o.wait > m.wait || (o.wait == m.wait && o.id < m.id)
     }
 
-    /// Earliest arrival time (s) at the end of `lane` of a vehicle heading for connector `via`,
-    /// searching upstream through incoming connectors up to `budget` metres.
-    fn arrival_time(&self, lane: u32, via: u32, offset: f64, budget: f64, me: u32, depth: u32) -> f64 {
+    /// Earliest arrival time (s) at the end of `lane` (plus `offset`) of a vehicle heading for
+    /// connector `via`, searching upstream through incoming connectors up to `budget` metres
+    /// (kinematic estimate: accelerating up to its desired speed). A counting vehicle queued near
+    /// the stop line of `via` (holding, or slower than [`QUEUE_SPEED`] within [`QUEUE_DISTANCE`])
+    /// arrives now: a queued stream offers no gaps.
+    pub(super) fn arrival_time(
+        &self,
+        lane: u32,
+        via: u32,
+        offset: f64,
+        budget: f64,
+        me: (u32, bool),
+        depth: u32,
+    ) -> f64 {
         let net = &self.net;
         let len = net.seg_length[lane as usize];
-        let eta = |d: f64, speed: f64| d / speed.max(1.0);
+        let eta = |d: f64, j: u32, seg: u32| {
+            let v = &self.vehicles[j as usize];
+            let vmax = v
+                .params
+                .desired_speed(net.seg_speed_limit[seg as usize])
+                .max(v.speed);
+            if me.1 {
+                travel_time(d, v.speed, v.params.max_acceleration, vmax)
+            } else {
+                d / v.speed.max(1.0)
+            }
+        };
         for &j in &self.seg_vehicles[lane as usize] {
             let v = &self.vehicles[j as usize];
             let d = offset + len - v.pos;
@@ -272,7 +586,12 @@ impl Simulation {
                 return f64::INFINITY;
             }
             if v.next_conn == via && self.counts_for(j, me) {
-                return eta(d, v.speed);
+                let queued = v.holding() || (me.1 && v.speed < QUEUE_SPEED && len - v.pos < QUEUE_DISTANCE);
+                return if depth == 0 && queued {
+                    0.0
+                } else {
+                    eta(d, j, lane)
+                };
             }
         }
         let offset = offset + len;
@@ -285,7 +604,7 @@ impl Simulation {
             let clen = net.seg_length[seg as usize];
             let found = self.seg_vehicles[seg as usize].iter().find_map(|&j| {
                 let v = &self.vehicles[j as usize];
-                (v.next_conn == via && self.counts_for(j, me)).then(|| eta(offset + clen - v.pos, v.speed))
+                (v.next_conn == via && self.counts_for(j, me)).then(|| eta(offset + clen - v.pos, j, seg))
             });
             let t = match found {
                 Some(t) => t,
@@ -300,19 +619,52 @@ impl Simulation {
     }
 
     /// Keep the junction clear: enter only if the exit lane has room for this vehicle and the
-    /// vehicles already on the connector, or traffic there is moving.
-    fn exit_space_ok(&self, c: u32, i: usize) -> bool {
+    /// vehicles already on the connector, or traffic there is moving. A yielding movement also
+    /// leaves room for the prioritised vehicles merging into the same lane that are on their
+    /// connector or about to reach it (#109; a roundabout entry does not take the space the
+    /// circulating traffic needs, which would lock up a congested ring).
+    pub(super) fn exit_space_ok(&self, c: u32, i: usize) -> bool {
         let net = &self.net;
         let info = &net.connectors[c as usize];
         let mut needed = self.vehicles[i].params.length + 2.0;
         for &j in &self.seg_vehicles[net.connector_segment(c) as usize] {
             needed += self.vehicles[j as usize].params.length + 2.0;
         }
-        match self.seg_vehicles[info.to_lane as usize].last() {
+        let mut yielding_merge = false;
+        for &k in net.conflicts(c) {
+            if !net.merges(c, k) || !self.yields(c, k) {
+                continue;
+            }
+            yielding_merge = true;
+            for &j in &self.seg_vehicles[net.connector_segment(k) as usize] {
+                needed += self.vehicles[j as usize].params.length + 2.0;
+            }
+            let lane = net.connectors[k as usize].from_lane;
+            let len = net.seg_length[lane as usize];
+            if let Some(&j) = self.seg_vehicles[lane as usize]
+                .iter()
+                .take_while(|&&j| len - self.vehicles[j as usize].pos < RESERVE_DISTANCE)
+                .find(|&&j| self.vehicles[j as usize].next_conn == k)
+            {
+                needed += self.vehicles[j as usize].params.length + 2.0;
+            }
+        }
+        // A yielding merge never fills its exit lane completely, so the prioritised stream can
+        // always move on (no gridlock on a congested roundabout).
+        if yielding_merge {
+            let occupied: f64 = self.seg_vehicles[info.to_lane as usize]
+                .iter()
+                .map(|&j| self.vehicles[j as usize].params.length + 2.0)
+                .sum();
+            if occupied + needed > net.seg_length[info.to_lane as usize] {
+                return false;
+            }
+        }
+        match self.last_on(info.to_lane) {
             None => true,
-            Some(&j) => {
+            Some((j, pos)) => {
                 let last = &self.vehicles[j as usize];
-                last.pos - last.params.length >= needed || last.speed > 3.0
+                pos - last.params.length >= needed || last.speed > 3.0
             }
         }
     }

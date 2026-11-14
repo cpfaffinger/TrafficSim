@@ -27,7 +27,7 @@ wasm32 build compiles them too, `cargo build --lib …` skips them.
 | Module | Purpose |
 |--------|---------|
 | `package` | serde types of the network package v1 (unknown keys ignored, unknown enum values tolerated) |
-| `network` | validated runtime lane graph: lanes and connectors as *segments*, flat arrays, conflict points |
+| `network` | validated runtime lane graph: lanes and connectors as *segments*, flat arrays, conflict zones |
 | `routing` | Dijkstra on links (free-flow times, replaceable link travel times, classes, `throughTraffic`) |
 | `signals` | fixed-time signal plans (green / amber / red per group) |
 | `sim` | the simulation: sources, IDM + perception, junction control, actuated signals, MOBIL + merging, re-routing, metrics glue, snapshots |
@@ -83,12 +83,12 @@ configuration.
 
 | Offset | Field | Unit / encoding |
 |--------|-------|-----------------|
-| 0, 1, 2 | `x, y, z` | metres, ENU (same frame as the package); vehicle **centre** on the lane centreline plus the visual lane-change offset |
-| 3 | `heading` | radians, counter-clockwise from +x (east) |
+| 0, 1, 2 | `x, y, z` | metres, ENU (same frame as the package); vehicle **centre** on the lane centreline plus the lateral lane-change offset (#108) |
+| 3 | `heading` | radians, counter-clockwise from +x (east); includes the yaw of the lateral lane-change motion |
 | 4 | `speed` | m/s |
 | 5 | `length` | m (from the vehicle type) |
 | 6 | `classId` | 0 car, 1 van, 2 truck (rigid and articulated), 3 bus, 4 motorcycle |
-| 7 | `flags` | bit 0 braking (< −1 m/s²), bit 1 waiting (< 0.5 m/s), bit 2 lane change in progress (visual), bit 3 inside a junction (on a connector), bit 4 holding at a stop line (red / stop sign / yielding) |
+| 7 | `flags` | bit 0 braking (< −1 m/s²), bit 1 waiting (< 0.5 m/s), bit 2 lane change in progress, bit 3 inside a junction (on a connector), bit 4 holding at a stop line (red / stop sign / yielding) or before an occupied conflict zone |
 | 8 | `vehicleId` | stable id, unique per run (exact up to 2²⁴) |
 
 Vehicles appear in insertion order; the order changes when vehicles leave, so match by `vehicleId`
@@ -134,18 +134,23 @@ catch typos).
   "heterogeneity": 0.0,               // legacy drivers only: 0..0.5 relative spread of v0 factor, T and a
   "perception": { "enabled": true, "emergencyFactor": 2.0 },
 
-  // ---- Junctions, signals, lane changes (#44, #45, #46, #81, #82)
+  // ---- Junctions, signals, lane changes (#44, #45, #46, #81, #82, #109)
   "junction": {
     "criticalGapMinor": 4.0, "criticalGapStop": 4.5, "criticalGapRoundabout": 3.0,
-    "criticalGapRightBeforeLeft": 3.0, "criticalGapPermissive": 4.0,
-    "followUpTime": 2.0, "maxWait": 45.0
+    "criticalGapRightBeforeLeft": 3.0, "criticalGapPermissive": 4.0,  // s, see "Junctions"
+    "followUpTime": 2.0,              // s, minimum between two entries of a yielding movement
+    "maxWait": 45.0,                  // s, deadlock breaker
+    "clearanceTime": 1.0              // s, post-encroachment time on a conflict zone (#109)
   },
   "signalControl": { "actuated": false /* true or ["n0", …] */, "minGreen": 7, "maxGreen": 60,
                      "extension": 3.0, "detectorLength": 30, "allRed": 2.0 },
   "laneChange": {
     "interval": 5,                    // discretionary evaluation every n steps (staggered)
     "keepRightBias": 0.3,             // m/s², motorway / trunk roads
-    "cooldown": 3.0, "urgencyDistance": 200.0, "visualDuration": 2.5
+    "cooldown": 3.0, "urgencyDistance": 200.0,
+    "duration": 3.0,                  // s at ≥ 10 m/s; 0 = instantaneous changes (pre-#108 model)
+    "minDuration": 1.0,               // s from standstill (linear in between)
+    "visualDuration": 2.5             // s, display slide of instantaneous changes only
   },
   "merging": { "cooperation": true, "cooperationDistance": 200, "maxCooperativeDeceleration": 2.0,
                "courtesyBias": 0.5 },
@@ -257,7 +262,8 @@ the road-class default.
 
 `time`, `spawned`, `arrived`, `active`, `waitingToEnter` (generated vehicles queued at their entry
 because the gap was not yet safe), `rerouted` (missed mandatory lane change), `stranded` (removed
-at a dead end), `unroutable` (no destination reachable), `laneChanges`, `forcedEntries` (deadlock
+at a dead end), `unroutable` (no destination reachable), `laneChanges`, `laneChangeAborts`
+(lane changes reversed in their first half, #108), `forcedEntries` (deadlock
 breaker), `lapses` (distraction lapses), `commuterReroutes` (en-route route changes of familiar
 drivers), `meanTravelTime` (arrived vehicles, s), `meanSpeed` (active vehicles, m/s).
 
@@ -375,15 +381,87 @@ One step runs, in this fixed order and always iterating vehicles in a stable ord
    keep-right bias, courtesy towards mergers and a strategic bias towards lanes that continue two
    links ahead; mandatory changes towards a lane connected to the next route link with an urgency
    ramp. Mergers on an ending lane wait at its end; other vehicles in a wrong lane re-route at the
-   zone (at the latest 15 m before the lane end).
-6. **Junctions (#44, #45):** signal aspects, stop signs, priority and gap acceptance, claims (see
-   module docs of `sim::junction`).
+   zone (at the latest 15 m before the lane end). **Continuous lateral motion (#108):** a change
+   takes `laneChange.duration` (3 s at ≥ 10 m/s, linearly down to `minDuration` at standstill).
+   The vehicle joins the target lane at the start and stays on the source lane as a *shadow* until
+   the change ends: followers on both lanes (IDM leader search incl. look-ahead into the next lane,
+   insertion, junction exit checks, MOBIL gaps of later changes) see it in both lanes, and it
+   follows the leaders of both lanes. It cannot start another change meanwhile. If in the first
+   half the gap ahead on the target lane drops below 1 m or the new follower would have to brake
+   harder than 2 × `safeDeceleration`, the change is reversed (the lanes swap roles, the lateral
+   motion continues back); in the second half it is completed. Entering a connector completes a
+   change at once. The lateral offset follows `w · (1 − (3p² − 2p³))` of the progress `p` (lane
+   centre distance `w`), so `x, y` and the heading of the snapshot come from the model state.
+6. **Junctions (#44, #45, #109):** signal aspects, stop signs, priority and gap acceptance on
+   conflict zones, claims, the zone safety net (see "Junctions" below and the module docs of
+   `sim::junction`).
 7. **Perception (#52):** distraction lapses start/end.
 8. **IDM (#41):** leader search along the path, perceived with the reaction time, stop-line
    obstacles, dead ends, speed-limit anticipation, cooperative yielding to mergers (#81),
    emergency reflex on the true state.
 9. **Integration:** ballistic update, segment transitions, arrivals; travel-time reports, movement
    metrics and lane-cell accumulation; perception history; bucket flush at bucket ends.
+
+### Junctions: conflict zones and gap acceptance (#109)
+
+**Zones.** For every conflicting connector pair the network derives a zone on each connector:
+the stretch where its centreline comes closer to the other centreline than the sum of both
+half swept widths (lane width, at most 2.55 m + 2 × 0.25 m, minus 5 cm so adjacent parallel lanes
+never overlap), sampled every 0.25 m. Crossings take the stretch around the geometric crossing,
+merges (same target lane) the stretch from the merge point to the connector end, other declared
+conflicts the hull of all overlapping stretches (or the whole connector if the paths never come
+close). `Network::conflict_zone(c, k)` returns (entry, exit) along `c`; `conflict_point` is kept.
+A vehicle occupies a zone from its front passing the entry until its rear passes the exit.
+
+**Decisions** compare occupancy windows (kinematic estimates):
+
+- Vehicles *committed* to a conflicting connector (claimed, on it, or with the rear still on it)
+  block a crossing unless the deciding vehicle enters its zone ≥ `clearanceTime` after they leave
+  theirs or leaves its zone ≥ `clearanceTime` before they can reach theirs. On a merge only the
+  zone entries must be `clearanceTime` apart; the second vehicle then follows the first as its
+  IDM leader measured towards the common end (*merging leader*). Claims no longer block whole
+  movements, and vehicles may follow each other through a junction.
+- *Gap acceptance* (HCM definition): the next prioritised vehicle must reach the conflict zone at
+  least the critical gap after the yielding vehicle departs from its line. A vehicle that is still
+  approaching adds how much later than a vehicle standing at the line it reaches its own zone
+  (≈ 0 for a queue follower rolling up, more for one arriving from far away). Arrivals of a
+  higher-ranked stream are kinematic (accelerating to its desired speed) and count even while
+  queued; a vehicle of that stream holding or crawling (< 2 m/s) within 15 m of its line means
+  the stream offers no gap. Equal-rank streams keep first-come-first-served among waiting vehicles
+  (right before left).
+- A yielding merge keeps exit-lane room for the prioritised vehicles about to merge (on the
+  connector or within 30 m of their line) and never fills its exit lane completely, so a
+  congested roundabout ring cannot lock up.
+
+**Safety net** (computed sequentially in the junction phase, applied by the IDM as an obstacle
+at the zone entry, flag bit 4): a committed vehicle stops before a crossing zone while its
+counterpart is occupied, before a merge zone until the vehicle in the counterpart has moved
+ahead by its length + `s0`, and, within 2 s of its zone, lets a committed conflicting vehicle go
+first that reaches its own zone earlier (ties by index). The scenario tests check after every
+step that no crossing is occupied twice and that vehicles inside a merge never overlap.
+
+**Capacity validation** (`tests/junction_capacity.rs`): T junction, single-lane minor approach
+oversaturated, HCM base values configured (right turn `criticalGapMinor` 6.2 s / `followUpTime`
+3.3 s, left turn 7.1 s / 3.5 s), 1 h after a 10 min warm-up. Reference: the HCM gap-acceptance
+function `n(h) = 1 + ⌊(h − t_c)/t_f⌋` (Harders, the basis of the HCM potential-capacity curve
+`c_p = v_c·e^(−v_c·t_c/3600) / (1 − e^(−v_c·t_f/3600))`) applied to the *observed* conflicting
+headways. A single-lane stream with minimum headways has fewer long gaps than the exponential
+headways behind the closed-form curve (at 800 veh/h the observed stream yields ≈ 70 % of `c_p`
+even without minor traffic), so the curve itself is listed for comparison only. Seed 3:
+
+| Movement | v_c (veh/h) | Simulated (veh/h) | HCM on observed headways | Ratio | HCM curve `c_p` | Ratio | Before #109: simulated (ratio to reference) |
+|----------|------------:|------------------:|-------------------------:|------:|----------------:|------:|--------------------------------------------:|
+| right | 182 | 776 | 851 | 0.91 | 866 | 0.90 | 644 (0.76) |
+| right | 396 | 547 | 619 | 0.88 | 658 | 0.83 | 386 (0.61) |
+| right | 616 | 368 | 410 | 0.90 | 494 | 0.75 | 218 (0.52) |
+| left (both directions) | 282 | 626 | 649 | 0.97 | 674 | 0.93 | 478 (0.74) |
+| left | 562 | 378 | 405 | 0.93 | 441 | 0.86 | 253 (0.61) |
+| left | 880 | 182 | 206 | 0.88 | 270 | 0.67 | 99 (0.47) |
+
+Acceptance (asserted): within ±15 % of the reference for these cases (checked for seeds 1–5:
+0.87–0.99). At 800 veh/h the right turn reaches ≈ 0.84–0.87 of the reference (follow-up
+dynamics, see "Known limitations"). The point model before #109 reached 47–76 % of the
+reference (37–74 % of `c_p`).
 
 ### Determinism (#48)
 
@@ -393,7 +471,8 @@ OD matrix with curves, right-before-left crossroads, motorway merge). The core h
 clock, no global RNG, no hash-map iteration, and only uses IEEE basic operations (+ − × ÷ √) for
 state. Golden checksums change whenever the model changes on purpose: update them in the same
 commit (Phase 5 changes: reaction times applied by default; checksum extended by odometer, lapse
-state, smoothed travel times and actuated controller state).
+state, smoothed travel times and actuated controller state; #108: continuous lane changes,
+checksum extended by the lane-change state and the abort counter; #109: conflict zones).
 
 ## Performance (#78)
 
@@ -408,6 +487,11 @@ code 1 on a violation; local only, timing on shared CI runners is too noisy). Re
 | grid, `--scale 2` (40 × 40) | 12 700 | 0.34 | 23× | ≈ 14 % |
 | motorway (40 weaving units) | 3 400 | 0.15 | 194× | ≈ 10 % |
 | city (16 × 16 signalised, mixed fleet/drivers) | 4 100 | 0.21 | 115× | ≈ 8 % |
+
+Continuous lane changes (#108) and conflict zones (#109) cost about 40 % on the junction-heavy
+scenarios and 15 % on the motorway (same machine, best of 3, without / with metrics):
+grid 0.164 / 0.183 → 0.232 / 0.248 µs, motorway 0.111 / 0.121 → 0.128 / 0.137 µs, city
+0.166 / 0.183 → 0.195 / 0.211 µs per vehicle-step; metrics overhead now ≈ 7–8 %.
 
 Budget: ≥ 10 000 vehicles at ≥ 1× real time single-threaded means ≤ 10 µs per vehicle-step; the
 checked budgets (≤ 1 µs, minimum real-time factors per scenario, metrics overhead ≤ 15 % with
@@ -428,10 +512,17 @@ message on stderr for bad arguments, files or configurations.
 
 ## Known limitations
 
-- Lane changes are instantaneous in the model (the snapshot interpolates laterally for display);
-  lane choice looks two links ahead at most.
-- Conflict areas are reduced to one conflict point per connector pair; claims block whole
-  movements until that point is cleared.
+- Lane changes occupy both lanes for their whole duration (no sublane model: no partial lateral
+  overlap with vehicles of a third lane, no lateral gap acceptance); lane choice looks two links
+  ahead at most.
+- Conflict zones use lane widths (at most 3.05 m), not the actual vehicle widths; occupancy times
+  are kinematic estimates, the safety net corrects deviations (a vehicle may have to stop inside
+  the junction). Crossing zones are exclusive; vehicles cannot share a wide crossing area side by
+  side.
+- The follow-up time is a minimum: queues of default cars discharge at about 3.5–3.9 s per
+  vehicle at a yield line (start-up and move-up dynamics), so with HCM parameters the minor-road
+  capacity falls below the HCM reference at high conflicting flows (right turn ≈ 0.85 at
+  800 veh/h, see "Junctions").
 - Vehicles whose destination becomes unreachable from their lane re-route to the nearest exit.
 - Actuated phases are derived from the fixed plan; overlapping (non-identical) green intervals
   become separate phases.

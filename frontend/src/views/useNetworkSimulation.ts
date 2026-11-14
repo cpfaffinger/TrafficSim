@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { SimulationSettings } from '../components/SimulationPanel';
 import type { NetworkPackage } from '../network/types';
 import type { NetworkScene } from '../scene/NetworkScene';
-import { buildConfig, type SimStats } from '../sim/networkProtocol';
+import { buildConfig, NETWORK_SNAPSHOT_STRIDE, type SimStats } from '../sim/networkProtocol';
 import { NetworkSimClient } from '../sim/networkSimClient';
+import { SnapshotBuffer } from '../sim/snapshotBuffer';
 
 /** Glue between the network simulation worker and the scene (#47). */
 export function useNetworkSimulation(pkg: NetworkPackage | null, settings: SimulationSettings, sceneRef: RefObject<NetworkScene | null>) {
@@ -28,18 +29,24 @@ export function useNetworkSimulation(pkg: NetworkPackage | null, settings: Simul
     setStats(null);
     setError(null);
     sceneRef.current?.clearSimulation();
+    let shared: SnapshotBuffer | null = null;
     const unsubscribe = client.subscribe((message) => {
       switch (message.type) {
         case 'ready':
           sceneRef.current?.prepareSimulation(pkg, message.signalGroupIds);
           setReady(true);
           break;
-        case 'frame':
-          sceneRef.current?.updateSimulation(message.snapshot, message.signals);
+        case 'buffer':
+          shared = new SnapshotBuffer(message.buffer, NETWORK_SNAPSHOT_STRIDE);
+          break;
+        case 'frame': {
+          const snapshot = message.snapshot ?? shared?.read();
+          if (snapshot) sceneRef.current?.updateSimulation(snapshot, message.signals);
           setTime(message.time);
-          setVehicles(message.snapshot.length / 9);
+          setVehicles(message.vehicles);
           if (message.stats) setStats(message.stats);
           break;
+        }
         case 'error':
           setError(message.message);
           setRunning(false);

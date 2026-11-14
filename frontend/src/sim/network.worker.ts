@@ -2,7 +2,8 @@
 // Network simulation worker (#47): owns a sim-core NetworkSim and advances it in fixed steps.
 import init, { NetworkSim } from '../generated/sim-core/trafficsim_sim_core.js';
 import { stepsFor } from './protocol';
-import type { FromNetworkWorker, SimStats, ToNetworkWorker } from './networkProtocol';
+import { NETWORK_SNAPSHOT_STRIDE, type FromNetworkWorker, type SimStats, type ToNetworkWorker } from './networkProtocol';
+import { sharedMemoryAvailable, SnapshotBuffer } from './snapshotBuffer';
 
 const TICK_MS = 33;
 const MAX_STEPS_PER_TICK = 600;
@@ -15,6 +16,8 @@ let carry = 0;
 let last = performance.now();
 let lastStats = 0;
 let ready: Promise<unknown> | null = null;
+let shared: SnapshotBuffer | null = null;
+const useShared = sharedMemoryAvailable();
 
 const post = (message: FromNetworkWorker, transfer: Transferable[] = []) =>
   (self as unknown as DedicatedWorkerGlobalScope).postMessage(message, transfer);
@@ -26,16 +29,18 @@ function postFrame(forceStats = false): void {
   if (withStats) lastStats = now;
   const snapshot = sim.snapshot();
   const signals = sim.signalStates();
-  post(
-    {
-      type: 'frame',
-      time: sim.time,
-      snapshot,
-      signals,
-      stats: withStats ? (JSON.parse(sim.statsJson()) as SimStats) : null,
-    },
-    [snapshot.buffer, signals.buffer],
-  );
+  const stats = withStats ? (JSON.parse(sim.statsJson()) as SimStats) : null;
+  const vehicles = snapshot.length / NETWORK_SNAPSHOT_STRIDE;
+  if (useShared) {
+    if (!shared || !shared.fits(snapshot)) {
+      shared = SnapshotBuffer.allocate(Math.max(4096, vehicles * 2), NETWORK_SNAPSHOT_STRIDE, true);
+      post({ type: 'buffer', buffer: shared.buffer as SharedArrayBuffer });
+    }
+    shared.publish(snapshot);
+    post({ type: 'frame', time: sim.time, snapshot: null, vehicles, signals, stats }, [signals.buffer]);
+    return;
+  }
+  post({ type: 'frame', time: sim.time, snapshot, vehicles, signals, stats }, [snapshot.buffer, signals.buffer]);
 }
 
 function tick(): void {

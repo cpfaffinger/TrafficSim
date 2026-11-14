@@ -36,8 +36,9 @@ export interface SimStats {
 export interface NetworkFrame {
   type: 'frame';
   time: number;
-  /** Packed vehicles, NETWORK_SNAPSHOT_STRIDE floats each. */
-  snapshot: Float32Array;
+  /** Packed vehicles, NETWORK_SNAPSHOT_STRIDE floats each; null when shared memory is used (#79). */
+  snapshot: Float32Array | null;
+  vehicles: number;
   /** One aspect per signal group (0 red, 1 amber, 2 green), order of `ready.signalGroupIds`. */
   signals: Uint8Array;
   stats: SimStats | null;
@@ -46,6 +47,8 @@ export interface NetworkFrame {
 export type FromNetworkWorker =
   | { type: 'ready'; timeStep: number; signalGroupIds: string[]; entries: string[] }
   | NetworkFrame
+  /** A (new) shared snapshot buffer; frames then carry no snapshot copy (see snapshotBuffer.ts). */
+  | { type: 'buffer'; buffer: SharedArrayBuffer }
   | { type: 'error'; message: string };
 
 export const NETWORK_SNAPSHOT_STRIDE = 9;

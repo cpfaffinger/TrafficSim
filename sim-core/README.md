@@ -181,7 +181,7 @@ catch typos).
   // ---- Public transport (#85): buses on the package's transitLines (no effect without lines)
   "transit": {
     "enabled": true,
-    "defaultHeadway": 600,            // s, lines without an OSM interval
+    "defaultHeadway": 1200,           // s per line number and direction without an OSM interval, shared by its variants
     "headwayFactor": 1.0,             // multiplies every headway (0.5 = twice the service)
     "headways": { "t0": 300 },        // s per line id, overrides the package; 0 = line out of service
     "dwellTime": 15,                  // s base dwell per stop
@@ -374,7 +374,8 @@ opaque with `bucketFormat = "lane-cells-v1"`; `metrics::cells::LaneCells::decode
 Each line of the package (`transitLines`, see the network package spec) dispatches buses
 (`transit.vehicleType`) at the start of its first link: the first departure at a phase drawn
 from the line's own PCG32 stream, then one per headway (`transit.headways` > package `headway` >
-`defaultHeadway`, times `headwayFactor`); departures that cannot be inserted yet wait in a FIFO.
+`defaultHeadway` × variants, times `headwayFactor`; *variants* = half the package lines with the
+same `ref`, at least 1, because OSM maps school, night and short variants as separate routes); departures that cannot be inserted yet wait in a FIFO.
 Buses follow the line's links as a fixed route (no router). Before a stop on the current link a
 bus changes to the kerb lane (mandatory change, it holds the kerb lane until the stop) and brakes
 for a standing obstacle at the stop position (stops are moved at least 20 m into a link). Within

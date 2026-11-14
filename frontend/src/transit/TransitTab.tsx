@@ -1,6 +1,6 @@
 import { NumberField } from '../demand/components/fields';
 import type { TransitLine } from '../network/types';
-import { effectiveHeadway, lineLabel, patchTransit, readTransit } from './model';
+import { effectiveHeadway, lineLabel, lineVariants, patchTransit, readTransit } from './model';
 
 export interface TransitTabProps {
   lines: readonly TransitLine[];
@@ -18,6 +18,7 @@ const minutes = (seconds: number | null): string => (seconds === null ? '–' : 
  */
 export function TransitTab({ lines, value, readOnly, onChange }: TransitTabProps) {
   const settings = readTransit(value);
+  const variants = lineVariants(lines);
   const set = (patch: Parameters<typeof patchTransit>[1]) => onChange(patchTransit(value, patch));
   return (
     <div className="demand-tab">
@@ -94,7 +95,7 @@ export function TransitTab({ lines, value, readOnly, onChange }: TransitTabProps
                     onChange={(e) => set({ headways: { [line.id]: e.target.value.trim() === '' ? null : Number(e.target.value) * 60 } })}
                   />
                 </td>
-                <td className="num">{effectiveHeadway(line, settings) === null ? 'off' : minutes(effectiveHeadway(line, settings))}</td>
+                <td className="num">{effectiveHeadway(line, settings, variants.get(line.id)) === null ? 'off' : minutes(effectiveHeadway(line, settings, variants.get(line.id)))}</td>
               </tr>
             );
           })}

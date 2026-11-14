@@ -37,7 +37,9 @@ network sources (Overpass, Geofabrik PBF), and compile them in a `TransitRule` o
 3. Stops are stop positions (else platforms within 30 m) projected onto the line's links in
    driving order; `bus_bay` on the stop, platform or way side marks bays.
 4. The headway comes from `interval` (route, else route master), otherwise from the simulation
-   config's default; every headway is **editable per scenario** (`transit` config keys), so missing
+   config's default (20 min per line number and direction, shared by the line's route variants:
+   OSM maps school, night and short variants as separate routes, and a regional hub such as Krems
+   has over 200 route relations for 29 line numbers); every headway is **editable per scenario** (`transit` config keys), so missing
    or outdated OSM frequencies are a scenario input, not a data error.
 5. The package carries optional `transitLines` (format version 1 stays; readers ignore the key).
 6. In the sim core buses are dispatched per line on headways with a seeded phase, follow the line

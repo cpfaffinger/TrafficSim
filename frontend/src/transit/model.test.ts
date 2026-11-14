@@ -4,7 +4,7 @@ import { aggregate } from '../runs/runStats';
 import { loadGoldenFixture } from '../test/goldenFixture';
 import { loadTransitFixture, readTransitFixtureJson } from '../test/transitFixture';
 import { TRANSIT_KPIS } from './kpis';
-import { effectiveHeadway, lineLabel, patchTransit, readTransit, stopPlacements, summaryTransit, transitIssues, transitKpis, TRANSIT_DEFAULTS } from './model';
+import { effectiveHeadway, lineLabel, lineVariants, patchTransit, readTransit, stopPlacements, summaryTransit, transitIssues, transitKpis, TRANSIT_DEFAULTS } from './model';
 
 describe('transit lines in the network package (#85)', () => {
   it('parses the transit fixture', () => {
@@ -68,6 +68,18 @@ describe('transit config keys', () => {
     expect(effectiveHeadway(line, readTransit({ headways: { t0: 0 } }))).toBeNull();
     expect(effectiveHeadway(line, readTransit({ enabled: false }))).toBeNull();
     expect(effectiveHeadway({ ...line, headway: null }, readTransit({ defaultHeadway: 480 }))).toBe(480);
+    expect(effectiveHeadway({ ...line, headway: null }, s, 3)).toBe(3600);
+  });
+
+  it('shares the default service among the route variants of a line number', () => {
+    const lines = [
+      { ...line, id: 'a', ref: '1' },
+      { ...line, id: 'b', ref: '1' },
+      { ...line, id: 'c', ref: '1' },
+      { ...line, id: 'd', ref: '2' },
+      { ...line, id: 'e', ref: null },
+    ];
+    expect(Object.fromEntries(lineVariants(lines))).toEqual({ a: 2, b: 2, c: 2, d: 1, e: 1 });
   });
 
   it('reports what sim-core rejects', () => {

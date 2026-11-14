@@ -99,7 +99,7 @@ export function stopPlacements(pkg: NetworkPackage): StopPlacement[] {
 /** The `transit` simulation config keys with sim-core's defaults. */
 export interface TransitSettings {
   enabled: boolean;
-  /** Headway (s) of lines without one in the package. */
+  /** Headway (s) per line number and direction of lines without one in the package, shared by its variants. */
   defaultHeadway: number;
   headwayFactor: number;
   /** Headway (s) per line id; 0 = out of service. */
@@ -110,7 +110,7 @@ export interface TransitSettings {
 
 export const TRANSIT_DEFAULTS: Readonly<TransitSettings> = {
   enabled: true,
-  defaultHeadway: 600,
+  defaultHeadway: 1200,
   headwayFactor: 1,
   headways: {},
   dwellTime: 15,
@@ -156,10 +156,23 @@ export function patchTransit(value: unknown, patch: Partial<Omit<TransitSettings
   return out;
 }
 
-/** Effective headway (s) of a line under the settings; null when out of service. */
-export function effectiveHeadway(line: TransitLine, settings: TransitSettings): number | null {
+/**
+ * Route variants per direction of each line's number (mirrors sim-core): half the lines with the
+ * same `ref`, at least 1. OSM maps school, night or short variants as separate routes.
+ */
+export function lineVariants(lines: readonly TransitLine[]): Map<string, number> {
+  const perRef = new Map<string, number>();
+  for (const l of lines) if (l.ref !== null) perRef.set(l.ref, (perRef.get(l.ref) ?? 0) + 1);
+  return new Map(lines.map((l) => [l.id, l.ref === null ? 1 : Math.ceil((perRef.get(l.ref) ?? 1) / 2)]));
+}
+
+/**
+ * Effective headway (s) of a line under the settings; null when out of service. Lines without a
+ * headway of their own share the default service among their `variants`.
+ */
+export function effectiveHeadway(line: TransitLine, settings: TransitSettings, variants = 1): number | null {
   if (!settings.enabled) return null;
-  const h = settings.headways[line.id] ?? line.headway ?? settings.defaultHeadway;
+  const h = settings.headways[line.id] ?? line.headway ?? settings.defaultHeadway * variants;
   return h > 0 ? h * settings.headwayFactor : null;
 }
 

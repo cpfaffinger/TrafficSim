@@ -19,7 +19,8 @@ use crate::vehicle::VehicleClass;
 pub struct TransitConfig {
     /// Run buses on the package's lines (no effect without lines).
     pub enabled: bool,
-    /// Headway (s) of lines without one in the package (no OSM `interval`).
+    /// Headway (s) per line number and direction for lines without one in the package (no OSM
+    /// `interval`), shared by the variants of the line (see [`Line::variants`]).
     pub default_headway: f64,
     /// Multiplier on every headway (e.g. 0.5 doubles the service).
     pub headway_factor: f64,
@@ -37,7 +38,7 @@ impl Default for TransitConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            default_headway: 600.0,
+            default_headway: 1200.0,
             headway_factor: 1.0,
             headways: BTreeMap::new(),
             dwell_time: 15.0,
@@ -67,7 +68,9 @@ impl TransitConfig {
     pub fn headway(&self, line: &Line) -> Option<f64> {
         let h = match self.headways.get(&line.id) {
             Some(&h) => h,
-            None => line.headway.unwrap_or(self.default_headway),
+            None => line
+                .headway
+                .unwrap_or(self.default_headway * f64::from(line.variants)),
         };
         (h > 0.0).then_some(h * self.headway_factor)
     }
@@ -124,6 +127,11 @@ pub struct Line {
     pub label: Option<String>,
     /// Headway (s) from the package.
     pub headway: Option<f64>,
+    /// Route variants per direction of the line number (#85: OSM maps school, night or short
+    /// variants as separate routes): half the package lines with the same `ref`, at least 1. A
+    /// line without a headway of its own runs every `defaultHeadway × variants`, so the variants
+    /// together keep the default service.
+    pub variants: u32,
     pub links: Vec<u32>,
     pub stops: Vec<Stop>,
 }
@@ -131,6 +139,10 @@ pub struct Line {
 /// Resolves the package lines onto `net`, dropping lines that do not form a connected bus path.
 pub fn resolve(net: &Network, lines: &[TransitLineDto]) -> Vec<Line> {
     let bus = VehicleClass::Bus.mask();
+    let mut per_ref: BTreeMap<&str, u32> = BTreeMap::new();
+    for r in lines.iter().filter_map(|l| l.line_ref.as_deref()) {
+        *per_ref.entry(r).or_default() += 1;
+    }
     let mut result = Vec::new();
     for dto in lines {
         let Some(links) = dto
@@ -178,6 +190,7 @@ pub fn resolve(net: &Network, lines: &[TransitLineDto]) -> Vec<Line> {
             id: dto.id.clone(),
             label: dto.line_ref.clone().or_else(|| dto.name.clone()),
             headway: dto.headway.filter(|h| h.is_finite() && *h > 0.0),
+            variants: dto.line_ref.as_deref().map_or(1, |r| per_ref[r].div_ceil(2)),
             links,
             stops,
         });
@@ -267,6 +280,38 @@ mod tests {
             .collect();
         // "up" at 100 m lies behind the first stop on "down": out of order, dropped.
         assert_eq!(stops, vec![("s0", 1, 50.0), ("s3", 1, 300.0)]);
+    }
+
+    #[test]
+    fn variants_of_a_line_number_share_the_default_service() {
+        let net = corridor(2, 300.0, 13.89).network();
+        let mut lines: Vec<_> = (0..5).map(|_| dto(&["up"], &[])).collect();
+        for (i, l) in lines.iter_mut().enumerate() {
+            l.id = format!("t{i}");
+            l.headway = None;
+        }
+        // Line "1" in three variants (both directions), "2" once, one line without a number.
+        lines[3].line_ref = Some("2".into());
+        lines[4].line_ref = None;
+        lines[0].headway = Some(900.0);
+        let resolved = resolve(&net, &lines);
+        assert_eq!(
+            resolved.iter().map(|l| l.variants).collect::<Vec<_>>(),
+            vec![2, 2, 2, 1, 1]
+        );
+        let cfg = TransitConfig::default();
+        let headways: Vec<_> = resolved.iter().map(|l| cfg.headway(l)).collect();
+        // An OSM interval is the line's own; the others share 20 min per line number.
+        assert_eq!(
+            headways,
+            vec![
+                Some(900.0),
+                Some(2400.0),
+                Some(2400.0),
+                Some(1200.0),
+                Some(1200.0)
+            ]
+        );
     }
 
     #[test]

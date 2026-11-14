@@ -23,6 +23,23 @@ export interface GeocodeResponse {
 
 export type BackendStatus = 'ok' | 'degraded' | 'down';
 
+export type ImportStatus = 'queued' | 'fetching' | 'compiling' | 'storing' | 'completed' | 'failed';
+
+export interface ImportJob {
+  jobId: string | null;
+  status: ImportStatus;
+  baselineId: string | null;
+  error?: string | null;
+}
+
+export interface NetworkSummary {
+  id: string;
+  bbox: [number, number, number, number];
+  createdAt: string;
+  source: string;
+  stats: { nodes: number; links: number; lanes: number; connectors: number; signals: number };
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -45,9 +62,28 @@ export class ApiClient {
     return this.getJson<MetaResponse>('/api/v1/meta', signal);
   }
 
-  async geocode(query: string, limit = 5, signal?: AbortSignal): Promise<GeocodeResponse> {
+  async geocode(query: string, limit = 5, signal?: AbortSignal, lang?: string): Promise<GeocodeResponse> {
     const params = new URLSearchParams({ q: query, limit: String(limit) });
+    if (lang) params.set('lang', lang);
     return this.getJson<GeocodeResponse>(`/api/v1/geocode?${params.toString()}`, signal);
+  }
+
+  /** Starts (or reuses) an import of the area; `202` while running, `200` if an identical import exists. */
+  async startImport(bbox: readonly [number, number, number, number], signal?: AbortSignal): Promise<ImportJob> {
+    return this.sendJson<ImportJob>('POST', '/api/v1/networks/import', { bbox }, signal);
+  }
+
+  async getImportJob(jobId: string, signal?: AbortSignal): Promise<ImportJob> {
+    return this.getJson<ImportJob>(`/api/v1/networks/import/${encodeURIComponent(jobId)}`, signal);
+  }
+
+  /** Raw network package JSON; validate with `parseNetworkPackage`. */
+  async getPackage(baselineId: string, signal?: AbortSignal): Promise<unknown> {
+    return this.getJson<unknown>(`/api/v1/networks/${encodeURIComponent(baselineId)}/package`, signal);
+  }
+
+  async listNetworks(limit = 20, signal?: AbortSignal): Promise<NetworkSummary[]> {
+    return this.getJson<NetworkSummary[]>(`/api/v1/networks?limit=${limit}`, signal);
   }
 
   /** Liveness + readiness combined into a single traffic-light status. */
@@ -68,6 +104,20 @@ export class ApiClient {
       signal,
       headers: { Accept: 'application/json' },
     });
+    return this.readJson<T>(response);
+  }
+
+  private async sendJson<T>(method: string, path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+    const response = await this.fetchFn(`${this.baseUrl}${path}`, {
+      method,
+      signal,
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return this.readJson<T>(response);
+  }
+
+  private async readJson<T>(response: Response): Promise<T> {
     if (!response.ok) {
       let detail = response.statusText;
       try {

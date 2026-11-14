@@ -15,8 +15,10 @@ runners are billed. The project must not cause CI costs (C-34).
   **path filter**, plus a Docker build check that only runs when build-relevant files change on `main`.
 - `concurrency` with `cancel-in-progress: true` per ref; dependency caching (NuGet, cargo, npm).
 - **No scheduled workflows**, no OS/version matrices.
-- **Deployment is manual**: `deploy/staging/deploy.sh` from a developer machine via SSH. A
-  `workflow_dispatch` deploy may be added later — never on every push.
+- **Deployment costs no Actions minutes and needs no secrets in GitHub**: continuous deployment is
+  *pull-based*. A systemd timer on the staging host polls `main` (`git ls-remote`) every minute and
+  deploys the head commit once all of its CI check runs are green (`deploy/staging/cd-poll.sh`).
+  Failed commits are marked and never retried automatically. Manual deploys run `deploy.sh` on the host.
 - Dependabot: monthly, grouped updates only.
 
 ## Consequences

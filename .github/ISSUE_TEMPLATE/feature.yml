@@ -1,0 +1,29 @@
+name: Feature
+description: New functionality within a phase
+labels: ['type:feature']
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should be possible afterwards, and why?
+    validations:
+      required: true
+  - type: textarea
+    id: tasks
+    attributes:
+      label: Tasks
+      value: |
+        - [ ]
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: input
+    id: refs
+    attributes:
+      label: References (ADRs, concept sections)

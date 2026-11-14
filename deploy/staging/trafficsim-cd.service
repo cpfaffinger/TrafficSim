@@ -1,0 +1,11 @@
+[Unit]
+Description=TrafficSim continuous deployment (poll main, deploy green commits)
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/trafficsim
+ExecStart=/opt/trafficsim/deploy/staging/cd-poll.sh
+TimeoutStartSec=1800
+Nice=10

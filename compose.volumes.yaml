@@ -1,0 +1,10 @@
+# Optional override: named volume for PostgreSQL instead of the ./data bind mount
+# (recommended on Windows/macOS hosts). Usage:
+#   docker compose -f compose.yaml -f compose.volumes.yaml up -d
+services:
+  db:
+    volumes: !override
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

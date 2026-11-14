@@ -21,7 +21,9 @@ The application must be easy to self-host and must run on a shared staging serve
 - **Staging:** repository checkout in `/opt/trafficsim` with `.env` and `data/` next to it (gitignored),
   managed by `/etc/systemd/system/trafficsim.service` (oneshot unit running `docker compose up -d`).
   Host nginx vhost `stagecompose00.pulseone.dev` → `127.0.0.1:28100` with the Cloudflare origin
-  certificate. Deployment script: `deploy/staging/deploy.sh` (fetch → build → restart).
+  certificate. Deployment script: `deploy/staging/deploy.sh` (fetch → build → restart → readiness check).
+- **Continuous deployment is pull-based:** `trafficsim-cd.timer` runs `cd-poll.sh` every minute;
+  a new head of `main` with green CI check runs is built and rolled out automatically (see ADR-0015).
 - The app sends `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`
   so the simulation worker can use `SharedArrayBuffer`.
 

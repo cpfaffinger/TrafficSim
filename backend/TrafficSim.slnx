@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TrafficSim.Api/TrafficSim.Api.csproj" />
+    <Project Path="src/TrafficSim.Application/TrafficSim.Application.csproj" />
+    <Project Path="src/TrafficSim.Domain/TrafficSim.Domain.csproj" />
+    <Project Path="src/TrafficSim.Infrastructure/TrafficSim.Infrastructure.csproj" />
+    <Project Path="src/TrafficSim.Providers/TrafficSim.Providers.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TrafficSim.Api.Tests/TrafficSim.Api.Tests.csproj" />
+    <Project Path="tests/TrafficSim.Application.Tests/TrafficSim.Application.Tests.csproj" />
+    <Project Path="tests/TrafficSim.Domain.Tests/TrafficSim.Domain.Tests.csproj" />
+    <Project Path="tests/TrafficSim.Providers.Tests/TrafficSim.Providers.Tests.csproj" />
+  </Folder>
+</Solution>

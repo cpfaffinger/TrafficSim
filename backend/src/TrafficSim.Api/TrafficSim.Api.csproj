@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="..\TrafficSim.Application\TrafficSim.Application.csproj" />
+    <ProjectReference Include="..\TrafficSim.Providers\TrafficSim.Providers.csproj" />
+    <ProjectReference Include="..\TrafficSim.Infrastructure\TrafficSim.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="TrafficSim.Api.Tests" />
+  </ItemGroup>
+</Project>

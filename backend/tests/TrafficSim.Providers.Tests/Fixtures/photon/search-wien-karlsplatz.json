@@ -1,0 +1,43 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [16.3699, 48.2004] },
+      "properties": {
+        "osm_type": "W",
+        "osm_id": 25398743,
+        "osm_key": "highway",
+        "osm_value": "pedestrian",
+        "type": "street",
+        "name": "Karlsplatz",
+        "postcode": "1040",
+        "city": "Wien",
+        "state": "Wien",
+        "country": "Österreich",
+        "countrycode": "AT",
+        "extent": [16.3672, 48.2017, 16.3726, 48.1989]
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [16.3703, 48.2001] },
+      "properties": {
+        "osm_type": "N",
+        "osm_id": 1234567,
+        "osm_key": "railway",
+        "osm_value": "station",
+        "name": "Karlsplatz",
+        "street": "Karlsplatz",
+        "housenumber": "1",
+        "city": "Wien",
+        "country": "Österreich"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [] },
+      "properties": { "name": "Broken feature without coordinates" }
+    }
+  ]
+}

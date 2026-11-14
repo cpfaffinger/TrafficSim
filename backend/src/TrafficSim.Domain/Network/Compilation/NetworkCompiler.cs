@@ -920,10 +920,23 @@ public static class NetworkCompiler
 
         // ---------------------------------------------------------------- signal plans
 
+        /// <summary>
+        /// Fixed-time plans, one controller per signal node. Signal nodes linked by short roads form one junction
+        /// (#117: OSM has a signal node on each carriageway of a dual carriageway): they share the phase axis, so a
+        /// movement passing several of them is green at all of them, and the movements out of links too short to
+        /// wait on are green whenever a movement into them is.
+        /// </summary>
         private void BuildSignalPlans()
         {
             var byNode = _connectors.ToLookup(c => c.NodeId, StringComparer.Ordinal);
-            foreach (var g in _nodes.Values.Where(n => n.Node!.Control == NodeControl.Signal).OrderBy(n => n.Node!.Id, StringComparer.Ordinal))
+            var signalNodes = _nodes.Values.Where(n => n.Node!.Control == NodeControl.Signal).OrderBy(n => n.Node!.Id, StringComparer.Ordinal).ToList();
+            var cluster = SignalClusters(signalNodes);
+            var internalLink = (Link l) => cluster.TryGetValue(l.From, out var a) && cluster.TryGetValue(l.To, out var b) && a == b
+                && l.Length <= options.SignalClusterMetres;
+            var axes = new Dictionary<string, Vec3>(StringComparer.Ordinal);
+            var groupOfLink = new Dictionary<string, int>(StringComparer.Ordinal);
+            var plans = new List<(GraphNode G, double Cycle, List<SignalGroup> Groups, Dictionary<string, int> GroupOf)>();
+            foreach (var g in signalNodes)
             {
                 var node = g.Node!;
                 var approaches = g.Incoming.Where(l => byNode[node.Id].Any(c => c.FromLink == l.Id)).ToList();
@@ -932,7 +945,15 @@ public static class NetworkCompiler
                     continue;
                 }
 
-                var axis = Polyline.Direction(approaches[0].Geometry, atEnd: true);
+                var root = cluster[node.Id];
+                var clustered = signalNodes.Count(n => cluster[n.Node!.Id] == root) > 1;
+                if (!axes.TryGetValue(root, out var axis))
+                {
+                    var reference = approaches.FirstOrDefault(l => !internalLink(l)) ?? approaches[0];
+                    axis = Polyline.Direction(reference.Geometry, atEnd: true);
+                    axes[root] = axis;
+                }
+
                 var groupOf = approaches.ToDictionary(l => l.Id, l =>
                 {
                     var angle = Math.Abs(Polyline.SignedAngle(axis, Polyline.Direction(l.Geometry, atEnd: true)));
@@ -959,7 +980,7 @@ public static class NetworkCompiler
                             : Math.Min(groupOf[approach.Id], plan.PhaseGreen.Count - 1);
                     }
                 }
-                else if (used.Count == 1)
+                else if (used.Count == 1 && !clustered)
                 {
                     groups.Add(new SignalGroup($"{node.Id}:g0", [new GreenInterval(0, cycle * 2 / 3)], options.AmberSeconds));
                     foreach (var key in groupOf.Keys)
@@ -975,14 +996,72 @@ public static class NetworkCompiler
                     groups.Add(new SignalGroup($"{node.Id}:g1", [new GreenInterval(secondStart, secondStart + phase)], options.AmberSeconds));
                 }
 
+                foreach (var (link, group) in groupOf)
+                {
+                    groupOfLink[link] = group;
+                }
+
+                plans.Add((g, cycle, groups, groupOf));
+            }
+
+            // Movements out of short links inside a junction follow the movements into them (#117): one phase, or
+            // a group that is always green when the link is fed in both phases.
+            const int always = -1;
+            for (var pass = 0; pass < 3; pass++)
+            {
+                foreach (var (g, _, _, groupOf) in plans)
+                {
+                    foreach (var link in g.Incoming.Where(l => groupOf.ContainsKey(l.Id) && internalLink(l) && l.Length < options.SignalChainMetres))
+                    {
+                        var feeders = _connectors.Where(c => c.ToLink == link.Id && groupOfLink.ContainsKey(c.FromLink))
+                            .Select(c => groupOfLink[c.FromLink]).Distinct().ToList();
+                        if (feeders.Count > 0)
+                        {
+                            groupOf[link.Id] = groupOfLink[link.Id] = feeders.Count == 1 ? feeders[0] : always;
+                        }
+                    }
+                }
+            }
+
+            foreach (var (g, cycle, groups, groupOf) in plans)
+            {
+                var node = g.Node!;
+                if (groupOf.ContainsValue(always))
+                {
+                    groups.Add(new SignalGroup($"{node.Id}:ga", [new GreenInterval(0, cycle)], options.AmberSeconds));
+                }
+
                 foreach (var c in byNode[node.Id])
                 {
-                    c.SignalGroup = $"{node.Id}:g{groupOf.GetValueOrDefault(c.FromLink).ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+                    var group = groupOf.GetValueOrDefault(c.FromLink);
+                    c.SignalGroup = group == always ? $"{node.Id}:ga" : $"{node.Id}:g{group.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
                 }
 
                 var offset = g.OsmId is { } oid && overrides.SignalPlans.TryGetValue(oid, out var p2) ? p2.Offset : 0;
                 _signals.Add(new SignalController(node.Id, cycle, offset, groups));
             }
+        }
+
+        /// <summary>Signal node id → id of the first node of its cluster (nodes linked by roads up to <see cref="CompilerOptions.SignalClusterMetres"/>).</summary>
+        private Dictionary<string, string> SignalClusters(List<GraphNode> signalNodes)
+        {
+            var parent = signalNodes.ToDictionary(n => n.Node!.Id, n => n.Node!.Id, StringComparer.Ordinal);
+            string Find(string id) => parent[id] == id ? id : parent[id] = Find(parent[id]);
+            foreach (var g in signalNodes)
+            {
+                foreach (var link in g.Outgoing.Where(l => l.Length <= options.SignalClusterMetres && parent.ContainsKey(l.To)))
+                {
+                    var (a, b) = (Find(link.From), Find(link.To));
+                    if (a != b)
+                    {
+                        // The smaller id is the root, so the cluster's reference node does not depend on link order.
+                        (a, b) = string.CompareOrdinal(a, b) < 0 ? (a, b) : (b, a);
+                        parent[b] = a;
+                    }
+                }
+            }
+
+            return signalNodes.ToDictionary(n => n.Node!.Id, n => Find(n.Node!.Id), StringComparer.Ordinal);
         }
     }
 }

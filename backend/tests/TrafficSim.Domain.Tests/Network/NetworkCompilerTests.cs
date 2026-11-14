@@ -46,6 +46,62 @@ public class NetworkCompilerTests
         Assert.True(eastbound.Geometry[^1].X < -3);
     }
 
+    /// <summary>Seconds of the cycle in which <paramref name="group"/> shows green.</summary>
+    private static HashSet<int> GreenSeconds(RoadNetwork net, string group)
+    {
+        var controller = net.Signals.Single(s => s.Groups.Any(g => g.Id == group));
+        var g = controller.Groups.Single(x => x.Id == group);
+        return Enumerable.Range(0, (int)controller.Cycle)
+            .Where(t => g.Green.Any(i => t >= i.Start && t < i.End))
+            .Select(t => (int)((t + controller.Offset) % controller.Cycle))
+            .ToHashSet();
+    }
+
+    [Fact]
+    public void Signal_nodes_of_one_junction_run_a_coordinated_plan()
+    {
+        // #117: a side road crossing a dual carriageway (carriageways 16 m apart): OSM has a
+        // signal node on each carriageway, linked by short side-road links.
+        var b = new OsmBuilder()
+            .Node(1, -200, -8).Node(21, 0, -8, ("highway", "traffic_signals")).Node(3, 200, -8)
+            .Node(6, 200, 8).Node(22, 0, 8, ("highway", "traffic_signals")).Node(8, -200, 8)
+            .Node(4, 0, 200).Node(5, 0, -200)
+            .Way(10, [1, 21, 3], ("highway", "primary"), ("oneway", "yes"), ("lanes", "2"))
+            .Way(11, [6, 22, 8], ("highway", "primary"), ("oneway", "yes"), ("lanes", "2"))
+            .Way(12, [4, 22, 21, 5], ("highway", "secondary"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+        var south = net.Nodes.Single(n => n.OsmId == 21).Id;
+        var north = net.Nodes.Single(n => n.OsmId == 22).Id;
+        Assert.Equal(2, net.Signals.Count);
+
+        HashSet<int> Approach(string node, Func<Link, bool> from) =>
+            GreenSeconds(net, net.Connectors.First(c => c.NodeId == node && from(net.Links.Single(l => l.Id == c.FromLink))).SignalGroup!);
+        // Both carriageways share one phase, the side road the other one at both nodes.
+        var eastbound = Approach(south, l => l.OsmWayId == 10);
+        var westbound = Approach(north, l => l.OsmWayId == 11);
+        Assert.Equal(eastbound, westbound);
+        var fromNorth = Approach(north, l => l.OsmWayId == 12);
+        var fromSouth = Approach(south, l => l.OsmWayId == 12 && l.From != north);
+        Assert.Equal(fromNorth, fromSouth);
+        Assert.Empty(fromNorth.Intersect(eastbound));
+
+        // Vehicles never have to stop on the short links between the nodes: the movements out of
+        // such a link are green whenever a movement into it is.
+        var inner = net.Links.Where(l => l.OsmWayId == 12 && new[] { l.From, l.To }.All(n => n == north || n == south)).ToList();
+        Assert.Equal(2, inner.Count);
+        Assert.All(inner, l => Assert.True(l.Length < 10, $"{l.Length}"));
+        foreach (var link in inner)
+        {
+            foreach (var into in net.Connectors.Where(c => c.ToLink == link.Id))
+            {
+                foreach (var outOf in net.Connectors.Where(c => c.FromLink == link.Id && c.FromLane == into.ToLane))
+                {
+                    Assert.Subset(GreenSeconds(net, outOf.SignalGroup!), GreenSeconds(net, into.SignalGroup!));
+                }
+            }
+        }
+    }
+
     [Fact]
     public void Signalised_junction_gets_connectors_conflicts_and_two_phase_plan()
     {

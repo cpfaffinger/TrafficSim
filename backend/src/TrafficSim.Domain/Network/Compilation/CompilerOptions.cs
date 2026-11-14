@@ -17,4 +17,16 @@ public sealed class CompilerOptions
     public double AmberSeconds { get; init; } = 3;
 
     public double AllRedSeconds { get; init; } = 2;
+
+    /// <summary>
+    /// Signal nodes linked by roads up to this long belong to one junction (dual carriageways, slip roads) and
+    /// run one coordinated plan (#117).
+    /// </summary>
+    public double SignalClusterMetres { get; init; } = 40;
+
+    /// <summary>
+    /// Links between signal nodes shorter than this cannot hold a waiting vehicle clear of both junctions: the
+    /// movements out of them are green whenever a movement into them is (#117).
+    /// </summary>
+    public double SignalChainMetres { get; init; } = 10;
 }

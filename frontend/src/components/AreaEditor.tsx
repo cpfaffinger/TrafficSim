@@ -9,12 +9,14 @@ export interface AreaEditorProps {
   onChange: (bbox: BBox) => void;
   onImport: () => void;
   onCancel: () => void;
+  /** Switch to drawing a custom outline (#110). */
+  onCustomShape?: () => void;
 }
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
 /** Shows and resizes the proposed import area (#34). */
-export function AreaEditor({ label, bbox, busy, onChange, onImport, onCancel }: AreaEditorProps) {
+export function AreaEditor({ label, bbox, busy, onChange, onImport, onCancel, onCustomShape }: AreaEditorProps) {
   const size = bboxSizeKm(bbox);
   // Keep the typed text while editing; commit on valid numbers only.
   const [draft, setDraft] = useState<{ w: string; h: string } | null>(null);
@@ -69,6 +71,11 @@ export function AreaEditor({ label, bbox, busy, onChange, onImport, onCancel }: 
         <button type="button" className="primary" onClick={onImport} disabled={busy}>
           Import this area
         </button>
+        {onCustomShape && (
+          <button type="button" onClick={onCustomShape} disabled={busy}>
+            Draw custom shape
+          </button>
+        )}
         <button type="button" onClick={onCancel} disabled={busy}>
           Cancel
         </button>

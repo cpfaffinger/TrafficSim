@@ -193,6 +193,8 @@ export interface NetworkPackage {
   baselineId: string | null;
   origin: GeoOrigin;
   bbox: BBox;
+  /** Import polygon `[lon, lat][]` for non-rectangular imports (#110). */
+  area?: readonly (readonly [number, number])[];
   osmTimestamp: string | null;
   attribution: string[];
   nodes: NetworkNode[];

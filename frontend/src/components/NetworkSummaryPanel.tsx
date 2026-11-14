@@ -1,4 +1,5 @@
 import { bboxAreaKm2, formatKm2 } from '../lib/area';
+import { ringAreaKm2 } from '../lib/polygonArea';
 import type { NetworkPackage } from '../network/types';
 
 /** Key figures of the loaded network package. */
@@ -9,7 +10,7 @@ export function NetworkSummaryPanel({ pkg }: { pkg: NetworkPackage }) {
       <h2>Loaded network</h2>
       <dl className="stats">
         <dt>Area</dt>
-        <dd>{formatKm2(bboxAreaKm2(pkg.bbox))} km²</dd>
+        <dd>{formatKm2(pkg.area ? ringAreaKm2(pkg.area) : bboxAreaKm2(pkg.bbox))} km²</dd>
         <dt>Links</dt>
         <dd>{s.links}</dd>
         <dt>Lanes</dt>

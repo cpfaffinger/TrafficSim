@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildBasemapMeshes } from '../basemap/basemapMeshes';
+import { isRing, type Ring } from '../lib/polygonArea';
 import { loadBasemap } from '../basemap/loader';
 import { lodFor, sameLod, type LodState } from '../lib/lod';
 import { frameRect } from '../lib/rtsCamera';
@@ -39,6 +40,8 @@ export interface NetworkSceneCallbacks {
 /** A click on the scene: the ground point under the cursor in package ENU metres (null above the horizon). */
 export interface SceneClick {
   ground: [east: number, north: number] | null;
+  /** WGS84 position of the click, when the scene has an origin. */
+  geo: [lon: number, lat: number] | null;
 }
 
 /** Returns true when the click was consumed (e.g. by a drawing tool) and must not pick. */
@@ -175,10 +178,15 @@ export class NetworkScene {
   }
 
   /** Shows a proposed import area (outline) with basemap around it; replaces nothing if a package is shown. */
-  showAreaPreview(bbox: BBox | null): void {
+  showAreaPreview(area: BBox | Ring | null, closed = true): void {
     disposeGroup(this.overlayGroup);
     this.dirty = true;
-    if (!bbox) return;
+    if (!area || area.length === 0) return;
+    if (isRing(area)) {
+      this.showRingPreview(area, closed);
+      return;
+    }
+    const bbox = area;
     if (!this.meshes) {
       this.origin = { lat: (bbox[1] + bbox[3]) / 2, lon: (bbox[0] + bbox[2]) / 2 };
     }
@@ -238,6 +246,29 @@ export class NetworkScene {
       this.highlightGroup.add(mesh);
     }
     material.dispose();
+  }
+
+  /** Outline (and fill when closed) of a polygon import area (#110). */
+  private showRingPreview(ring: Ring, closed: boolean): void {
+    if (ring.length === 0 || !this.origin) return;
+    const plane = new LocalTangentPlane(this.origin);
+    const local = ring.map(([lon, lat]) => plane.toLocal(lon, lat));
+    const points = (closed ? [...local, local[0]!] : local).map(([x, y]) => new THREE.Vector3(...toScene([x, y, 1.2])));
+    const material = new THREE.LineBasicMaterial({ color: COLORS.area });
+    this.overlayGroup.add(
+      points.length > 1 ? new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), material) : new THREE.Points(new THREE.BufferGeometry().setFromPoints(points), new THREE.PointsMaterial({ color: COLORS.area, size: 8, sizeAttenuation: false })),
+    );
+    if (closed && local.length >= 3) {
+      const shape = new THREE.Shape(local.map(([x, y]) => new THREE.Vector2(x, y)));
+      const fill = new THREE.Mesh(
+        new THREE.ShapeGeometry(shape),
+        new THREE.MeshBasicMaterial({ color: COLORS.area, transparent: true, opacity: 0.08, depthWrite: false, side: THREE.DoubleSide }),
+      );
+      // Shape is built in the ENU x/y plane; lay it on the ground (x = east, z = -north).
+      fill.rotation.x = -Math.PI / 2;
+      fill.position.y = 0.5;
+      this.overlayGroup.add(fill);
+    }
   }
 
   /** Routes clicks to a tool before picking (null restores plain picking). */
@@ -333,7 +364,8 @@ export class NetworkScene {
     if (this.clickHandler) {
       const g = this.controls.groundAt(clientX, clientY);
       const ground = g ? fromScene(g[0], 0, g[1]) : null;
-      if (this.clickHandler({ ground: ground ? [ground[0], ground[1]] : null })) return;
+      const geo = ground && this.origin ? new LocalTangentPlane(this.origin).toGeo(ground[0], ground[1]) : null;
+      if (this.clickHandler({ ground: ground ? [ground[0], ground[1]] : null, geo: geo ? [geo[0], geo[1]] : null })) return;
     }
     if (!this.meshes) return;
     const rect = this.renderer.domElement.getBoundingClientRect();

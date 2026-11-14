@@ -35,6 +35,8 @@ export interface ImportJob {
 export interface NetworkSummary {
   id: string;
   bbox: [number, number, number, number];
+  /** Import polygon for non-rectangular imports (#110). */
+  polygon?: [number, number][] | null;
   createdAt: string;
   source: string;
   stats: { nodes: number; links: number; lanes: number; connectors: number; signals: number };
@@ -69,8 +71,10 @@ export class ApiClient {
   }
 
   /** Starts (or reuses) an import of the area; `202` while running, `200` if an identical import exists. */
-  async startImport(bbox: readonly [number, number, number, number], signal?: AbortSignal): Promise<ImportJob> {
-    return this.sendJson<ImportJob>('POST', '/api/v1/networks/import', { bbox }, signal);
+  /** Starts an import of a `[w, s, e, n]` box or a `[lon, lat][]` polygon ring (#110). */
+  async startImport(area: readonly [number, number, number, number] | readonly (readonly [number, number])[], signal?: AbortSignal): Promise<ImportJob> {
+    const body = area.length > 0 && Array.isArray(area[0]) ? { polygon: area } : { bbox: area };
+    return this.sendJson<ImportJob>('POST', '/api/v1/networks/import', body, signal);
   }
 
   async getImportJob(jobId: string, signal?: AbortSignal): Promise<ImportJob> {

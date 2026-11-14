@@ -31,13 +31,25 @@ describe('ApiClient', () => {
   });
 
   it('starts imports with a JSON body', async () => {
-    const fetchFn = vi.fn().mockResolvedValue(json({ jobId: 'j1', status: 'queued', baselineId: null }, 202));
+    const fetchFn = vi.fn().mockImplementation(() => Promise.resolve(json({ jobId: 'j1', status: 'queued', baselineId: null }, 202)));
     const job = await new ApiClient(fetchFn).startImport([16.37, 48.2, 16.38, 48.21]);
     expect(job).toEqual({ jobId: 'j1', status: 'queued', baselineId: null });
     const [url, init] = fetchFn.mock.calls[0]! as [string, RequestInit];
     expect(url).toBe('/api/v1/networks/import');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body as string)).toEqual({ bbox: [16.37, 48.2, 16.38, 48.21] });
+    await new ApiClient(fetchFn).startImport([
+      [16.37, 48.2],
+      [16.38, 48.2],
+      [16.375, 48.21],
+    ]);
+    expect(JSON.parse((fetchFn.mock.calls[1]![1] as RequestInit).body as string)).toEqual({
+      polygon: [
+        [16.37, 48.2],
+        [16.38, 48.2],
+        [16.375, 48.21],
+      ],
+    });
   });
 
   it('reports a too-large area from problem details', async () => {

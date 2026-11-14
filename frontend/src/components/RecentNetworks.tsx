@@ -1,5 +1,6 @@
 import type { NetworkSummary } from '../api/client';
 import { bboxAreaKm2, formatKm2 } from '../lib/area';
+import { ringAreaKm2 } from '../lib/polygonArea';
 
 export interface RecentNetworksProps {
   networks: NetworkSummary[];
@@ -23,7 +24,7 @@ export function RecentNetworks({ networks, disabled, onLoad }: RecentNetworksPro
           <li key={n.id}>
             <button type="button" onClick={() => onLoad(n.id)} disabled={disabled}>
               <span className="result-label">
-                {formatKm2(bboxAreaKm2(n.bbox))} km² · {n.stats.links} links · {n.stats.signals} signals
+                {formatKm2(n.polygon ? ringAreaKm2(n.polygon) : bboxAreaKm2(n.bbox))} km²{n.polygon ? ' (custom shape)' : ''} · {n.stats.links} links · {n.stats.signals} signals
               </span>
               <span className="result-category">
                 {formatDate(n.createdAt)} UTC · {n.bbox[1].toFixed(3)}, {n.bbox[0].toFixed(3)}

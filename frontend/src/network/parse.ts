@@ -339,6 +339,9 @@ export function parseNetworkPackage(input: unknown): NetworkPackage {
     baselineId: nullable(o.baselineId, 'baselineId', str),
     origin: { lat, lon },
     bbox: bbox(o.bbox, 'bbox'),
+    ...(o.area === undefined || o.area === null
+      ? {}
+      : { area: list(o.area, 'area', (v: unknown, p: string) => { const a = list(v, p, num); if (a.length !== 2) fail(p, 'expected [lon, lat]'); return [a[0]!, a[1]!] as const; }) }),
     osmTimestamp: nullable(o.osmTimestamp, 'osmTimestamp', str),
     attribution: list(o.attribution ?? [], 'attribution', str),
     nodes: list(o.nodes, 'nodes', node),

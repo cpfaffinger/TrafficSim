@@ -1,3 +1,4 @@
+import type { Ring } from './polygonArea';
 import type { ImportJob, ImportStatus } from '../api/client';
 import type { BBox } from '../network/types';
 
@@ -6,7 +7,7 @@ import type { BBox } from '../network/types';
 export type ImportPhase = 'submitting' | ImportStatus | 'loading';
 
 export interface ImportApi {
-  startImport(bbox: BBox, signal?: AbortSignal): Promise<ImportJob>;
+  startImport(area: BBox | Ring, signal?: AbortSignal): Promise<ImportJob>;
   getImportJob(jobId: string, signal?: AbortSignal): Promise<ImportJob>;
 }
 
@@ -46,7 +47,7 @@ export function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> 
 }
 
 /** Runs an import to completion and resolves with the baseline id. */
-export async function runImport(api: ImportApi, bbox: BBox, options: RunImportOptions = {}): Promise<string> {
+export async function runImport(api: ImportApi, bbox: BBox | Ring, options: RunImportOptions = {}): Promise<string> {
   const { onPhase, signal, pollIntervalMs = 1000, timeoutMs = 15 * 60_000, sleep = abortableSleep, now = Date.now } = options;
   onPhase?.('submitting');
   let job = await api.startImport(bbox, signal);

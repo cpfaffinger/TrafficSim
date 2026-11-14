@@ -53,6 +53,37 @@ async function searchAndPick() {
 }
 
 describe('ImportPanel', () => {
+  it('draws and imports a custom polygon (#110)', async () => {
+    const api = fakeApi();
+    let draw: ((p: readonly [number, number]) => void) | null = null;
+    const onDraw = vi.fn((h: ((p: readonly [number, number]) => void) | null) => {
+      draw = h;
+    });
+    const onArea = vi.fn();
+    render(<ImportPanel api={api} onArea={onArea} onDraw={onDraw} onPackage={vi.fn()} onGeocoderAttribution={vi.fn()} language="en" sleep={() => Promise.resolve()} />);
+    await searchAndPick();
+    fireEvent.click(screen.getByText('Draw custom shape'));
+    await waitFor(() => expect(draw).not.toBeNull());
+    for (const p of [
+      [16.36, 48.2],
+      [16.38, 48.2],
+      [16.37, 48.21],
+    ] as const) {
+      draw!(p);
+      await waitFor(() => expect(onArea).toHaveBeenLastCalledWith(expect.arrayContaining([p]), false));
+    }
+    fireEvent.click(screen.getByText('Finish shape'));
+    await waitFor(() => expect(onDraw).toHaveBeenLastCalledWith(null));
+    fireEvent.click(screen.getByText('Import this area'));
+    await waitFor(() => expect(api.startImport).toHaveBeenCalled());
+    expect(api.startImport.mock.calls[0]![0]).toEqual([
+      [16.36, 48.2],
+      [16.38, 48.2],
+      [16.37, 48.21],
+    ]);
+  });
+
+
   it('searches, proposes a 1.5 km area and previews it', async () => {
     const props = setup();
     await searchAndPick();

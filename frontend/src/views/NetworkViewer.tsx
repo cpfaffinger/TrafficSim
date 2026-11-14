@@ -19,6 +19,7 @@ import { ScenarioPanel } from '../scenarios/ScenarioPanel';
 import { SharedScenarioPanel } from '../scenarios/SharedScenarioPanel';
 import { useNetworkEditor } from './useNetworkEditor';
 import { confirmDiscard } from '../editor/discard';
+import type { LonLat, Ring } from '../lib/polygonArea';
 import '../editor/editor.css';
 
 export interface NetworkViewerProps {
@@ -98,7 +99,17 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
   );
   const onSharedPackage = useCallback((p: NetworkPackage) => showPackage(p, false), [showPackage]);
 
-  const onArea = useCallback((bbox: BBox | null) => sceneRef.current?.showAreaPreview(bbox), []);
+  const onArea = useCallback((area: BBox | Ring | null, closed?: boolean) => sceneRef.current?.showAreaPreview(area, closed ?? true), []);
+  const onDraw = useCallback((handler: ((point: LonLat) => void) | null) => {
+    sceneRef.current?.setClickHandler(
+      handler
+        ? (click) => {
+            if (click.geo) handler(click.geo);
+            return true;
+          }
+        : null,
+    );
+  }, []);
 
   const closeInspector = useCallback(() => {
     setTarget(null);
@@ -117,6 +128,7 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
           <ImportPanel
             api={api}
             onArea={onArea}
+            onDraw={onDraw}
             onPackage={onPackage}
             onGeocoderAttribution={setGeocoderAttribution}
             language={language()}

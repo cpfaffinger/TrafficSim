@@ -1,5 +1,7 @@
 //! Intelligent Driver Model (Treiber, Hennecke & Helbing, 2000), see ADR-0007.
 
+use crate::detmath::pow_delta;
+
 /// Strongest deceleration the model may command (m/s²); physical limit of emergency braking.
 pub const MAX_EMERGENCY_DECELERATION: f64 = 9.0;
 
@@ -43,7 +45,7 @@ impl IdmParams {
     /// IDM acceleration for own speed `v`, net gap `s` to the leader (bumper to bumper, m) and
     /// approach rate `dv = v - v_leader`. Use `f64::INFINITY` as gap on a free road.
     pub fn acceleration(&self, speed: f64, gap: f64, approach_rate: f64) -> f64 {
-        let free = 1.0 - (speed / self.desired_speed).powf(self.delta);
+        let free = 1.0 - pow_delta(speed / self.desired_speed, self.delta);
         if gap.is_infinite() {
             return self.max_acceleration * free;
         }
@@ -56,7 +58,7 @@ impl IdmParams {
 
     /// Equilibrium (steady-state) gap for speed `v` with `dv = 0`; infinite at `v >= v0`.
     pub fn equilibrium_gap(&self, speed: f64) -> f64 {
-        let ratio = 1.0 - (speed / self.desired_speed).powf(self.delta);
+        let ratio = 1.0 - pow_delta(speed / self.desired_speed, self.delta);
         if ratio <= 0.0 {
             return f64::INFINITY;
         }

@@ -1,0 +1,1896 @@
+{
+ "formatVersion": 1,
+ "baselineId": null,
+ "origin": {
+  "lat": 48.2082,
+  "lon": 16.3738
+ },
+ "bbox": [
+  16.3718,
+  48.2068,
+  16.3758,
+  48.2096
+ ],
+ "osmTimestamp": "2026-11-14T10:00:00Z",
+ "attribution": [
+  "© OpenStreetMap contributors (ODbL)"
+ ],
+ "nodes": [
+  {
+   "id": "n0",
+   "osmId": 1,
+   "x": 0,
+   "y": 0,
+   "z": 0,
+   "control": "signal"
+  },
+  {
+   "id": "n1",
+   "osmId": 2,
+   "x": -150,
+   "y": 0,
+   "z": 0,
+   "control": "boundary"
+  },
+  {
+   "id": "n2",
+   "osmId": 3,
+   "x": 150,
+   "y": 0,
+   "z": 0,
+   "control": "boundary"
+  },
+  {
+   "id": "n3",
+   "osmId": 4,
+   "x": 0,
+   "y": 150,
+   "z": 0,
+   "control": "boundary"
+  },
+  {
+   "id": "n4",
+   "osmId": 5,
+   "x": 0,
+   "y": -150,
+   "z": 0,
+   "control": "boundary"
+  },
+  {
+   "id": "n5",
+   "osmId": 6,
+   "x": -150,
+   "y": 60,
+   "z": 6,
+   "control": "boundary"
+  },
+  {
+   "id": "n6",
+   "osmId": 7,
+   "x": 150,
+   "y": 60,
+   "z": 6,
+   "control": "boundary"
+  },
+  {
+   "id": "n7",
+   "osmId": 8,
+   "x": 150,
+   "y": 75,
+   "z": 6,
+   "control": "boundary"
+  },
+  {
+   "id": "n8",
+   "osmId": 9,
+   "x": -150,
+   "y": 75,
+   "z": 6,
+   "control": "boundary"
+  }
+ ],
+ "links": [
+  {
+   "id": "l1",
+   "osmWayId": 101,
+   "from": "n1",
+   "to": "n0",
+   "roadClass": "primary",
+   "name": "Main Street",
+   "layer": 0,
+   "structure": "none",
+   "roundabout": false,
+   "oppositeLink": "l4",
+   "throughTraffic": true,
+   "length": 140,
+   "speedLimit": 13.889,
+   "geometry": [
+    [
+     -150,
+     0,
+     0
+    ],
+    [
+     -10,
+     0,
+     0
+    ]
+   ],
+   "lanes": [
+    {
+     "id": "l1:0",
+     "index": 0,
+     "width": 3.25,
+     "speedLimit": 13.889,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [
+      "through",
+      "right"
+     ],
+     "geometry": [
+      [
+       -150,
+       -4.875,
+       0
+      ],
+      [
+       -10,
+       -4.875,
+       0
+      ]
+     ],
+     "length": 140
+    },
+    {
+     "id": "l1:1",
+     "index": 1,
+     "width": 3.25,
+     "speedLimit": 13.889,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [
+      "left",
+      "through"
+     ],
+     "geometry": [
+      [
+       -150,
+       -1.625,
+       0
+      ],
+      [
+       -10,
+       -1.625,
+       0
+      ]
+     ],
+     "length": 140
+    }
+   ],
+   "boundaries": [
+    {
+     "rightLane": 0,
+     "leftLane": 1,
+     "marking": "dashed",
+     "allowLeft": true,
+     "allowRight": true
+    }
+   ],
+   "leftEdge": "centre_solid",
+   "noLaneChangeZone": 30,
+   "assumed": [
+    "width"
+   ]
+  },
+  {
+   "id": "l2",
+   "osmWayId": 102,
+   "from": "n0",
+   "to": "n2",
+   "roadClass": "primary",
+   "name": "Main Street",
+   "layer": 0,
+   "structure": "none",
+   "roundabout": false,
+   "oppositeLink": "l3",
+   "throughTraffic": true,
+   "length": 140,
+   "speedLimit": 13.889,
+   "geometry": [
+    [
+     10,
+     0,
+     0
+    ],
+    [
+     150,
+     0,
+     0
+    ]
+   ],
+   "lanes": [
+    {
+     "id": "l2:0",
+     "index": 0,
+     "width": 3.25,
+     "speedLimit": 13.889,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [],
+     "geometry": [
+      [
+       10,
+       -4.875,
+       0
+      ],
+      [
+       150,
+       -4.875,
+       0
+      ]
+     ],
+     "length": 140
+    },
+    {
+     "id": "l2:1",
+     "index": 1,
+     "width": 3.25,
+     "speedLimit": 13.889,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [],
+     "geometry": [
+      [
+       10,
+       -1.625,
+       0
+      ],
+      [
+       150,
+       -1.625,
+       0
+      ]
+     ],
+     "length": 140
+    }
+   ],
+   "boundaries": [
+    {
+     "rightLane": 0,
+     "leftLane": 1,
+     "marking": "dashed",
+     "allowLeft": true,
+     "allowRight": true
+    }
+   ],
+   "leftEdge": "centre_dashed",
+   "noLaneChangeZone": 0,
+   "assumed": [
+    "width"
+   ]
+  },
+  {
+   "id": "l3",
+   "osmWayId": 102,
+   "from": "n2",
+   "to": "n0",
+   "roadClass": "primary",
+   "name": "Main Street",
+   "layer": 0,
+   "structure": "none",
+   "roundabout": false,
+   "oppositeLink": "l2",
+   "throughTraffic": true,
+   "length": 140,
+   "speedLimit": 13.889,
+   "geometry": [
+    [
+     150,
+     0,
+     0
+    ],
+    [
+     10,
+     0,
+     0
+    ]
+   ],
+   "lanes": [
+    {
+     "id": "l3:0",
+     "index": 0,
+     "width": 3.25,
+     "speedLimit": 13.889,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [
+      "through",
+      "right"
+     ],
+     "geometry": [
+      [
+       150,
+       4.875,
+       0
+      ],
+      [
+       10,
+       4.875,
+       0
+      ]
+     ],
+     "length": 140
+    },
+    {
+     "id": "l3:1",
+     "index": 1,
+     "width": 3.25,
+     "speedLimit": 13.889,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [
+      "left",
+      "through"
+     ],
+     "geometry": [
+      [
+       150,
+       1.625,
+       0
+      ],
+      [
+       10,
+       1.625,
+       0
+      ]
+     ],
+     "length": 140
+    }
+   ],
+   "boundaries": [
+    {
+     "rightLane": 0,
+     "leftLane": 1,
+     "marking": "solid_dashed",
+     "allowLeft": true,
+     "allowRight": false
+    }
+   ],
+   "leftEdge": "centre_solid",
+   "noLaneChangeZone": 30,
+   "assumed": [
+    "width"
+   ]
+  },
+  {
+   "id": "l4",
+   "osmWayId": 101,
+   "from": "n0",
+   "to": "n1",
+   "roadClass": "primary",
+   "name": "Main Street",
+   "layer": 0,
+   "structure": "none",
+   "roundabout": false,
+   "oppositeLink": "l1",
+   "throughTraffic": true,
+   "length": 140,
+   "speedLimit": 13.889,
+   "geometry": [
+    [
+     -10,
+     0,
+     0
+    ],
+    [
+     -150,
+     0,
+     0
+    ]
+   ],
+   "lanes": [
+    {
+     "id": "l4:0",
+     "index": 0,
+     "width": 3.25,
+     "speedLimit": 13.889,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [],
+     "geometry": [
+      [
+       -10,
+       4.875,
+       0
+      ],
+      [
+       -150,
+       4.875,
+       0
+      ]
+     ],
+     "length": 140
+    },
+    {
+     "id": "l4:1",
+     "index": 1,
+     "width": 3.25,
+     "speedLimit": 13.889,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [],
+     "geometry": [
+      [
+       -10,
+       1.625,
+       0
+      ],
+      [
+       -150,
+       1.625,
+       0
+      ]
+     ],
+     "length": 140
+    }
+   ],
+   "boundaries": [
+    {
+     "rightLane": 0,
+     "leftLane": 1,
+     "marking": "dashed",
+     "allowLeft": true,
+     "allowRight": true
+    }
+   ],
+   "leftEdge": "centre_dashed",
+   "noLaneChangeZone": 0,
+   "assumed": [
+    "width"
+   ]
+  },
+  {
+   "id": "l5",
+   "osmWayId": 103,
+   "from": "n3",
+   "to": "n0",
+   "roadClass": "residential",
+   "name": "Side Street",
+   "layer": 0,
+   "structure": "none",
+   "roundabout": false,
+   "oppositeLink": "l8",
+   "throughTraffic": true,
+   "length": 140,
+   "speedLimit": 8.333,
+   "geometry": [
+    [
+     0,
+     150,
+     0
+    ],
+    [
+     0,
+     10,
+     0
+    ]
+   ],
+   "lanes": [
+    {
+     "id": "l5:0",
+     "index": 0,
+     "width": 3.25,
+     "speedLimit": 8.333,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [],
+     "geometry": [
+      [
+       -1.625,
+       150,
+       0
+      ],
+      [
+       -1.625,
+       10,
+       0
+      ]
+     ],
+     "length": 140
+    }
+   ],
+   "boundaries": [],
+   "leftEdge": "centre_dashed",
+   "noLaneChangeZone": 30,
+   "assumed": [
+    "width"
+   ]
+  },
+  {
+   "id": "l6",
+   "osmWayId": 104,
+   "from": "n0",
+   "to": "n4",
+   "roadClass": "residential",
+   "name": "Side Street",
+   "layer": 0,
+   "structure": "none",
+   "roundabout": false,
+   "oppositeLink": "l7",
+   "throughTraffic": true,
+   "length": 140,
+   "speedLimit": 8.333,
+   "geometry": [
+    [
+     0,
+     -10,
+     0
+    ],
+    [
+     0,
+     -150,
+     0
+    ]
+   ],
+   "lanes": [
+    {
+     "id": "l6:0",
+     "index": 0,
+     "width": 3.25,
+     "speedLimit": 8.333,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [],
+     "geometry": [
+      [
+       -1.625,
+       -10,
+       0
+      ],
+      [
+       -1.625,
+       -150,
+       0
+      ]
+     ],
+     "length": 140
+    }
+   ],
+   "boundaries": [],
+   "leftEdge": "centre_dashed",
+   "noLaneChangeZone": 0,
+   "assumed": [
+    "width"
+   ]
+  },
+  {
+   "id": "l7",
+   "osmWayId": 104,
+   "from": "n4",
+   "to": "n0",
+   "roadClass": "residential",
+   "name": "Side Street",
+   "layer": 0,
+   "structure": "none",
+   "roundabout": false,
+   "oppositeLink": "l6",
+   "throughTraffic": true,
+   "length": 140,
+   "speedLimit": 8.333,
+   "geometry": [
+    [
+     0,
+     -150,
+     0
+    ],
+    [
+     0,
+     -10,
+     0
+    ]
+   ],
+   "lanes": [
+    {
+     "id": "l7:0",
+     "index": 0,
+     "width": 3.25,
+     "speedLimit": 8.333,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [],
+     "geometry": [
+      [
+       1.625,
+       -150,
+       0
+      ],
+      [
+       1.625,
+       -10,
+       0
+      ]
+     ],
+     "length": 140
+    }
+   ],
+   "boundaries": [],
+   "leftEdge": "centre_dashed",
+   "noLaneChangeZone": 30,
+   "assumed": [
+    "width"
+   ]
+  },
+  {
+   "id": "l8",
+   "osmWayId": 103,
+   "from": "n0",
+   "to": "n3",
+   "roadClass": "residential",
+   "name": "Side Street",
+   "layer": 0,
+   "structure": "none",
+   "roundabout": false,
+   "oppositeLink": "l5",
+   "throughTraffic": true,
+   "length": 140,
+   "speedLimit": 8.333,
+   "geometry": [
+    [
+     0,
+     10,
+     0
+    ],
+    [
+     0,
+     150,
+     0
+    ]
+   ],
+   "lanes": [
+    {
+     "id": "l8:0",
+     "index": 0,
+     "width": 3.25,
+     "speedLimit": 8.333,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [],
+     "geometry": [
+      [
+       1.625,
+       10,
+       0
+      ],
+      [
+       1.625,
+       150,
+       0
+      ]
+     ],
+     "length": 140
+    }
+   ],
+   "boundaries": [],
+   "leftEdge": "centre_dashed",
+   "noLaneChangeZone": 0,
+   "assumed": [
+    "width"
+   ]
+  },
+  {
+   "id": "l9",
+   "osmWayId": 105,
+   "from": "n5",
+   "to": "n6",
+   "roadClass": "motorway",
+   "name": "A1",
+   "layer": 1,
+   "structure": "bridge",
+   "roundabout": false,
+   "oppositeLink": null,
+   "throughTraffic": true,
+   "length": 300,
+   "speedLimit": 27.778,
+   "geometry": [
+    [
+     -150,
+     60,
+     6
+    ],
+    [
+     150,
+     60,
+     6
+    ]
+   ],
+   "lanes": [
+    {
+     "id": "l9:0",
+     "index": 0,
+     "width": 3.25,
+     "speedLimit": 27.778,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [],
+     "geometry": [
+      [
+       -150,
+       58.375,
+       6
+      ],
+      [
+       150,
+       58.375,
+       6
+      ]
+     ],
+     "length": 300
+    },
+    {
+     "id": "l9:1",
+     "index": 1,
+     "width": 3.25,
+     "speedLimit": 27.778,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [],
+     "geometry": [
+      [
+       -150,
+       61.625,
+       6
+      ],
+      [
+       150,
+       61.625,
+       6
+      ]
+     ],
+     "length": 300
+    }
+   ],
+   "boundaries": [
+    {
+     "rightLane": 0,
+     "leftLane": 1,
+     "marking": "dashed",
+     "allowLeft": true,
+     "allowRight": true
+    }
+   ],
+   "leftEdge": "edge",
+   "noLaneChangeZone": 0,
+   "assumed": [
+    "width"
+   ]
+  },
+  {
+   "id": "l10",
+   "osmWayId": 106,
+   "from": "n7",
+   "to": "n8",
+   "roadClass": "motorway",
+   "name": "A1",
+   "layer": 1,
+   "structure": "bridge",
+   "roundabout": false,
+   "oppositeLink": null,
+   "throughTraffic": true,
+   "length": 300,
+   "speedLimit": 27.778,
+   "geometry": [
+    [
+     150,
+     75,
+     6
+    ],
+    [
+     -150,
+     75,
+     6
+    ]
+   ],
+   "lanes": [
+    {
+     "id": "l10:0",
+     "index": 0,
+     "width": 3.25,
+     "speedLimit": 27.778,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [],
+     "geometry": [
+      [
+       150,
+       76.625,
+       6
+      ],
+      [
+       -150,
+       76.625,
+       6
+      ]
+     ],
+     "length": 300
+    },
+    {
+     "id": "l10:1",
+     "index": 1,
+     "width": 3.25,
+     "speedLimit": 27.778,
+     "allowed": [
+      "car",
+      "van",
+      "truck",
+      "bus",
+      "motorcycle"
+     ],
+     "turns": [],
+     "geometry": [
+      [
+       150,
+       73.375,
+       6
+      ],
+      [
+       -150,
+       73.375,
+       6
+      ]
+     ],
+     "length": 300
+    }
+   ],
+   "boundaries": [
+    {
+     "rightLane": 0,
+     "leftLane": 1,
+     "marking": "dashed",
+     "allowLeft": true,
+     "allowRight": true
+    }
+   ],
+   "leftEdge": "edge",
+   "noLaneChangeZone": 0,
+   "assumed": [
+    "width"
+   ]
+  }
+ ],
+ "connectors": [
+  {
+   "id": "c0",
+   "node": "n0",
+   "fromLink": "l1",
+   "fromLane": 0,
+   "toLink": "l2",
+   "toLane": 0,
+   "turn": "through",
+   "priority": "signal",
+   "signalGroup": "n0:g0",
+   "geometry": [
+    [
+     -10,
+     -4.875,
+     0
+    ],
+    [
+     -7.5,
+     -4.875,
+     0
+    ],
+    [
+     -5,
+     -4.875,
+     0
+    ],
+    [
+     -2.5,
+     -4.875,
+     0
+    ],
+    [
+     0,
+     -4.875,
+     0
+    ],
+    [
+     2.5,
+     -4.875,
+     0
+    ],
+    [
+     5,
+     -4.875,
+     0
+    ],
+    [
+     7.5,
+     -4.875,
+     0
+    ],
+    [
+     10,
+     -4.875,
+     0
+    ]
+   ],
+   "length": 20,
+   "conflicts": [
+    "c6",
+    "c10",
+    "c11",
+    "c12",
+    "c13"
+   ]
+  },
+  {
+   "id": "c1",
+   "node": "n0",
+   "fromLink": "l1",
+   "fromLane": 1,
+   "toLink": "l2",
+   "toLane": 1,
+   "turn": "through",
+   "priority": "signal",
+   "signalGroup": "n0:g0",
+   "geometry": [
+    [
+     -10,
+     -1.625,
+     0
+    ],
+    [
+     -7.5,
+     -1.625,
+     0
+    ],
+    [
+     -5,
+     -1.625,
+     0
+    ],
+    [
+     -2.5,
+     -1.625,
+     0
+    ],
+    [
+     0,
+     -1.625,
+     0
+    ],
+    [
+     2.5,
+     -1.625,
+     0
+    ],
+    [
+     5,
+     -1.625,
+     0
+    ],
+    [
+     7.5,
+     -1.625,
+     0
+    ],
+    [
+     10,
+     -1.625,
+     0
+    ]
+   ],
+   "length": 20,
+   "conflicts": [
+    "c6",
+    "c8",
+    "c10",
+    "c12",
+    "c13"
+   ]
+  },
+  {
+   "id": "c2",
+   "node": "n0",
+   "fromLink": "l1",
+   "fromLane": 0,
+   "toLink": "l6",
+   "toLane": 0,
+   "turn": "right",
+   "priority": "signal",
+   "signalGroup": "n0:g0",
+   "geometry": [
+    [
+     -10,
+     -4.875,
+     0
+    ],
+    [
+     -8.7,
+     -4.961,
+     0
+    ],
+    [
+     -7.311,
+     -5.216,
+     0
+    ],
+    [
+     -5.912,
+     -5.634,
+     0
+    ],
+    [
+     -4.585,
+     -6.21,
+     0
+    ],
+    [
+     -3.412,
+     -6.94,
+     0
+    ],
+    [
+     -2.473,
+     -7.818,
+     0
+    ],
+    [
+     -1.851,
+     -8.84,
+     0
+    ],
+    [
+     -1.625,
+     -10,
+     0
+    ]
+   ],
+   "length": 10.667,
+   "conflicts": [
+    "c6",
+    "c10"
+   ]
+  },
+  {
+   "id": "c3",
+   "node": "n0",
+   "fromLink": "l1",
+   "fromLane": 1,
+   "toLink": "l8",
+   "toLane": 0,
+   "turn": "left",
+   "priority": "signal",
+   "signalGroup": "n0:g0",
+   "geometry": [
+    [
+     -10,
+     -1.625,
+     0
+    ],
+    [
+     -7.927,
+     -1.35,
+     0
+    ],
+    [
+     -5.872,
+     -0.579,
+     0
+    ],
+    [
+     -3.914,
+     0.608,
+     0
+    ],
+    [
+     -2.132,
+     2.132,
+     0
+    ],
+    [
+     -0.608,
+     3.914,
+     0
+    ],
+    [
+     0.579,
+     5.872,
+     0
+    ],
+    [
+     1.35,
+     7.927,
+     0
+    ],
+    [
+     1.625,
+     10,
+     0
+    ]
+   ],
+   "length": 17.841,
+   "conflicts": [
+    "c4",
+    "c5",
+    "c7",
+    "c8",
+    "c10",
+    "c12",
+    "c13"
+   ]
+  },
+  {
+   "id": "c4",
+   "node": "n0",
+   "fromLink": "l3",
+   "fromLane": 0,
+   "toLink": "l4",
+   "toLane": 0,
+   "turn": "through",
+   "priority": "signal",
+   "signalGroup": "n0:g0",
+   "geometry": [
+    [
+     10,
+     4.875,
+     0
+    ],
+    [
+     7.5,
+     4.875,
+     0
+    ],
+    [
+     5,
+     4.875,
+     0
+    ],
+    [
+     2.5,
+     4.875,
+     0
+    ],
+    [
+     0,
+     4.875,
+     0
+    ],
+    [
+     -2.5,
+     4.875,
+     0
+    ],
+    [
+     -5,
+     4.875,
+     0
+    ],
+    [
+     -7.5,
+     4.875,
+     0
+    ],
+    [
+     -10,
+     4.875,
+     0
+    ]
+   ],
+   "length": 20,
+   "conflicts": [
+    "c3",
+    "c8",
+    "c9",
+    "c10",
+    "c13"
+   ]
+  },
+  {
+   "id": "c5",
+   "node": "n0",
+   "fromLink": "l3",
+   "fromLane": 1,
+   "toLink": "l4",
+   "toLane": 1,
+   "turn": "through",
+   "priority": "signal",
+   "signalGroup": "n0:g0",
+   "geometry": [
+    [
+     10,
+     1.625,
+     0
+    ],
+    [
+     7.5,
+     1.625,
+     0
+    ],
+    [
+     5,
+     1.625,
+     0
+    ],
+    [
+     2.5,
+     1.625,
+     0
+    ],
+    [
+     0,
+     1.625,
+     0
+    ],
+    [
+     -2.5,
+     1.625,
+     0
+    ],
+    [
+     -5,
+     1.625,
+     0
+    ],
+    [
+     -7.5,
+     1.625,
+     0
+    ],
+    [
+     -10,
+     1.625,
+     0
+    ]
+   ],
+   "length": 20,
+   "conflicts": [
+    "c3",
+    "c8",
+    "c10",
+    "c12",
+    "c13"
+   ]
+  },
+  {
+   "id": "c6",
+   "node": "n0",
+   "fromLink": "l3",
+   "fromLane": 1,
+   "toLink": "l6",
+   "toLane": 0,
+   "turn": "left",
+   "priority": "signal",
+   "signalGroup": "n0:g0",
+   "geometry": [
+    [
+     10,
+     1.625,
+     0
+    ],
+    [
+     7.927,
+     1.35,
+     0
+    ],
+    [
+     5.872,
+     0.579,
+     0
+    ],
+    [
+     3.914,
+     -0.608,
+     0
+    ],
+    [
+     2.132,
+     -2.132,
+     0
+    ],
+    [
+     0.608,
+     -3.914,
+     0
+    ],
+    [
+     -0.579,
+     -5.872,
+     0
+    ],
+    [
+     -1.35,
+     -7.927,
+     0
+    ],
+    [
+     -1.625,
+     -10,
+     0
+    ]
+   ],
+   "length": 17.841,
+   "conflicts": [
+    "c0",
+    "c1",
+    "c2",
+    "c8",
+    "c10",
+    "c12",
+    "c13"
+   ]
+  },
+  {
+   "id": "c7",
+   "node": "n0",
+   "fromLink": "l3",
+   "fromLane": 0,
+   "toLink": "l8",
+   "toLane": 0,
+   "turn": "right",
+   "priority": "signal",
+   "signalGroup": "n0:g0",
+   "geometry": [
+    [
+     10,
+     4.875,
+     0
+    ],
+    [
+     8.7,
+     4.961,
+     0
+    ],
+    [
+     7.311,
+     5.216,
+     0
+    ],
+    [
+     5.912,
+     5.634,
+     0
+    ],
+    [
+     4.585,
+     6.21,
+     0
+    ],
+    [
+     3.412,
+     6.94,
+     0
+    ],
+    [
+     2.473,
+     7.818,
+     0
+    ],
+    [
+     1.851,
+     8.84,
+     0
+    ],
+    [
+     1.625,
+     10,
+     0
+    ]
+   ],
+   "length": 10.667,
+   "conflicts": [
+    "c3",
+    "c13"
+   ]
+  },
+  {
+   "id": "c8",
+   "node": "n0",
+   "fromLink": "l5",
+   "fromLane": 0,
+   "toLink": "l2",
+   "toLane": 1,
+   "turn": "left",
+   "priority": "signal",
+   "signalGroup": "n0:g1",
+   "geometry": [
+    [
+     -1.625,
+     10,
+     0
+    ],
+    [
+     -1.35,
+     7.927,
+     0
+    ],
+    [
+     -0.579,
+     5.872,
+     0
+    ],
+    [
+     0.608,
+     3.914,
+     0
+    ],
+    [
+     2.132,
+     2.132,
+     0
+    ],
+    [
+     3.914,
+     0.608,
+     0
+    ],
+    [
+     5.872,
+     -0.579,
+     0
+    ],
+    [
+     7.927,
+     -1.35,
+     0
+    ],
+    [
+     10,
+     -1.625,
+     0
+    ]
+   ],
+   "length": 17.841,
+   "conflicts": [
+    "c1",
+    "c3",
+    "c4",
+    "c5",
+    "c6",
+    "c13"
+   ]
+  },
+  {
+   "id": "c9",
+   "node": "n0",
+   "fromLink": "l5",
+   "fromLane": 0,
+   "toLink": "l4",
+   "toLane": 0,
+   "turn": "right",
+   "priority": "signal",
+   "signalGroup": "n0:g1",
+   "geometry": [
+    [
+     -1.625,
+     10,
+     0
+    ],
+    [
+     -1.851,
+     8.84,
+     0
+    ],
+    [
+     -2.473,
+     7.818,
+     0
+    ],
+    [
+     -3.412,
+     6.94,
+     0
+    ],
+    [
+     -4.585,
+     6.21,
+     0
+    ],
+    [
+     -5.912,
+     5.634,
+     0
+    ],
+    [
+     -7.311,
+     5.216,
+     0
+    ],
+    [
+     -8.7,
+     4.961,
+     0
+    ],
+    [
+     -10,
+     4.875,
+     0
+    ]
+   ],
+   "length": 10.667,
+   "conflicts": [
+    "c4"
+   ]
+  },
+  {
+   "id": "c10",
+   "node": "n0",
+   "fromLink": "l5",
+   "fromLane": 0,
+   "toLink": "l6",
+   "toLane": 0,
+   "turn": "through",
+   "priority": "signal",
+   "signalGroup": "n0:g1",
+   "geometry": [
+    [
+     -1.625,
+     10,
+     0
+    ],
+    [
+     -1.625,
+     7.5,
+     0
+    ],
+    [
+     -1.625,
+     5,
+     0
+    ],
+    [
+     -1.625,
+     2.5,
+     0
+    ],
+    [
+     -1.625,
+     0,
+     0
+    ],
+    [
+     -1.625,
+     -2.5,
+     0
+    ],
+    [
+     -1.625,
+     -5,
+     0
+    ],
+    [
+     -1.625,
+     -7.5,
+     0
+    ],
+    [
+     -1.625,
+     -10,
+     0
+    ]
+   ],
+   "length": 20,
+   "conflicts": [
+    "c0",
+    "c1",
+    "c2",
+    "c3",
+    "c4",
+    "c5",
+    "c6",
+    "c12"
+   ]
+  },
+  {
+   "id": "c11",
+   "node": "n0",
+   "fromLink": "l7",
+   "fromLane": 0,
+   "toLink": "l2",
+   "toLane": 0,
+   "turn": "right",
+   "priority": "signal",
+   "signalGroup": "n0:g1",
+   "geometry": [
+    [
+     1.625,
+     -10,
+     0
+    ],
+    [
+     1.851,
+     -8.84,
+     0
+    ],
+    [
+     2.473,
+     -7.818,
+     0
+    ],
+    [
+     3.412,
+     -6.94,
+     0
+    ],
+    [
+     4.585,
+     -6.21,
+     0
+    ],
+    [
+     5.912,
+     -5.634,
+     0
+    ],
+    [
+     7.311,
+     -5.216,
+     0
+    ],
+    [
+     8.7,
+     -4.961,
+     0
+    ],
+    [
+     10,
+     -4.875,
+     0
+    ]
+   ],
+   "length": 10.667,
+   "conflicts": [
+    "c0"
+   ]
+  },
+  {
+   "id": "c12",
+   "node": "n0",
+   "fromLink": "l7",
+   "fromLane": 0,
+   "toLink": "l4",
+   "toLane": 1,
+   "turn": "left",
+   "priority": "signal",
+   "signalGroup": "n0:g1",
+   "geometry": [
+    [
+     1.625,
+     -10,
+     0
+    ],
+    [
+     1.35,
+     -7.927,
+     0
+    ],
+    [
+     0.579,
+     -5.872,
+     0
+    ],
+    [
+     -0.608,
+     -3.914,
+     0
+    ],
+    [
+     -2.132,
+     -2.132,
+     0
+    ],
+    [
+     -3.914,
+     -0.608,
+     0
+    ],
+    [
+     -5.872,
+     0.579,
+     0
+    ],
+    [
+     -7.927,
+     1.35,
+     0
+    ],
+    [
+     -10,
+     1.625,
+     0
+    ]
+   ],
+   "length": 17.841,
+   "conflicts": [
+    "c0",
+    "c1",
+    "c3",
+    "c5",
+    "c6",
+    "c10"
+   ]
+  },
+  {
+   "id": "c13",
+   "node": "n0",
+   "fromLink": "l7",
+   "fromLane": 0,
+   "toLink": "l8",
+   "toLane": 0,
+   "turn": "through",
+   "priority": "signal",
+   "signalGroup": "n0:g1",
+   "geometry": [
+    [
+     1.625,
+     -10,
+     0
+    ],
+    [
+     1.625,
+     -7.5,
+     0
+    ],
+    [
+     1.625,
+     -5,
+     0
+    ],
+    [
+     1.625,
+     -2.5,
+     0
+    ],
+    [
+     1.625,
+     0,
+     0
+    ],
+    [
+     1.625,
+     2.5,
+     0
+    ],
+    [
+     1.625,
+     5,
+     0
+    ],
+    [
+     1.625,
+     7.5,
+     0
+    ],
+    [
+     1.625,
+     10,
+     0
+    ]
+   ],
+   "length": 20,
+   "conflicts": [
+    "c0",
+    "c1",
+    "c3",
+    "c4",
+    "c5",
+    "c6",
+    "c7",
+    "c8"
+   ]
+  }
+ ],
+ "signals": [
+  {
+   "node": "n0",
+   "cycle": 90,
+   "offset": 0,
+   "groups": [
+    {
+     "id": "n0:g0",
+     "green": [
+      [
+       0,
+       40
+      ]
+     ],
+     "amber": 3
+    },
+    {
+     "id": "n0:g1",
+     "green": [
+      [
+       45,
+       85
+      ]
+     ],
+     "amber": 3
+    }
+   ]
+  }
+ ],
+ "stats": {
+  "nodes": 9,
+  "links": 10,
+  "lanes": 16,
+  "connectors": 14,
+  "signals": 1
+ }
+}

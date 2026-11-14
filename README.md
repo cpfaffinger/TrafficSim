@@ -19,6 +19,10 @@ congestion, queue and speed **heatmaps**.
   (no false junctions under overpasses), solid/dashed lane markings ([ADR-0016](docs/adr/0016-roundabouts-grade-separation-lane-markings.md)).
 - **3D viewer** with city-builder camera, OpenFreeMap basemap with buildings, lane markings, turn
   arrows, bridge decks and tunnels, inspector for every lane, movement and junction.
+- **Terrain and gradients**: imports sample free AWS Terrain Tiles elevation, roads follow the
+  terrain (bridges and tunnels keep smooth decks), the viewer shows the relief, and heavy
+  vehicles slow down on climbs — power-limited, so trucks crawl up a 6 % grade while cars keep
+  their speed ([ADR-0018](docs/adr/0018-terrain-elevation-and-gradients.md)).
 - **Edits as changesets** on the imported OSM data — lanes, turn lanes, speed limits, restrictions,
   markings, new roads/bridges, roundabout conversion, lane connections, turn bans, signal plans
   ([ADR-0010](docs/adr/0010-changesets-over-immutable-baseline.md)) — saved as **scenarios** with
@@ -76,12 +80,14 @@ OpenAPI: `/api/openapi/v1.json`.
 | Database | PostgreSQL 17 + PostGIS 3.5 |
 | Simulation core | Rust → WebAssembly in a Web Worker |
 | Frontend | TypeScript, Three.js (WebGL2), React UI shell, Vite |
-| Data | OpenStreetMap (Overpass, Geofabrik), Photon, Nominatim, OpenFreeMap |
+| Data | OpenStreetMap (Overpass, Geofabrik), Photon, Nominatim, OpenFreeMap, AWS Terrain Tiles (elevation) |
 | Runtime | Docker Compose, single HTTP port, bind-mounted `./data` |
 
 ## Map data
 
 Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), available under the ODbL.
+Elevation: [Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) on AWS Open Data (Mapzen/Tilezen;
+SRTM, GMTED2010, ETOPO1, USGS 3DEP, EU-DEM © Copernicus and others).
 
 ## License
 

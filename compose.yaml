@@ -23,6 +23,7 @@ services:
       Providers__Geofabrik__Directory: /data/osm
       Providers__Google__Enabled: ${GOOGLE_MAPS_ENABLED:-false}
       Providers__Google__ApiKey: ${GOOGLE_MAPS_API_KEY:-}
+      Providers__TerrainTiles__Enabled: ${TERRAIN_TILES_ENABLED:-true}
     volumes:
       - ./data/cache:/data/cache
       - ./data/osm:/data/osm

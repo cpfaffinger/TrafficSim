@@ -52,13 +52,14 @@ Candidate sources (all free and key-less):
 6. **Sim core: grade-aware longitudinal dynamics.** The grade (rise over run) is derived from lane
    and connector geometry per polyline piece and clamped to ±12 %. Every vehicle type has a
    `specificPower` (usable power at the wheels per mass, W/kg: car 50, van 35, motorcycle 80,
-   rigid truck 10, bus 10, articulated truck 7). Uphill, the acceleration the vehicle can deliver
-   is `max(a, P/m / max(v, 5 m/s) − g·c_r) − g·sin θ` (`c_r` = 0.008): the IDM acceleration is
-   capped at that value, so braking is unaffected, cars keep their power reserve and heavy
-   vehicles lose speed until power and gravity balance (articulated truck ≈ 37 km/h, rigid truck
-   ≈ 50 km/h on 6 %). Downhill, positive accelerations are boosted by half the gravity component
-   (at most ×1.5); the IDM still holds the desired speed, so nobody speeds downhill. On flat
-   segments nothing changes (bit-identical results).
+   rigid truck 10, bus 10, articulated truck 7; configurable per vehicle type). Uphill, the
+   acceleration the vehicle can deliver is `P/m / max(v, 5 m/s) − g·(c_r + sin θ)` (`c_r` = 0.008):
+   the IDM acceleration is capped at that value, so braking is unaffected, cars keep their power
+   reserve and heavy vehicles lose speed until power and gravity balance (crawl speed
+   `(P/m) / (g·(sin θ + c_r))`: articulated truck ≈ 38 km/h, rigid truck and bus ≈ 54 km/h on 6 %).
+   Downhill, positive accelerations are boosted by half the gravity component (at most ×1.5); the
+   IDM still holds the desired speed, so nobody speeds downhill. On level segments nothing changes
+   (bit-identical results; the calibrated IDM is trusted on the flat).
 7. **Renderer.** The frontend draws the package `terrain` as a shaded height-field mesh under the
    network (toggle "Terrain") and drapes the basemap vertices onto it.
 8. **Attribution.** Packages built with terrain list the Terrain Tiles attribution (Mapzen/Tilezen
@@ -70,7 +71,9 @@ Candidate sources (all free and key-less):
 
 - Real-world imports show hills and valleys; trucks slow down on climbs, which affects capacity
   and queues realistically. Grade-separation-only networks keep their behaviour apart from short
-  schematic ramps (clamped grades on bridge links).
+  schematic ramps on bridge links (clamped to 12 %: an articulated truck at 80 km/h loses a few
+  km/h over a 6 m ramp). Golden runs are unchanged because the golden fixture is level on every
+  segment (its bridge sits at a constant 6 m).
 - One more external request burst per import (cached for 30 days); its failure is harmless.
 - `terrain` makes packages larger (≤ 66 k heights, rounded to 0.1 m, gzip-compressed).
 - The basemap drape is per vertex; large polygons may cut slightly into the terrain on strong

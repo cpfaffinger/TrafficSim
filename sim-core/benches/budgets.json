@@ -1,0 +1,20 @@
+{
+  "grid": {
+    "minVehicles": 5000,
+    "minRealTimeFactor": 15,
+    "maxUsPerVehicleStep": 1.0,
+    "maxMetricsOverhead": 0.15
+  },
+  "motorway": {
+    "minVehicles": 2500,
+    "minRealTimeFactor": 40,
+    "maxUsPerVehicleStep": 1.0,
+    "maxMetricsOverhead": 0.15
+  },
+  "city": {
+    "minVehicles": 3000,
+    "minRealTimeFactor": 25,
+    "maxUsPerVehicleStep": 1.0,
+    "maxMetricsOverhead": 0.15
+  }
+}

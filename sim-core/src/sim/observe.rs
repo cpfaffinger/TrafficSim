@@ -421,6 +421,11 @@ impl Simulation {
         self.metrics.as_deref()
     }
 
+    /// Stops collecting metrics for the rest of the run (benchmarks; dynamics are unaffected).
+    pub fn disable_metrics(&mut self) {
+        self.metrics = None;
+    }
+
     /// Restarts the metric totals (links, junctions, queues) now, e.g. after a warm-up.
     pub fn reset_metrics(&mut self) {
         let t = self.time;

@@ -55,6 +55,7 @@ pub struct LaneEntry {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CellLayout {
     pub cell_length: f64,
+    inv_cell_length: f64,
     pub lanes: Vec<LaneEntry>,
     pub cell_count: usize,
     /// Actual length of every cell (m).
@@ -91,6 +92,7 @@ impl CellLayout {
         }
         Ok(Self {
             cell_length,
+            inv_cell_length: 1.0 / cell_length,
             lanes,
             cell_count: cell_len.len(),
             cell_len,
@@ -102,7 +104,7 @@ impl CellLayout {
     #[inline]
     pub fn cell(&self, lane: u32, pos: f64) -> usize {
         let e = &self.lanes[lane as usize];
-        let k = (pos.max(0.0) / self.cell_length) as usize;
+        let k = (pos.max(0.0) * self.inv_cell_length) as usize;
         e.first_cell as usize + k.min(usize::from(e.cells) - 1)
     }
 
@@ -118,71 +120,92 @@ impl CellLayout {
     }
 }
 
+/// Accumulators of one cell in the current bucket (32 bytes: one vehicle-step touches a single
+/// cache line).
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[repr(C, align(32))]
+pub struct Cell {
+    /// Vehicle-seconds.
+    pub veh_s: f32,
+    /// Vehicle-metres (Σ v·dt).
+    pub speed_s: f32,
+    /// Vehicle-seconds lost against the speed limit.
+    pub delay_s: f32,
+    /// Seconds with at least one queued vehicle.
+    pub queue_s: f32,
+    pub stops: u32,
+    /// Crossings of the downstream boundary.
+    pub flow: u32,
+    inv_limit: f32,
+    mark: u32,
+}
+
 /// Per-cell accumulators of the current bucket.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CellAccumulator {
-    pub veh_s: Vec<f64>,
-    pub speed_s: Vec<f64>,
-    pub delay_s: Vec<f64>,
-    pub queue_s: Vec<f64>,
-    pub stops: Vec<u32>,
-    pub flow: Vec<u32>,
-    mark: Vec<u64>,
+    pub cells: Vec<Cell>,
 }
 
 impl CellAccumulator {
-    pub fn new(cells: usize) -> Self {
+    pub fn new(layout: &CellLayout) -> Self {
         Self {
-            veh_s: vec![0.0; cells],
-            speed_s: vec![0.0; cells],
-            delay_s: vec![0.0; cells],
-            queue_s: vec![0.0; cells],
-            stops: vec![0; cells],
-            flow: vec![0; cells],
-            mark: vec![u64::MAX; cells],
+            cells: layout
+                .cell_limit
+                .iter()
+                .map(|&limit| Cell {
+                    veh_s: 0.0,
+                    speed_s: 0.0,
+                    delay_s: 0.0,
+                    queue_s: 0.0,
+                    stops: 0,
+                    flow: 0,
+                    inv_limit: (1.0 / limit) as f32,
+                    mark: u32::MAX,
+                })
+                .collect(),
         }
     }
 
     pub fn reset(&mut self) {
-        self.veh_s.fill(0.0);
-        self.speed_s.fill(0.0);
-        self.delay_s.fill(0.0);
-        self.queue_s.fill(0.0);
-        self.stops.fill(0);
-        self.flow.fill(0);
-        self.mark.fill(u64::MAX);
+        for c in &mut self.cells {
+            *c = Cell {
+                inv_limit: c.inv_limit,
+                ..Cell {
+                    veh_s: 0.0,
+                    speed_s: 0.0,
+                    delay_s: 0.0,
+                    queue_s: 0.0,
+                    stops: 0,
+                    flow: 0,
+                    inv_limit: 0.0,
+                    mark: u32::MAX,
+                }
+            };
+        }
     }
 
     /// Crossings of the downstream boundaries of cells `from..to`.
     #[inline]
     pub fn cross(&mut self, from: usize, to: usize) {
-        for f in &mut self.flow[from..to] {
-            *f += 1;
+        for c in &mut self.cells[from..to] {
+            c.flow += 1;
         }
     }
 
     /// One vehicle in `cell` during a step of `dt` seconds (step number `step`).
     #[inline]
-    #[allow(clippy::too_many_arguments)]
-    pub fn occupy(
-        &mut self,
-        cell: usize,
-        dt: f64,
-        speed: f64,
-        old_speed: f64,
-        limit: f64,
-        queue_speed: f64,
-        step: u64,
-    ) {
-        self.veh_s[cell] += dt;
-        self.speed_s[cell] += speed * dt;
-        self.delay_s[cell] += dt * (1.0 - speed / limit).max(0.0);
-        if old_speed >= STOP_SPEED && speed < STOP_SPEED {
-            self.stops[cell] += 1;
+    pub fn occupy(&mut self, cell: usize, dt: f32, speed: f32, old_speed: f32, queue_speed: f32, step: u64) {
+        let c = &mut self.cells[cell];
+        c.veh_s += dt;
+        c.speed_s += speed * dt;
+        c.delay_s += dt * (1.0 - speed * c.inv_limit).max(0.0);
+        if old_speed >= STOP_SPEED as f32 && speed < STOP_SPEED as f32 {
+            c.stops += 1;
         }
-        if speed < queue_speed && self.mark[cell] != step {
-            self.mark[cell] = step;
-            self.queue_s[cell] += dt;
+        let step = step as u32;
+        if speed < queue_speed && c.mark != step {
+            c.mark = step;
+            c.queue_s += dt;
         }
     }
 }
@@ -200,28 +223,32 @@ pub fn bucket_bytes(cells: usize) -> usize {
 pub fn encode_bucket(layout: &CellLayout, acc: &CellAccumulator, duration: f64, out: &mut Vec<u8>) {
     let start = out.len();
     out.reserve(bucket_bytes(layout.cell_count));
-    let mean = |c: usize| {
-        if acc.veh_s[c] > 0.0 {
-            acc.speed_s[c] / acc.veh_s[c]
+    let cells = &acc.cells;
+    let mean = |c: &Cell| {
+        if c.veh_s > 0.0 {
+            f64::from(c.speed_s) / f64::from(c.veh_s)
         } else {
             f64::NAN
         }
     };
-    let cells = 0..layout.cell_count;
     let mut put = |x: f64| out.extend_from_slice(&(x as f32).to_le_bytes());
-    cells
-        .clone()
-        .for_each(|c| put(acc.veh_s[c] / (duration * layout.cell_len[c]) * 1000.0));
-    cells.clone().for_each(|c| put(mean(c)));
-    cells.clone().for_each(|c| put(mean(c) / layout.cell_limit[c]));
-    acc.delay_s.iter().for_each(|&d| put(d));
-    for q in &acc.queue_s {
-        let share = (q / duration * 10_000.0).round().clamp(0.0, 10_000.0);
-        out.extend_from_slice(&(share as u16).to_le_bytes());
+    for (c, len) in cells.iter().zip(&layout.cell_len) {
+        put(f64::from(c.veh_s) / (duration * len) * 1000.0);
     }
-    for v in acc.stops.iter().chain(&acc.flow) {
-        out.extend_from_slice(&((*v).min(u32::from(u16::MAX)) as u16).to_le_bytes());
+    cells.iter().for_each(|c| put(mean(c)));
+    for (c, limit) in cells.iter().zip(&layout.cell_limit) {
+        put(mean(c) / limit);
     }
+    cells.iter().for_each(|c| put(f64::from(c.delay_s)));
+    let mut put16 = |v: u32| out.extend_from_slice(&(v.min(u32::from(u16::MAX)) as u16).to_le_bytes());
+    for c in cells {
+        let share = (f64::from(c.queue_s) / duration * 10_000.0)
+            .round()
+            .clamp(0.0, 10_000.0);
+        put16(share as u32);
+    }
+    cells.iter().for_each(|c| put16(c.stops));
+    cells.iter().for_each(|c| put16(c.flow));
     out.resize(start + bucket_bytes(layout.cell_count), 0);
 }
 
@@ -408,13 +435,13 @@ mod tests {
         let net = corridor(1, 25.0, 10.0).network();
         let layout = CellLayout::new(&net, 10.0).unwrap();
         assert_eq!(layout.cell_count, 6);
-        let mut acc = CellAccumulator::new(layout.cell_count);
+        let mut acc = CellAccumulator::new(&layout);
         // One vehicle standing in cell 1 for the whole 10 s bucket, one passing cell 0 at 10 m/s.
         for step in 0..100 {
-            acc.occupy(1, 0.1, 0.0, if step == 0 { 3.0 } else { 0.0 }, 10.0, 2.0, step);
-            acc.occupy(1, 0.1, 0.0, 0.0, 10.0, 2.0, step);
+            acc.occupy(1, 0.1, 0.0, if step == 0 { 3.0 } else { 0.0 }, 2.0, step);
+            acc.occupy(1, 0.1, 0.0, 0.0, 2.0, step);
         }
-        acc.occupy(0, 0.1, 10.0, 10.0, 10.0, 2.0, 0);
+        acc.occupy(0, 0.1, 10.0, 10.0, 2.0, 0);
         acc.cross(0, 2);
         let mut block = Vec::new();
         encode_bucket(&layout, &acc, 10.0, &mut block);
@@ -441,10 +468,10 @@ mod tests {
         assert_eq!(d.lanes, layout.lanes);
         let b = &d.buckets[0];
         // Two vehicles for 10 s in a 10 m cell: 200 veh/km.
-        assert!((b.density[1] - 200.0).abs() < 1e-3, "{}", b.density[1]);
+        assert!((b.density[1] - 200.0).abs() < 0.05, "{}", b.density[1]);
         assert_eq!(b.mean_speed[1], 0.0);
         assert_eq!(b.speed_ratio[1], 0.0);
-        assert!((b.delay[1] - 20.0).abs() < 1e-3);
+        assert!((b.delay[1] - 20.0).abs() < 0.01);
         assert_eq!(b.queue_share[1], 10_000);
         assert_eq!(b.stops[1], 1);
         assert_eq!(b.flow[..3], [1, 1, 0]);
@@ -453,7 +480,12 @@ mod tests {
         assert!(b.mean_speed[2].is_nan() && b.speed_ratio[2].is_nan());
         assert_eq!(b.density[2], 0.0);
         acc.reset();
-        assert!(acc.veh_s.iter().all(|&v| v == 0.0) && acc.flow.iter().all(|&f| f == 0));
+        assert!(
+            acc.cells
+                .iter()
+                .all(|c| c.veh_s == 0.0 && c.flow == 0 && c.inv_limit == 0.1)
+        );
+        assert_eq!(std::mem::size_of::<Cell>(), 32);
     }
 
     #[test]

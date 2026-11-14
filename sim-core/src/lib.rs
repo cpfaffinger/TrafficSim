@@ -4,6 +4,8 @@
 //! state and metrics out. It compiles natively (for `cargo test` and future batch runners)
 //! and to WebAssembly (for the browser worker, see [`wasm`]).
 
+pub mod batch;
+pub mod bench;
 pub mod config;
 pub mod demand;
 pub mod detmath;

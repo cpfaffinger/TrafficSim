@@ -164,7 +164,7 @@ impl Metrics {
         let detect_steps = steps(config.detection_interval);
         Ok(Self {
             config: config.clone(),
-            acc: CellAccumulator::new(layout.cell_count),
+            acc: CellAccumulator::new(&layout),
             layout,
             blocks: VecDeque::new(),
             finished: 0,
@@ -218,14 +218,12 @@ impl Metrics {
         if new_seg != old_seg {
             acc.cross(layout.first_cell(new_seg), cell);
         }
-        let limit = layout.cell_limit[cell];
         acc.occupy(
             cell,
-            dt,
-            new_speed,
-            old_speed,
-            limit,
-            self.config.queue_speed,
+            dt as f32,
+            new_speed as f32,
+            old_speed as f32,
+            self.config.queue_speed as f32,
             step,
         );
     }
@@ -288,15 +286,14 @@ fn fold(layout: &CellLayout, acc: &CellAccumulator, links: &mut [LinkTotals]) {
     for e in &layout.lanes {
         let t = &mut links[e.link as usize];
         let first = e.first_cell as usize;
-        let range = first..first + usize::from(e.cells);
-        t.veh_s += acc.veh_s[range.clone()].iter().sum::<f64>();
-        t.dist += acc.speed_s[range.clone()].iter().sum::<f64>();
-        t.delay_s += acc.delay_s[range.clone()].iter().sum::<f64>();
-        t.stops += acc.stops[range.clone()]
-            .iter()
-            .map(|&s| u64::from(s))
-            .sum::<u64>();
-        t.exits += u64::from(acc.flow[range.end - 1]);
+        let cells = &acc.cells[first..first + usize::from(e.cells)];
+        for c in cells {
+            t.veh_s += f64::from(c.veh_s);
+            t.dist += f64::from(c.speed_s);
+            t.delay_s += f64::from(c.delay_s);
+            t.stops += u64::from(c.stops);
+        }
+        t.exits += cells.last().map_or(0, |c| u64::from(c.flow));
     }
 }
 

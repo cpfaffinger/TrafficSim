@@ -437,6 +437,123 @@ fn inside_axis(i: i64, n: usize) -> bool {
     (0..n as i64).contains(&i)
 }
 
+/// [`grid`] with every junction signalised (90 s cycle, east-west green 0–42 s, north-south
+/// 45–87 s, 3 s amber, offsets for a green wave towards the east): a city benchmark network.
+pub fn signal_grid(n: usize, lanes: u32) -> NetBuilder {
+    let mut b = grid(n, lanes);
+    let junctions: Vec<(String, f64)> = b
+        .package
+        .nodes
+        .iter_mut()
+        .filter(|node| node.control == NodeControl::Priority)
+        .map(|node| {
+            node.control = NodeControl::Signal;
+            (node.id.clone(), node.x)
+        })
+        .collect();
+    for (node, x) in junctions {
+        b.package.signals.push(SignalController {
+            node: node.clone(),
+            cycle: 90.0,
+            offset: (x / 13.889).rem_euclid(90.0),
+            groups: [("ew", 0.0, 42.0), ("ns", 45.0, 87.0)]
+                .iter()
+                .map(|&(g, start, end)| SignalGroup {
+                    id: format!("{node}:{g}"),
+                    green: vec![[start, end]],
+                    amber: 3.0,
+                })
+                .collect(),
+        });
+        for c in b.package.connectors.iter_mut().filter(|c| c.node == node) {
+            let group = if c.priority == Priority::Major { "ew" } else { "ns" };
+            c.priority = Priority::Signal;
+            c.signal_group = Some(format!("{node}:{group}"));
+        }
+    }
+    b
+}
+
+/// A motorway of `units` weaving units: two-lane mainline (1000 m) followed by a 300 m section
+/// whose auxiliary lane 0 starts at an on-ramp and ends at an off-ramp.
+pub fn motorway_chain(units: usize) -> NetBuilder {
+    let mut b = NetBuilder::new();
+    let unit = 1300.0;
+    b.node("A0", 0.0, 0.0, NodeControl::Boundary);
+    for u in 0..units {
+        let x = u as f64 * unit;
+        let (a, m, next) = (format!("A{u}"), format!("M{u}"), format!("A{}", u + 1));
+        b.node(&m, x + 1000.0, 0.0, NodeControl::None)
+            .node(&next, x + unit, 0.0, NodeControl::None)
+            .node(&format!("R{u}"), x + 700.0, -100.0, NodeControl::Boundary)
+            .node(&format!("X{u}"), x + unit + 300.0, -100.0, NodeControl::Boundary)
+            .link(&format!("main{u}"), &a, &m, 2, MOTORWAY_SPEED)
+            .link(&format!("aux{u}"), &m, &next, 3, MOTORWAY_SPEED)
+            .link(&format!("on{u}"), &format!("R{u}"), &m, 1, RAMP_SPEED)
+            .link(&format!("off{u}"), &next, &format!("X{u}"), 1, RAMP_SPEED)
+            .connect(
+                &format!("m{u}a"),
+                &format!("main{u}"),
+                0,
+                &format!("aux{u}"),
+                1,
+                Priority::Major,
+            )
+            .connect(
+                &format!("m{u}b"),
+                &format!("main{u}"),
+                1,
+                &format!("aux{u}"),
+                2,
+                Priority::Major,
+            )
+            .connect(
+                &format!("r{u}"),
+                &format!("on{u}"),
+                0,
+                &format!("aux{u}"),
+                0,
+                Priority::Major,
+            )
+            .connect(
+                &format!("x{u}"),
+                &format!("aux{u}"),
+                0,
+                &format!("off{u}"),
+                0,
+                Priority::Major,
+            )
+            .class(&[&format!("main{u}"), &format!("aux{u}")], RoadClass::Motorway)
+            .class(&[&format!("on{u}"), &format!("off{u}")], RoadClass::MotorwayLink);
+        if u > 0 {
+            let prev = format!("aux{}", u - 1);
+            b.connect(
+                &format!("d{u}a"),
+                &prev,
+                1,
+                &format!("main{u}"),
+                0,
+                Priority::Major,
+            )
+            .connect(
+                &format!("d{u}b"),
+                &prev,
+                2,
+                &format!("main{u}"),
+                1,
+                Priority::Major,
+            );
+        }
+    }
+    let last = format!("aux{}", units.max(1) - 1);
+    b.node("B", units as f64 * unit + 1000.0, 0.0, NodeControl::Boundary)
+        .link("exit", &format!("A{units}"), "B", 2, MOTORWAY_SPEED)
+        .connect("e0", &last, 1, "exit", 0, Priority::Major)
+        .connect("e1", &last, 2, "exit", 1, Priority::Major)
+        .class(&["exit"], RoadClass::Motorway);
+    b
+}
+
 fn unit(a: &Point, b: &Point) -> [f64; 2] {
     let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
     let l = (dx * dx + dy * dy).sqrt();

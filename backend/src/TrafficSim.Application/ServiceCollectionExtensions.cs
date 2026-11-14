@@ -17,6 +17,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<RoadNetworkService>();
         services.AddScoped<NetworkImportService>();
         services.AddScoped<ScenarioService>();
+        services.AddScoped<Exports.ExportService>();
         services.TryAddSingleton<IImportJobStore, InMemoryImportJobStore>();
         services.TryAddSingleton<IImportQueue, ChannelImportQueue>();
         return services;

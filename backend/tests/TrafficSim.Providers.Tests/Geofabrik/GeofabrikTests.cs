@@ -47,6 +47,10 @@ public class GeofabrikTests
         Assert.Equal("traffic_signals", data.Nodes[2].Tags["highway"]);
         Assert.Equal(48.2050001, data.Nodes[1].Location.Latitude, 7);
         Assert.False(data.Nodes.ContainsKey(5));
+        // bus route 10 uses way 1 (with platform node 7), its route master 12; the tram route is dropped
+        Assert.Equal([10L, 12L], data.Relations.Select(r => r.Id));
+        Assert.Equal(new TrafficSim.Domain.Osm.OsmMember(TrafficSim.Domain.Osm.OsmMemberType.Node, 7, "platform"), data.Relations[0].Members[0]);
+        Assert.Equal("bus_stop", data.Nodes[7].Tags["highway"]);
     }
 
     [Fact]
@@ -106,10 +110,15 @@ public class GeofabrikTests
         target.AddNode(Node(4, 48.2070, 16.3710));
         target.AddNode(Node(5, 47.0000, 15.0000));
         target.AddNode(Node(6, 47.0010, 15.0010));
+        target.AddNode(Node(7, 48.2051, 16.3701, new Tag("highway", "bus_stop")));
         target.AddWay(Way(1, [1, 2], new Tag("highway", "primary")));
         target.AddWay(Way(2, [2, 3], new Tag("highway", "residential"), new Tag("bridge", "yes"), new Tag("layer", "1")));
         target.AddWay(Way(3, [1, 4], new Tag("highway", "footway")));
         target.AddWay(Way(4, [5, 6], new Tag("highway", "primary")));
+        target.AddRelation(Relation(10, [new RelationMember(7, "platform", OsmGeoType.Node), new RelationMember(1, string.Empty, OsmGeoType.Way)], new Tag("type", "route"), new Tag("route", "bus")));
+        target.AddRelation(Relation(11, [new RelationMember(1, string.Empty, OsmGeoType.Way)], new Tag("type", "route"), new Tag("route", "tram")));
+        target.AddRelation(Relation(12, [new RelationMember(10, string.Empty, OsmGeoType.Relation)], new Tag("type", "route_master")));
+        target.AddRelation(Relation(13, [new RelationMember(99, string.Empty, OsmGeoType.Relation)], new Tag("type", "route_master")));
         target.Flush();
         target.Close();
         return new MemoryStream(stream.ToArray());
@@ -118,6 +127,12 @@ public class GeofabrikTests
     private static Node Node(long id, double lat, double lon, params Tag[] tags) => new()
     {
         Id = id, Latitude = lat, Longitude = lon, Tags = new TagsCollection(tags),
+        Version = 1, ChangeSetId = 1, TimeStamp = DateTime.UnixEpoch, UserId = 1, UserName = "t", Visible = true,
+    };
+
+    private static Relation Relation(long id, RelationMember[] members, params Tag[] tags) => new()
+    {
+        Id = id, Members = members, Tags = new TagsCollection(tags),
         Version = 1, ChangeSetId = 1, TimeStamp = DateTime.UnixEpoch, UserId = 1, UserName = "t", Visible = true,
     };
 

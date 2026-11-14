@@ -24,6 +24,9 @@ internal static class PbfRoadReader
         var positions = new Dictionary<long, (int Lat, int Lon)>();
         var nodeTags = new Dictionary<long, IReadOnlyDictionary<string, string>>();
         var ways = new List<OsmWay>();
+        var wayIds = new HashSet<long>();
+        var relations = new List<OsmRelation>();
+        var masters = new List<OsmRelation>();
         var count = 0;
 
         foreach (var element in new PBFOsmStreamSource(pbf))
@@ -45,17 +48,34 @@ internal static class PbfRoadReader
                     break;
                 case Way { Id: { } id, Nodes: { Length: >= 2 } refs, Tags: { } tags } when IsRoad(tags) && refs.Any(r => IsInside(positions, r, area)):
                     ways.Add(new OsmWay(id, refs.Where(positions.ContainsKey).ToList(), ToDictionary(tags)));
+                    wayIds.Add(id);
+                    break;
+                case Relation { Id: { } id, Members: { Length: > 0 } members, Tags: { } tags }:
+                    // Bus routes using a kept road and their route masters (#85); relations follow ways in PBF.
+                    var relation = new OsmRelation(id, members.Select(Member).ToList(), ToDictionary(tags));
+                    if (TransitRelations.IsBusRoute(relation) && relation.Members.Any(m => m.Type == OsmMemberType.Way && wayIds.Contains(m.Ref)))
+                    {
+                        relations.Add(relation);
+                    }
+                    else if (tags.TryGetValue("type", out var type) && type == "route_master")
+                    {
+                        masters.Add(relation);
+                    }
+
                     break;
             }
         }
 
+        var routes = relations.Select(r => r.Id).ToHashSet();
+        relations.AddRange(masters.Where(m => m.Members.Any(x => x.Type == OsmMemberType.Relation && routes.Contains(x.Ref))));
         var used = ways.SelectMany(w => w.NodeIds).ToHashSet();
+        used.UnionWith(relations.SelectMany(r => r.Members).Where(m => m.Type == OsmMemberType.Node && positions.ContainsKey(m.Ref)).Select(m => m.Ref));
         var nodes = used.Select(id =>
         {
             var (lat, lon) = positions[id];
             return new OsmNode(id, new GeoPoint(lat / FixedPoint, lon / FixedPoint), nodeTags.GetValueOrDefault(id, OsmTags.Empty));
         });
-        return new OsmDataSet(nodes, ways);
+        return new OsmDataSet(nodes, ways, null, relations);
     }
 
     internal static BoundingBox Expand(BoundingBox area, double metres)
@@ -74,6 +94,16 @@ internal static class PbfRoadReader
 
     private static bool IsInside(Dictionary<long, (int Lat, int Lon)> positions, long id, BoundingBox area) =>
         positions.TryGetValue(id, out var p) && area.Contains(new GeoPoint(p.Lat / FixedPoint, p.Lon / FixedPoint));
+
+    private static OsmMember Member(RelationMember m) => new(
+        m.Type switch
+        {
+            OsmGeoType.Node => OsmMemberType.Node,
+            OsmGeoType.Way => OsmMemberType.Way,
+            _ => OsmMemberType.Relation,
+        },
+        m.Id,
+        m.Role ?? string.Empty);
 
     private static Dictionary<string, string> ToDictionary(OsmSharp.Tags.TagsCollectionBase tags)
     {

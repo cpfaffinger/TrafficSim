@@ -1,0 +1,29 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API (fixture)",
+  "osm3s": {
+    "timestamp_osm_base": "2026-11-14T10:00:00Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+    { "type": "node", "id": 101, "lat": 48.2010, "lon": 16.3610 },
+    { "type": "node", "id": 102, "lat": 48.2010, "lon": 16.3630, "tags": { "public_transport": "stop_position", "bus": "yes", "name": "Oper" } },
+    { "type": "node", "id": 103, "lat": 48.2010, "lon": 16.3650 },
+    { "type": "node", "id": 104, "lat": 48.2010, "lon": 16.3670 },
+    { "type": "node", "id": 201, "lat": 48.2011, "lon": 16.3660, "tags": { "highway": "bus_stop", "public_transport": "platform", "name": "Karlsplatz", "bus_bay": "yes" } },
+    { "type": "way", "id": 301, "nodes": [101, 102, 103], "tags": { "highway": "primary" } },
+    { "type": "way", "id": 302, "nodes": [103, 104], "tags": { "highway": "primary", "bus_bay": "right" } },
+    { "type": "relation", "id": 401, "members": [
+      { "type": "node", "ref": 102, "role": "stop" },
+      { "type": "node", "ref": 201, "role": "platform" },
+      { "type": "way", "ref": 300, "role": "" },
+      { "type": "way", "ref": 301, "role": "" },
+      { "type": "way", "ref": 302, "role": "" },
+      { "type": "area", "ref": 9, "role": "" }
+    ], "tags": { "type": "route", "route": "bus", "ref": "59A", "name": "Bus 59A: Oper => Karlsplatz", "interval": "10" } },
+    { "type": "relation", "id": 402, "members": [
+      { "type": "relation", "ref": 401, "role": "" }
+    ], "tags": { "type": "route_master", "route_master": "bus", "ref": "59A", "interval": "00:12" } },
+    { "type": "relation", "id": 403, "tags": { "type": "route", "route": "bus" } }
+  ]
+}

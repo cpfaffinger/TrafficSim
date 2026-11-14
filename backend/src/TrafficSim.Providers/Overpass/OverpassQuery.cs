@@ -4,7 +4,7 @@ using TrafficSim.Domain.Geo;
 namespace TrafficSim.Providers.Overpass;
 
 /// <summary>Builds the Overpass QL query for the drivable road network of an area.</summary>
-internal static class OverpassQuery
+internal static partial class OverpassQuery
 {
     /// <summary>Road classes that carry motor vehicle traffic (ADR-0005).</summary>
     public const string HighwayPattern =
@@ -27,7 +27,7 @@ internal static class OverpassQuery
         var timeout = timeoutSeconds.ToString(CultureInfo.InvariantCulture);
         return $"[out:json][timeout:{timeout}];" +
             $"(way[\"highway\"~\"{HighwayPattern}\"][\"service\"!~\"{ExcludedServicePattern}\"][\"area\"!=\"yes\"](poly:\"{poly}\"););" +
-            "(._;>;);out body qt;";
+            "(._;>;);out body qt;" + TransitStatements($"poly:\"{poly}\"");
     }
 
     public static string Build(BoundingBox area, int timeoutSeconds)
@@ -37,6 +37,6 @@ internal static class OverpassQuery
         var timeout = timeoutSeconds.ToString(CultureInfo.InvariantCulture);
         return $"[out:json][timeout:{timeout}];" +
             $"(way[\"highway\"~\"{HighwayPattern}\"][\"service\"!~\"{ExcludedServicePattern}\"][\"area\"!=\"yes\"]({bbox}););" +
-            "(._;>;);out body qt;";
+            "(._;>;);out body qt;" + TransitStatements(bbox);
     }
 }

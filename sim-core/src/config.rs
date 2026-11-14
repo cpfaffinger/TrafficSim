@@ -117,6 +117,46 @@ impl Default for ReRoutingConfig {
     }
 }
 
+/// Metrics (#57, #58, #62).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MetricsConfig {
+    /// Collect lane-cell, link, junction and phenomena metrics.
+    pub enabled: bool,
+    /// Nominal cell length (m); the last cell of a lane may be shorter.
+    pub cell_length: f64,
+    /// Time bucket (s), rounded to whole steps.
+    pub bucket_duration: f64,
+    /// Finished buckets kept in memory (oldest dropped first).
+    pub max_buckets: u32,
+    /// Vehicles slower than this (m/s) count as queued.
+    pub queue_speed: f64,
+    /// Largest gap (m) between consecutive queued / congested vehicles of one queue.
+    pub jam_gap: f64,
+    /// Interval (s) of queue sampling and phenomena detection.
+    pub detection_interval: f64,
+    /// Vehicles slower than this (m/s) count as congested for tailbacks and waves.
+    pub congested_speed: f64,
+    /// Shortest congested run (m) reported as a tailback.
+    pub tailback_min_length: f64,
+}
+
+impl Default for MetricsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            cell_length: 10.0,
+            bucket_duration: 30.0,
+            max_buckets: 480,
+            queue_speed: 2.0,
+            jam_gap: 20.0,
+            detection_interval: 5.0,
+            congested_speed: 5.0,
+            tailback_min_length: 50.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct SimConfig {
@@ -159,6 +199,7 @@ pub struct SimConfig {
     /// factor (e.g. `{"articulatedTruck": "freight"}`).
     pub vehicle_mix_profiles: BTreeMap<String, String>,
     pub re_routing: ReRoutingConfig,
+    pub metrics: MetricsConfig,
 }
 
 impl Default for SimConfig {
@@ -184,6 +225,7 @@ impl Default for SimConfig {
             od: Vec::new(),
             vehicle_mix_profiles: BTreeMap::new(),
             re_routing: ReRoutingConfig::default(),
+            metrics: MetricsConfig::default(),
         }
     }
 }
@@ -244,6 +286,28 @@ impl SimConfig {
         {
             return Err(
                 "reRouting needs interval ≥ timeStep, smoothing in (0, 1], threshold in [0, 1)".into(),
+            );
+        }
+        let m = &self.metrics;
+        let positive = [
+            m.cell_length,
+            m.bucket_duration,
+            m.queue_speed,
+            m.jam_gap,
+            m.detection_interval,
+            m.congested_speed,
+        ];
+        if !positive.iter().all(|v| v.is_finite() && *v > 0.0)
+            || m.cell_length < 1.0
+            || m.bucket_duration < self.time_step
+            || m.detection_interval < self.time_step
+            || m.max_buckets == 0
+            || !(m.tailback_min_length.is_finite() && m.tailback_min_length >= 0.0)
+        {
+            return Err(
+                "metrics need cellLength ≥ 1 m, bucketDuration and detectionInterval ≥ timeStep, \
+                 maxBuckets ≥ 1 and positive speeds and gaps"
+                    .into(),
             );
         }
         Ok(())
@@ -374,6 +438,11 @@ mod tests {
             (r#"{"reRouting": {"interval": 0}}"#, "reRouting"),
             (r#"{"reRouting": {"smoothing": 0}}"#, "reRouting"),
             (r#"{"reRouting": {"threshold": 1}}"#, "reRouting"),
+            (r#"{"metrics": {"cellLength": 0.5}}"#, "metrics"),
+            (r#"{"metrics": {"bucketDuration": 0.01}}"#, "metrics"),
+            (r#"{"metrics": {"maxBuckets": 0}}"#, "metrics"),
+            (r#"{"metrics": {"queueSpeed": -1}}"#, "metrics"),
+            (r#"{"metrics": {"tailbackMinLength": -1}}"#, "metrics"),
         ] {
             let e = SimConfig::from_json(json).unwrap_err();
             assert!(e.contains(needle), "{json}: {e}");

@@ -9,6 +9,7 @@ pub mod demand;
 pub mod detmath;
 pub mod driver;
 pub mod idm;
+pub mod metrics;
 pub mod network;
 pub mod package;
 pub mod ring;

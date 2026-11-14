@@ -12,6 +12,13 @@ public static class NetworkCompiler
 {
     public static RoadNetwork Compile(OsmDataSet data, BoundingBox area, CompilerOptions? options = null, CompilerOverrides? overrides = null)
     {
+        ArgumentNullException.ThrowIfNull(area);
+        return Compile(data, GeoPolygon.FromBoundingBox(area), options, overrides);
+    }
+
+    /// <summary>Compiles the roads inside <paramref name="area"/>; ways are clipped at its edge (#110).</summary>
+    public static RoadNetwork Compile(OsmDataSet data, GeoPolygon area, CompilerOptions? options = null, CompilerOverrides? overrides = null)
+    {
         ArgumentNullException.ThrowIfNull(data);
         ArgumentNullException.ThrowIfNull(area);
         return new Compilation(data, area, options ?? new CompilerOptions(), overrides ?? new CompilerOverrides()).Run();
@@ -51,10 +58,12 @@ public static class NetworkCompiler
         public double TrimRadius { get; set; }
     }
 
-    private sealed class Compilation(OsmDataSet data, BoundingBox area, CompilerOptions options, CompilerOverrides overrides)
+    private sealed class Compilation(OsmDataSet data, GeoPolygon polygon, CompilerOptions options, CompilerOverrides overrides)
     {
         private readonly Dictionary<Link, (long? Start, long? End)> _neighbours = [];
-        private readonly LocalTangentPlane _plane = new(area.Center);
+        private readonly BoundingBox area = polygon.Bounds;
+        private readonly LocalTangentPlane _plane = new(polygon.Bounds.Center);
+        private List<Vec3> _clip = [];
         private readonly Dictionary<string, GraphNode> _nodes = new(StringComparer.Ordinal);
         private readonly Dictionary<string, GraphNode> _byNodeId = new(StringComparer.Ordinal);
         private readonly Dictionary<string, Link> _linkById = new(StringComparer.Ordinal);
@@ -66,13 +75,11 @@ public static class NetworkCompiler
         private readonly List<Connector> _connectors = [];
         private readonly List<SignalController> _signals = [];
         private int _ignoredSigns;
-        private (double MinX, double MinY, double MaxX, double MaxY) _rect;
+
 
         public RoadNetwork Run()
         {
-            var sw = _plane.ToLocal(new GeoPoint(area.South, area.West));
-            var ne = _plane.ToLocal(new GeoPoint(area.North, area.East));
-            _rect = (sw.East, sw.North, ne.East, ne.North);
+            _clip = polygon.Ring.Select(p => _plane.ToLocal(p)).Select(p => new Vec3(p.East, p.North)).ToList();
 
             var roadWays = data.Ways
                 .Where(w => RoadClasses.TryParse(Tags.Get(w.Tags, "highway"), out _) && Tags.Get(w.Tags, "area") != "yes")
@@ -93,6 +100,7 @@ public static class NetworkCompiler
             {
                 Origin = _plane.Origin,
                 Area = area,
+                Polygon = polygon.IsRectangle ? null : polygon,
                 OsmTimestamp = data.DataTimestamp,
                 Nodes = _nodes.Values.Select(n => n.Node!).OrderBy(n => int.Parse(n.Id.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture)).ToList(),
                 Links = _links,
@@ -166,34 +174,44 @@ public static class NetworkCompiler
             }
         }
 
+        /// <summary>
+        /// Clips a way piece to the area polygon segment by segment: every crossing with the polygon edge
+        /// splits a segment, so segments passing through the area without an inner vertex are kept too.
+        /// </summary>
         private void ClipAndAdd(OsmWay way, RoadClass roadClass, List<Vec3> points, List<long?> ids)
         {
             var current = new List<Vec3>();
             var currentIds = new List<long?>();
-            for (var i = 0; i < points.Count; i++)
+            for (var i = 0; i < points.Count - 1; i++)
             {
-                var inside = Inside(points[i]);
-                if (i > 0)
+                var a = points[i];
+                var b = points[i + 1];
+                var ts = Crossings(a, b);
+                for (var k = 0; k < ts.Count - 1; k++)
                 {
-                    var wasInside = Inside(points[i - 1]);
-                    if (inside != wasInside)
+                    var (t0, t1) = (ts[k], ts[k + 1]);
+                    if (t1 - t0 < 1e-9)
                     {
-                        var crossing = ClipPoint(points[i - 1], points[i]);
-                        current.Add(crossing);
-                        currentIds.Add(null);
-                        if (wasInside)
-                        {
-                            Emit(way, roadClass, current, currentIds);
-                            current = [];
-                            currentIds = [];
-                        }
+                        continue;
                     }
-                }
 
-                if (inside)
-                {
-                    current.Add(points[i]);
-                    currentIds.Add(ids[i]);
+                    if (Inside(a + ((b - a) * ((t0 + t1) / 2))))
+                    {
+                        if (current.Count == 0)
+                        {
+                            current.Add(t0 == 0 ? a : a + ((b - a) * t0));
+                            currentIds.Add(t0 == 0 ? ids[i] : null);
+                        }
+
+                        current.Add(t1 == 1 ? b : a + ((b - a) * t1));
+                        currentIds.Add(t1 == 1 ? ids[i + 1] : null);
+                    }
+                    else if (current.Count > 0)
+                    {
+                        Emit(way, roadClass, current, currentIds);
+                        current = [];
+                        currentIds = [];
+                    }
                 }
             }
 
@@ -201,6 +219,32 @@ public static class NetworkCompiler
             {
                 Emit(way, roadClass, current, currentIds);
             }
+        }
+
+        /// <summary>Sorted segment parameters 0, crossings with the polygon edge, 1.</summary>
+        private List<double> Crossings(Vec3 from, Vec3 to)
+        {
+            var result = new List<double> { 0, 1 };
+            for (int i = 0, j = _clip.Count - 1; i < _clip.Count; j = i++)
+            {
+                var p = _clip[j];
+                var q = _clip[i];
+                var d = ((to.X - from.X) * (q.Y - p.Y)) - ((to.Y - from.Y) * (q.X - p.X));
+                if (Math.Abs(d) < 1e-12)
+                {
+                    continue;
+                }
+
+                var t = (((p.X - from.X) * (q.Y - p.Y)) - ((p.Y - from.Y) * (q.X - p.X))) / d;
+                var u = (((p.X - from.X) * (to.Y - from.Y)) - ((p.Y - from.Y) * (to.X - from.X))) / d;
+                if (t > 0 && t < 1 && u >= 0 && u <= 1)
+                {
+                    result.Add(t);
+                }
+            }
+
+            result.Sort();
+            return result;
         }
 
         private void Emit(OsmWay way, RoadClass roadClass, List<Vec3> points, List<long?> ids)
@@ -251,26 +295,19 @@ public static class NetworkCompiler
             return synthetic;
         }
 
-        private bool Inside(Vec3 p) => p.X >= _rect.MinX && p.X <= _rect.MaxX && p.Y >= _rect.MinY && p.Y <= _rect.MaxY;
-
-        private Vec3 ClipPoint(Vec3 a, Vec3 b)
+        private bool Inside(Vec3 p)
         {
-            var t = 1.0;
-            void Edge(double pa, double pb, double bound)
+            var inside = false;
+            for (int i = 0, j = _clip.Count - 1; i < _clip.Count; j = i++)
             {
-                if ((pa - bound) * (pb - bound) < 0)
+                var (a, b) = (_clip[i], _clip[j]);
+                if ((a.Y > p.Y) != (b.Y > p.Y) && p.X < ((b.X - a.X) * (p.Y - a.Y) / (b.Y - a.Y)) + a.X)
                 {
-                    t = Math.Min(t, (bound - pa) / (pb - pa));
+                    inside = !inside;
                 }
             }
 
-            // a is inside or b is inside; parametrise from the inside point.
-            var (from, to) = Inside(a) ? (a, b) : (b, a);
-            Edge(from.X, to.X, _rect.MinX);
-            Edge(from.X, to.X, _rect.MaxX);
-            Edge(from.Y, to.Y, _rect.MinY);
-            Edge(from.Y, to.Y, _rect.MaxY);
-            return from + ((to - from) * t);
+            return inside;
         }
 
         private Vec3 ToLocal(OsmNode node)

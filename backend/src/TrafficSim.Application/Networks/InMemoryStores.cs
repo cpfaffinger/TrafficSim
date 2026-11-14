@@ -61,9 +61,9 @@ public sealed class InMemoryNetworkBaselineStore : INetworkBaselineStore
     public Task<IReadOnlyList<NetworkBaselineInfo>> ListAsync(int limit, CancellationToken cancellationToken) =>
         Task.FromResult<IReadOnlyList<NetworkBaselineInfo>>(_items.Values.Select(i => i.Info).OrderByDescending(i => i.CreatedAt).Take(limit).ToList());
 
-    public Task<NetworkBaselineInfo?> FindRecentAsync(BoundingBox area, DateTimeOffset since, CancellationToken cancellationToken) =>
+    public Task<NetworkBaselineInfo?> FindRecentAsync(BoundingBox area, GeoPolygon? polygon, DateTimeOffset since, CancellationToken cancellationToken) =>
         Task.FromResult(_items.Values.Select(i => i.Info)
-            .Where(i => i.Area == area && i.CreatedAt >= since)
+            .Where(i => i.Area == area && Equals(i.Polygon, polygon) && i.CreatedAt >= since)
             .OrderByDescending(i => i.CreatedAt)
             .FirstOrDefault());
 }

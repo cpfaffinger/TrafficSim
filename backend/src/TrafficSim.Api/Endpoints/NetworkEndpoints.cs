@@ -5,25 +5,29 @@ using TrafficSim.Domain.Geo;
 
 namespace TrafficSim.Api.Endpoints;
 
-public sealed record ImportRequest(double[]? Bbox);
+/// <param name="Bbox">[west, south, east, north] for a rectangle, or</param>
+/// <param name="Polygon">[[lon, lat], …] ring (WGS84) for any shape (#110).</param>
+public sealed record ImportRequest(double[]? Bbox, double[][]? Polygon = null);
 
-public sealed record ImportJobDto(Guid JobId, string Status, Guid? BaselineId, string? Error, double[] Bbox)
+public sealed record ImportJobDto(Guid JobId, string Status, Guid? BaselineId, string? Error, double[] Bbox, double[][]? Polygon = null)
 {
     public static ImportJobDto From(ImportJob job)
     {
         ArgumentNullException.ThrowIfNull(job);
-        return new(job.Id, job.Status.ToString().ToLowerInvariant(), job.BaselineId, job.Error, ToArray(job.Area));
+        return new(job.Id, job.Status.ToString().ToLowerInvariant(), job.BaselineId, job.Error, ToArray(job.Area), Ring(job.Polygon));
     }
 
     internal static double[] ToArray(BoundingBox a) => [a.West, a.South, a.East, a.North];
+
+    internal static double[][]? Ring(GeoPolygon? p) => p?.Ring.Select(v => new[] { v.Longitude, v.Latitude }).ToArray();
 }
 
-public sealed record NetworkBaselineDto(Guid Id, double[] Bbox, DateTimeOffset CreatedAt, string Source, DateTimeOffset? OsmTimestamp, PackageStats Stats, IReadOnlyList<string> Attribution)
+public sealed record NetworkBaselineDto(Guid Id, double[] Bbox, DateTimeOffset CreatedAt, string Source, DateTimeOffset? OsmTimestamp, PackageStats Stats, IReadOnlyList<string> Attribution, double[][]? Polygon = null)
 {
     public static NetworkBaselineDto From(NetworkBaselineInfo i)
     {
         ArgumentNullException.ThrowIfNull(i);
-        return new(i.Id, ImportJobDto.ToArray(i.Area), i.CreatedAt, i.Source, i.OsmTimestamp, i.Stats, i.Attribution);
+        return new(i.Id, ImportJobDto.ToArray(i.Area), i.CreatedAt, i.Source, i.OsmTimestamp, i.Stats, i.Attribution, ImportJobDto.Ring(i.Polygon));
     }
 }
 
@@ -42,15 +46,26 @@ internal static class NetworkEndpoints
     internal static async Task<Results<Accepted<ImportJobDto>, Ok<ImportJobDto>, ProblemHttpResult>> ImportAsync(
         ImportRequest request, NetworkImportService service, CancellationToken cancellationToken)
     {
-        BoundingBox area;
+        GeoPolygon area;
         try
         {
-            if (request?.Bbox is not { Length: 4 } b)
+            if (request?.Polygon is { } ring)
             {
-                throw new ArgumentException("bbox must be [west, south, east, north].");
-            }
+                if (ring.Any(p => p is not { Length: 2 }))
+                {
+                    throw new ArgumentException("polygon must be [[lon, lat], …].");
+                }
 
-            area = new BoundingBox(b[1], b[0], b[3], b[2]);
+                area = new GeoPolygon(ring.Select(p => new GeoPoint(p[1], p[0])));
+            }
+            else if (request?.Bbox is { Length: 4 } b)
+            {
+                area = GeoPolygon.FromBoundingBox(new BoundingBox(b[1], b[0], b[3], b[2]));
+            }
+            else
+            {
+                throw new ArgumentException("Give bbox [west, south, east, north] or polygon [[lon, lat], …].");
+            }
         }
         catch (ArgumentException ex)
         {

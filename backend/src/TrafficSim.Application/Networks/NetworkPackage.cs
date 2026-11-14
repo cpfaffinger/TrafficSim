@@ -81,7 +81,8 @@ public sealed record NetworkPackage(
     IReadOnlyList<PackageLink> Links,
     IReadOnlyList<PackageConnector> Connectors,
     IReadOnlyList<PackageSignal> Signals,
-    PackageStats Stats)
+    PackageStats Stats,
+    IReadOnlyList<double[]>? Area = null)
 {
     public const int CurrentFormatVersion = 1;
 

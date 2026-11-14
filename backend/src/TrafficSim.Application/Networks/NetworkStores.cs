@@ -10,7 +10,12 @@ public sealed record NetworkBaselineInfo(
     string Source,
     DateTimeOffset? OsmTimestamp,
     PackageStats Stats,
-    IReadOnlyList<string> Attribution);
+    IReadOnlyList<string> Attribution,
+    GeoPolygon? Polygon = null)
+{
+    /// <summary>The import area as a polygon (the bounds for rectangular imports).</summary>
+    public GeoPolygon Shape => Polygon ?? GeoPolygon.FromBoundingBox(Area);
+}
 
 /// <summary>Port: persistent store of baselines and their network packages.</summary>
 public interface INetworkBaselineStore
@@ -26,8 +31,8 @@ public interface INetworkBaselineStore
 
     Task<IReadOnlyList<NetworkBaselineInfo>> ListAsync(int limit, CancellationToken cancellationToken);
 
-    /// <summary>The newest baseline with exactly this area created after <paramref name="since"/>, if any.</summary>
-    Task<NetworkBaselineInfo?> FindRecentAsync(BoundingBox area, DateTimeOffset since, CancellationToken cancellationToken);
+    /// <summary>The newest baseline with exactly this area (and polygon, if any) created after <paramref name="since"/>.</summary>
+    Task<NetworkBaselineInfo?> FindRecentAsync(BoundingBox area, GeoPolygon? polygon, DateTimeOffset since, CancellationToken cancellationToken);
 }
 
 /// <summary>Lifecycle of an import job.</summary>
@@ -49,7 +54,11 @@ public sealed record ImportJob(
     Guid? BaselineId,
     string? Error,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    GeoPolygon? Polygon = null)
+{
+    public GeoPolygon Shape => Polygon ?? GeoPolygon.FromBoundingBox(Area);
+}
 
 /// <summary>Port: import job state (short-lived; may be kept in memory).</summary>
 public interface IImportJobStore

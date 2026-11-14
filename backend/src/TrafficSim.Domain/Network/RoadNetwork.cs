@@ -170,6 +170,9 @@ public sealed class RoadNetwork
 
     public required BoundingBox Area { get; init; }
 
+    /// <summary>The import polygon when the area is not a rectangle (#110).</summary>
+    public GeoPolygon? Polygon { get; init; }
+
     public DateTimeOffset? OsmTimestamp { get; init; }
 
     public IReadOnlyList<NetworkNode> Nodes { get; init; } = [];

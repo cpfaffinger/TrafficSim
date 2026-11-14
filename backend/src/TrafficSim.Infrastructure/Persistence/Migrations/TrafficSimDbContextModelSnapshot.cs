@@ -83,6 +83,10 @@ namespace TrafficSim.Infrastructure.Persistence.Migrations
                         .HasColumnType("bytea")
                         .HasColumnName("package");
 
+                    b.Property<string>("PolygonRing")
+                        .HasColumnType("text")
+                        .HasColumnName("polygon_ring");
+
                     b.Property<int>("Signals")
                         .HasColumnType("integer")
                         .HasColumnName("signals");

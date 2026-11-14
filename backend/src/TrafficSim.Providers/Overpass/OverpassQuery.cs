@@ -14,6 +14,22 @@ internal static class OverpassQuery
     /// <summary>Service road subtypes that do not matter for traffic flow.</summary>
     public const string ExcludedServicePattern = "^(parking_aisle|driveway|drive-through|emergency_access)$";
 
+    /// <summary>Query for a polygon (#110): Overpass <c>poly:</c> filter with "lat lon" pairs.</summary>
+    public static string Build(GeoPolygon area, int timeoutSeconds)
+    {
+        ArgumentNullException.ThrowIfNull(area);
+        if (area.IsRectangle)
+        {
+            return Build(area.Bounds, timeoutSeconds);
+        }
+
+        var poly = string.Join(' ', area.Ring.Select(p => string.Create(CultureInfo.InvariantCulture, $"{p.Latitude:F7} {p.Longitude:F7}")));
+        var timeout = timeoutSeconds.ToString(CultureInfo.InvariantCulture);
+        return $"[out:json][timeout:{timeout}];" +
+            $"(way[\"highway\"~\"{HighwayPattern}\"][\"service\"!~\"{ExcludedServicePattern}\"][\"area\"!=\"yes\"](poly:\"{poly}\"););" +
+            "(._;>;);out body qt;";
+    }
+
     public static string Build(BoundingBox area, int timeoutSeconds)
     {
         ArgumentNullException.ThrowIfNull(area);

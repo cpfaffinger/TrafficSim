@@ -11,6 +11,9 @@ public sealed class NetworkBaselineEntity
 
     public required Polygon Area { get; set; }
 
+    /// <summary>Canonical polygon ring for non-rectangular imports (#110), null for rectangles.</summary>
+    public string? PolygonRing { get; set; }
+
     public double South { get; set; }
 
     public double West { get; set; }

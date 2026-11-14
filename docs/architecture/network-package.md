@@ -26,7 +26,8 @@
 | `formatVersion` | `1` | Format version. |
 | `baselineId` | string \| null | Baseline this package was produced from (null for previews). |
 | `origin` | `{ lat, lon }` | Tangent-plane origin (WGS84). |
-| `bbox` | `[west, south, east, north]` | Imported area (WGS84). |
+| `bbox` | `[west, south, east, north]` | Imported area (WGS84); the bounds of `area` for polygon imports. |
+| `area` | `[lon, lat][]` \| absent | Import polygon ring for non-rectangular imports (#110); ways are clipped at its edge. Optional. |
 | `osmTimestamp` | string \| null | ISO-8601 OSM data timestamp, if known. |
 | `attribution` | string[] | Texts that must be displayed (ODbL, providers). |
 | `nodes` | Node[] | Junctions, link ends and network boundary points. |

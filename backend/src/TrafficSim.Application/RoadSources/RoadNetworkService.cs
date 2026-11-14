@@ -34,7 +34,13 @@ public sealed partial class RoadNetworkService(IEnumerable<IRoadNetworkSource> s
 
     public double MaxAreaSquareKilometers => _sources.Count == 0 ? 0 : _sources.Max(s => s.MaxAreaSquareKilometers);
 
-    public async Task<ProviderAnswer<OsmDataSet>> FetchAsync(BoundingBox area, CancellationToken cancellationToken)
+    public Task<ProviderAnswer<OsmDataSet>> FetchAsync(BoundingBox area, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(area);
+        return FetchAsync(GeoPolygon.FromBoundingBox(area), cancellationToken);
+    }
+
+    public async Task<ProviderAnswer<OsmDataSet>> FetchAsync(GeoPolygon area, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(area);
         var size = area.AreaSquareKilometers;

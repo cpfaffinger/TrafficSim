@@ -34,10 +34,20 @@ public sealed class OverpassRoadNetworkSource : IRoadNetworkSource
 
     public double MaxAreaSquareKilometers => _options.MaxAreaSquareKilometers;
 
-    public async Task<OsmDataSet> FetchAsync(BoundingBox area, CancellationToken cancellationToken)
+    public Task<OsmDataSet> FetchAsync(BoundingBox area, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(area);
-        var query = OverpassQuery.Build(area, _options.QueryTimeoutSeconds);
+        return FetchQueryAsync(OverpassQuery.Build(area, _options.QueryTimeoutSeconds), cancellationToken);
+    }
+
+    public Task<OsmDataSet> FetchAsync(GeoPolygon area, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(area);
+        return FetchQueryAsync(OverpassQuery.Build(area, _options.QueryTimeoutSeconds), cancellationToken);
+    }
+
+    private async Task<OsmDataSet> FetchQueryAsync(string query, CancellationToken cancellationToken)
+    {
         var endpoints = new[] { _options.BaseUrl }.Concat(_options.Mirrors).Distinct().ToList();
         ProviderUnavailableException? last = null;
 

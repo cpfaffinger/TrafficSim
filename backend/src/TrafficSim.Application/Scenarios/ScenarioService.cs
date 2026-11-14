@@ -132,7 +132,7 @@ public sealed class ScenarioService(INetworkBaselineStore baselines, IScenarioSt
         var osm = await baselines.GetOsmDataAsync(baselineId, cancellationToken).ConfigureAwait(false)
             ?? throw new NotFoundException($"baseline {baselineId} has no OSM data (imported before editing was available); import the area again");
         var result = ChangesetApplier.Apply(OsmDataCodec.Decode(osm), changeset);
-        var network = NetworkCompiler.Compile(result.Data, info.Area, overrides: result.Overrides);
+        var network = NetworkCompiler.Compile(result.Data, info.Shape, overrides: result.Overrides);
         var bytes = NetworkPackageWriter.SerializeGzip(NetworkPackageWriter.ToPackage(network, baselineId, info.Attribution));
 
         Cache[key] = (bytes, result.Issues, Interlocked.Increment(ref _tick));

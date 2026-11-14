@@ -17,7 +17,8 @@ public sealed class EfNetworkBaselineStore(TrafficSimDbContext db) : INetworkBas
         db.Set<NetworkBaselineEntity>().Add(new NetworkBaselineEntity
         {
             Id = info.Id,
-            Area = ToPolygon(a),
+            Area = info.Polygon is { } poly ? ToPolygon(poly) : ToPolygon(a),
+            PolygonRing = info.Polygon?.ToString(),
             South = a.South,
             West = a.West,
             North = a.North,
@@ -55,15 +56,24 @@ public sealed class EfNetworkBaselineStore(TrafficSimDbContext db) : INetworkBas
         return rows.Select(ToInfo).ToList();
     }
 
-    public async Task<NetworkBaselineInfo?> FindRecentAsync(BoundingBox area, DateTimeOffset since, CancellationToken cancellationToken)
+    public async Task<NetworkBaselineInfo?> FindRecentAsync(BoundingBox area, GeoPolygon? polygon, DateTimeOffset since, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(area);
+        var ring = polygon?.ToString();
         var entity = await Infos()
-            .Where(b => b.South == area.South && b.West == area.West && b.North == area.North && b.East == area.East && b.CreatedAt >= since)
+            .Where(b => b.South == area.South && b.West == area.West && b.North == area.North && b.East == area.East
+                        && b.PolygonRing == ring && b.CreatedAt >= since)
             .OrderByDescending(b => b.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken)
             .ConfigureAwait(false);
         return entity is null ? null : ToInfo(entity);
+    }
+
+    internal static Polygon ToPolygon(GeoPolygon p)
+    {
+        ArgumentNullException.ThrowIfNull(p);
+        var coords = p.Ring.Select(v => new Coordinate(v.Longitude, v.Latitude)).Append(new Coordinate(p.Ring[0].Longitude, p.Ring[0].Latitude)).ToArray();
+        return Factory.CreatePolygon(coords);
     }
 
     internal static Polygon ToPolygon(BoundingBox a) => Factory.CreatePolygon(
@@ -77,6 +87,7 @@ public sealed class EfNetworkBaselineStore(TrafficSimDbContext db) : INetworkBas
     {
         Id = b.Id,
         Area = b.Area,
+        PolygonRing = b.PolygonRing,
         South = b.South,
         West = b.West,
         North = b.North,
@@ -100,5 +111,6 @@ public sealed class EfNetworkBaselineStore(TrafficSimDbContext db) : INetworkBas
         e.Source,
         e.OsmTimestamp,
         new PackageStats(e.Nodes, e.Links, e.Lanes, e.Connectors, e.Signals),
-        e.Attribution);
+        e.Attribution,
+        e.PolygonRing is null ? null : GeoPolygon.Parse(e.PolygonRing));
 }

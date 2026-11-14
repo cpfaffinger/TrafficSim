@@ -17,7 +17,7 @@ git checkout --quiet --detach origin/main
 
 mkdir -p .deploy data/postgres data/cache data/osm
 if [ ! -f .env ]; then
-  password=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
+  password=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
   sed -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=${password}/" \
       -e "s/^TRAFFICSIM_HTTP_PORT=.*/TRAFFICSIM_HTTP_PORT=${HTTP_PORT}/" \
       .env.example > .env

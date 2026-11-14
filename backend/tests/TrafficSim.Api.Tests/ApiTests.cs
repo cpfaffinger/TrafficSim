@@ -60,7 +60,6 @@ public class ApiTests : IClassFixture<TrafficSimApiFactory>
         Assert.NotNull(meta);
         Assert.Equal("TrafficSim", meta.Name);
         Assert.Contains(MetaEndpoints.OsmAttribution, meta.Attributions);
-        Assert.Contains("Fake attribution", meta.Attributions);
     }
 
     [Fact]

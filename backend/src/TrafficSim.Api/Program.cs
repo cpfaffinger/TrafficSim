@@ -46,6 +46,7 @@ app.MapHealthChecks("/readyz", new HealthCheckOptions
 var api = app.MapGroup("/api/v1");
 api.MapMetaEndpoints();
 api.MapGeocodingEndpoints();
+api.MapProviderEndpoints();
 
 // SPA fallback: unknown non-API routes serve index.html (client-side routing).
 app.MapFallbackToFile("{*path:nonfile}", "index.html").Add(endpoint =>

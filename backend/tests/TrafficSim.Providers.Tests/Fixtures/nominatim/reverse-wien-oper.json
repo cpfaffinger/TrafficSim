@@ -1,0 +1,16 @@
+{
+  "place_id": 123,
+  "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+  "osm_type": "way",
+  "osm_id": 4583442,
+  "lat": "48.2028",
+  "lon": "16.3689",
+  "category": "highway",
+  "type": "primary",
+  "place_rank": 26,
+  "importance": 0.1,
+  "addresstype": "road",
+  "name": "Opernring",
+  "display_name": "Opernring, Innere Stadt, Wien, 1010, Österreich",
+  "boundingbox": ["48.2021", "48.2035", "16.3665", "16.3712"]
+}

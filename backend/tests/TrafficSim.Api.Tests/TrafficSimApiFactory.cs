@@ -21,16 +21,21 @@ public sealed class TrafficSimApiFactory : WebApplicationFactory<Program>
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<IGeocodingProvider>();
+            services.RemoveAll<IReverseGeocodingProvider>();
+            services.RemoveAll<IRoadNetworkSource>();
             services.AddSingleton<IGeocodingProvider>(Geocoder);
+            services.AddSingleton<IReverseGeocodingProvider>(Geocoder);
         });
     }
 }
 
-public sealed class FakeGeocodingProvider : IGeocodingProvider
+public sealed class FakeGeocodingProvider : IGeocodingProvider, IReverseGeocodingProvider
 {
     public Exception? Failure { get; set; }
 
     public GeocodeQuery? LastQuery { get; private set; }
+
+    public ReverseGeocodeQuery? LastReverseQuery { get; private set; }
 
     public string Name => "fake";
 
@@ -52,5 +57,18 @@ public sealed class FakeGeocodingProvider : IGeocodingProvider
             new("Somewhere", new GeoPoint(1, 2), "place:village"),
         ];
         return Task.FromResult(results);
+    }
+
+    public Task<GeocodeResult?> ReverseAsync(ReverseGeocodeQuery query, CancellationToken cancellationToken)
+    {
+        LastReverseQuery = query;
+        if (Failure is not null)
+        {
+            throw Failure;
+        }
+
+        return Task.FromResult<GeocodeResult?>(query.Location.Latitude > 80
+            ? null
+            : new GeocodeResult("Ring, Wien", query.Location, "highway:primary", OsmReference: "way/2"));
     }
 }

@@ -5,6 +5,7 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
+    <PackageReference Include="OsmSharp" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="TrafficSim.Providers.Tests" />

@@ -1,0 +1,25 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "id": "europe", "name": "Europe", "urls": { "pbf": "https://geofabrik.test/europe-latest.osm.pbf" } },
+      "geometry": { "type": "Polygon", "coordinates": [[[-25, 34], [45, 34], [45, 72], [-25, 72], [-25, 34]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "austria", "parent": "europe", "name": "Austria", "urls": { "pbf": "https://geofabrik.test/europe/austria-latest.osm.pbf" } },
+      "geometry": { "type": "MultiPolygon", "coordinates": [[[[9.5, 46.3], [17.2, 46.3], [17.2, 49.1], [9.5, 49.1], [9.5, 46.3]]]] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "broken-geometry-skipped", "name": "Broken", "urls": { "pbf": "https://geofabrik.test/broken.osm.pbf" } },
+      "geometry": { "type": "Point", "coordinates": [16, 48] }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "no-url" },
+      "geometry": null
+    }
+  ]
+}

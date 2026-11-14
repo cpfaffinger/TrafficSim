@@ -19,8 +19,13 @@ services:
       ConnectionStrings__TrafficSim: "Host=db;Port=5432;Database=${POSTGRES_DB:-trafficsim};Username=${POSTGRES_USER:-trafficsim};Password=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
       Providers__Contact: ${TRAFFICSIM_CONTACT:-https://github.com/cpfaffinger/TrafficSim}
       Providers__Photon__BaseUrl: ${PHOTON_BASE_URL:-https://photon.komoot.io/}
+      Providers__Cache__Directory: /data/cache
+      Providers__Geofabrik__Directory: /data/osm
+      Providers__Google__Enabled: ${GOOGLE_MAPS_ENABLED:-false}
+      Providers__Google__ApiKey: ${GOOGLE_MAPS_API_KEY:-}
     volumes:
       - ./data/cache:/data/cache
+      - ./data/osm:/data/osm
     deploy:
       resources:
         limits:
@@ -45,3 +50,21 @@ services:
       resources:
         limits:
           memory: 1g
+
+  # Optional self-hosted Photon (ADR-0004): `docker compose --profile photon up -d`, then set
+  # PHOTON_BASE_URL=http://photon:2322/ in .env. Downloads a country index on first start.
+  photon:
+    profiles: [photon]
+    build:
+      context: deploy/photon
+      args:
+        PHOTON_VERSION: ${PHOTON_VERSION:-0.7.0}
+    restart: unless-stopped
+    environment:
+      PHOTON_DATA_URL: ${PHOTON_DATA_URL:-https://download1.graphhopper.com/public/extracts/by-country-code/at/photon-db-at-latest.tar.bz2}
+    volumes:
+      - ./data/photon:/photon/data
+    deploy:
+      resources:
+        limits:
+          memory: 2g

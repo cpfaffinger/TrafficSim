@@ -29,7 +29,7 @@ export SOURCE_COMMIT="${target:0:12}"
 export TRAFFICSIM_IMAGE_TAG="${target:0:12}"
 
 mkdir -p data/postgres data/cache data/osm
-chown 1654:1654 data/cache # APP_UID of the .NET runtime image
+chown 1654:1654 data/cache data/osm # APP_UID of the .NET runtime image
 
 DOCKER_BUILDKIT=1 docker compose build app
 docker compose up -d --remove-orphans

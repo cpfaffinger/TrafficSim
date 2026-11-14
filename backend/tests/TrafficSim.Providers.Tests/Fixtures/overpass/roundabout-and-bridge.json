@@ -1,0 +1,24 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API (fixture)",
+  "osm3s": {
+    "timestamp_osm_base": "2026-11-14T10:00:00Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+    { "type": "node", "id": 101, "lat": 48.2010, "lon": 16.3610 },
+    { "type": "node", "id": 102, "lat": 48.2012, "lon": 16.3620 },
+    { "type": "node", "id": 103, "lat": 48.2014, "lon": 16.3630, "tags": { "highway": "traffic_signals" } },
+    { "type": "node", "id": 104, "lat": 48.2020, "lon": 16.3640 },
+    { "type": "node", "id": 105, "lat": 48.2030, "lon": 16.3650 },
+    { "type": "node", "id": 106, "lat": 48.2025, "lon": 16.3655 },
+    { "type": "node", "id": 107, "lat": 48.2000, "lon": 16.3620 },
+    { "type": "node", "id": 108, "lat": 48.2040, "lon": 16.3620 },
+    { "type": "node", "id": 999, "lat": 123.0, "lon": 16.0 },
+    { "type": "way", "id": 201, "nodes": [101, 102, 103], "tags": { "highway": "primary", "lanes": "2", "oneway": "yes" } },
+    { "type": "way", "id": 202, "nodes": [104, 105, 106, 104], "tags": { "highway": "secondary", "junction": "roundabout" } },
+    { "type": "way", "id": 203, "nodes": [107, 108], "tags": { "highway": "motorway", "bridge": "yes", "layer": "1" } },
+    { "type": "way", "id": 204, "nodes": [999] },
+    { "type": "relation", "id": 301, "members": [] }
+  ]
+}

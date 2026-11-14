@@ -146,6 +146,9 @@ pub struct Summary {
     /// Public transport lines (#85); absent without lines.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub transit: Vec<super::TransitLineMetrics>,
+    /// Pedestrian KPIs (ADR-0020); absent without pedestrians.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pedestrians: Option<super::PedestrianSummary>,
 }
 
 #[derive(Serialize)]
@@ -435,6 +438,9 @@ impl Simulation {
         if let Some(m) = self.metrics.as_deref_mut() {
             m.reset_totals(t);
         }
+        if let Some(p) = self.peds.as_deref_mut() {
+            p.reset_totals();
+        }
     }
 
     /// Finished lane-cell buckets in the run.
@@ -627,6 +633,7 @@ impl Simulation {
             junctions: self.junction_metrics(),
             events,
             transit: self.transit_metrics(),
+            pedestrians: self.pedestrian_summary(),
         }
     }
 

@@ -42,6 +42,10 @@ congestion, queue and speed **heatmaps**.
 - **Public transport**: bus and trolleybus lines and stops from OSM route relations, buses on
   their headways with dwell times, kerb stops that block the lane or bays, editable headways per
   scenario, bus KPIs (trips, travel time, dwell, headway regularity).
+- **Pedestrians at crossings** ([ADR-0020](docs/adr/0020-pedestrian-crossings.md)): zebra,
+  signalised, uncontrolled and unmarked crossings from OSM plus implicit crosswalks at signalised
+  junctions; pedestrian demand estimated from the activity around each crossing; vehicles stop at
+  zebras, pedestrians accept gaps, push-button signals interrupt the green, turning vehicles yield.
 - **Lane-accurate heatmaps** (speed ratio, density, queues, delay, flow, stops) with a timeline and
   replay of 30 s buckets.
 - **Stored runs**: save the browser run or run several seeds on the server with the native sim

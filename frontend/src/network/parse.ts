@@ -1,4 +1,5 @@
 import { parseTransitLines } from '../transit/model';
+import { parseCrossings } from './crossings';
 import {
   BOUNDARY_MARKINGS,
   CONNECTOR_TURNS,
@@ -374,5 +375,6 @@ export function parseNetworkPackage(input: unknown): NetworkPackage {
   checkReferences(pkg);
   const transitLines = parseTransitLines(o.transitLines, pkg.links);
   if (transitLines.length > 0) pkg.transitLines = transitLines;
+  if (o.crossings !== undefined && o.crossings !== null) pkg.crossings = parseCrossings(o.crossings, pkg, fail);
   return pkg;
 }

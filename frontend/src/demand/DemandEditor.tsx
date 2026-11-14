@@ -167,7 +167,7 @@ export function DemandEditor({ scenario, pkg, builtins, readOnly = false, picked
         ))}
       </div>
       <div className="demand-body" role="tabpanel">
-        {tab === 'overview' && <OverviewTab model={model} durationSeconds={scenario.durationSeconds} totals={totals} readOnly={readOnly} onChange={change} />}
+        {tab === 'overview' && <OverviewTab model={model} durationSeconds={scenario.durationSeconds} totals={totals} readOnly={readOnly} onChange={change} crossings={pkg?.crossings?.length ?? 0} />}
         {tab === 'od' && (
           <OdTab
             model={model}

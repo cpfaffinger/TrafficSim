@@ -1,0 +1,19 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API (fixture)",
+  "osm3s": {
+    "timestamp_osm_base": "2026-11-14T10:00:00Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+    { "type": "node", "id": 401, "lat": 48.2010, "lon": 16.3610 },
+    { "type": "node", "id": 402, "lat": 48.2010, "lon": 16.3625, "tags": { "highway": "crossing", "crossing": "uncontrolled", "crossing_ref": "zebra" } },
+    { "type": "node", "id": 403, "lat": 48.2010, "lon": 16.3640, "tags": { "highway": "crossing", "crossing": "traffic_signals", "button_operated": "yes" } },
+    { "type": "node", "id": 404, "lat": 48.2010, "lon": 16.3655 },
+    { "type": "node", "id": 405, "lat": 48.2010, "lon": 16.3670 },
+    { "type": "node", "id": 406, "lat": 48.2011, "lon": 16.3655 },
+    { "type": "node", "id": 407, "lat": 48.2009, "lon": 16.3655 },
+    { "type": "way", "id": 501, "nodes": [401, 402, 403, 404, 405], "tags": { "highway": "secondary", "name": "Crossing Street" } },
+    { "type": "way", "id": 502, "nodes": [406, 404, 407], "tags": { "highway": "footway", "footway": "crossing", "crossing": "unmarked" } }
+  ]
+}

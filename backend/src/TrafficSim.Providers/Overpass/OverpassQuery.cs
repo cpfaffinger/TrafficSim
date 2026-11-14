@@ -11,6 +11,9 @@ internal static partial class OverpassQuery
         "^(motorway|motorway_link|trunk|trunk_link|primary|primary_link|secondary|secondary_link|" +
         "tertiary|tertiary_link|unclassified|residential|living_street|service|road|busway)$";
 
+    /// <summary>Footway crossings: fallback source of pedestrian crossings on roads (ADR-0020).</summary>
+    public const string CrossingWayFilter = "way[\"footway\"=\"crossing\"]";
+
     /// <summary>Service road subtypes that do not matter for traffic flow.</summary>
     public const string ExcludedServicePattern = "^(parking_aisle|driveway|drive-through|emergency_access)$";
 
@@ -26,17 +29,21 @@ internal static partial class OverpassQuery
         var poly = string.Join(' ', area.Ring.Select(p => string.Create(CultureInfo.InvariantCulture, $"{p.Latitude:F7} {p.Longitude:F7}")));
         var timeout = timeoutSeconds.ToString(CultureInfo.InvariantCulture);
         return $"[out:json][timeout:{timeout}];" +
-            $"(way[\"highway\"~\"{HighwayPattern}\"][\"service\"!~\"{ExcludedServicePattern}\"][\"area\"!=\"yes\"](poly:\"{poly}\"););" +
+            $"(way[\"highway\"~\"{HighwayPattern}\"][\"service\"!~\"{ExcludedServicePattern}\"][\"area\"!=\"yes\"](poly:\"{poly}\");{CrossingWayFilter}({BboxFilter(area.Bounds)}););" +
             "(._;>;);out body qt;" + TransitStatements($"poly:\"{poly}\"");
     }
 
     public static string Build(BoundingBox area, int timeoutSeconds)
     {
         ArgumentNullException.ThrowIfNull(area);
-        var bbox = string.Create(CultureInfo.InvariantCulture, $"{area.South:F7},{area.West:F7},{area.North:F7},{area.East:F7}");
+        var bbox = BboxFilter(area);
         var timeout = timeoutSeconds.ToString(CultureInfo.InvariantCulture);
         return $"[out:json][timeout:{timeout}];" +
-            $"(way[\"highway\"~\"{HighwayPattern}\"][\"service\"!~\"{ExcludedServicePattern}\"][\"area\"!=\"yes\"]({bbox}););" +
+            $"(way[\"highway\"~\"{HighwayPattern}\"][\"service\"!~\"{ExcludedServicePattern}\"][\"area\"!=\"yes\"]({bbox});{CrossingWayFilter}({bbox}););" +
             "(._;>;);out body qt;" + TransitStatements(bbox);
     }
+
+    // Footway crossings of polygon imports use the bounds (keeps the URL short); extra ones are ignored.
+    private static string BboxFilter(BoundingBox area) =>
+        string.Create(CultureInfo.InvariantCulture, $"{area.South:F7},{area.West:F7},{area.North:F7},{area.East:F7}");
 }

@@ -55,6 +55,7 @@ impl NetBuilder {
                 connectors: Vec::new(),
                 signals: Vec::new(),
                 transit_lines: Vec::new(),
+                crossings: None,
             },
             trim: 8.0,
         }

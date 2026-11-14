@@ -30,8 +30,23 @@ public static class NetworkPackageWriter
                 network.TransitLines.Count, network.DroppedTransitLines),
             network.Polygon?.Ring.Select(p => new[] { p.Longitude, p.Latitude }).ToList(),
             PackageTerrain.From(network.Terrain),
-            TransitPackage.Lines(network));
+            TransitPackage.Lines(network),
+            network.Crossings.Select(MapCrossing).ToList());
     }
+
+    private static PackageCrossing MapCrossing(Crossing x) => new(
+        x.Id,
+        x.OsmId,
+        Snake(x.Kind),
+        x.NodeId,
+        x.SignalGroup,
+        x.SignalMode == CrossingSignalMode.None ? null : Snake(x.SignalMode),
+        x.Implicit,
+        R(x.Width),
+        R(x.Depth),
+        R(x.Demand),
+        Points(x.Geometry),
+        x.Links.Select(l => new PackageCrossingLink(l.LinkId, R(l.Position), [R(l.SpanFrom), R(l.SpanTo)])).ToList());
 
     public static byte[] SerializeGzip(NetworkPackage package)
     {

@@ -14,6 +14,7 @@ import { drapeOnTerrain } from '../network/terrain';
 import { TerrainLayer } from './TerrainLayer';
 import { disposeGroup, subsetGeometry, toBufferGeometry } from './geometry';
 import { RtsCameraController } from './RtsCameraController';
+import { CrossingLayer } from './CrossingLayer';
 import { HeatmapLayer } from './HeatmapLayer';
 import { SignLayer } from './SignLayer';
 import { SimulationLayer } from './SimulationLayer';
@@ -78,6 +79,7 @@ export class NetworkScene {
   private readonly simulation = new SimulationLayer();
   private readonly signs = new SignLayer();
   private readonly transit = new TransitLayer();
+  private readonly crossings = new CrossingLayer();
   private readonly heatmap = new HeatmapLayer();
   private readonly terrain = new TerrainLayer();
   private currentPackage: NetworkPackage | null = null;
@@ -120,6 +122,7 @@ export class NetworkScene {
     this.ground.position.y = -0.3;
     this.ground.scale.set(20_000, 20_000, 1);
     this.scene.add(this.ground, this.basemapGroup, this.networkGroup, this.tunnelGroup, this.overlayGroup, this.highlightGroup, this.simulation.group, this.signs.group, this.transit.group, this.heatmap.group, this.terrain.group);
+    this.scene.add(this.crossings.markings, this.crossings.pedestrians);
 
     this.controls = new RtsCameraController(this.camera, this.renderer.domElement, (x, y) => this.pick(x, y));
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -138,6 +141,12 @@ export class NetworkScene {
   updateSimulation(snapshot: Float32Array, signals: Uint8Array): void {
     this.simulation.updateVehicles(snapshot);
     this.simulation.updateSignals(signals);
+    this.dirty = true;
+  }
+
+  /** Draws the pedestrians of a simulation frame (`pedestrianSnapshot()`, ADR-0020). */
+  updatePedestrians(snapshot: Float32Array): void {
+    this.crossings.updatePedestrians(snapshot);
     this.dirty = true;
   }
 
@@ -161,6 +170,7 @@ export class NetworkScene {
 
   clearSimulation(): void {
     this.simulation.clear();
+    this.crossings.clearPedestrians();
     this.dirty = true;
   }
 
@@ -188,9 +198,10 @@ export class NetworkScene {
       new THREE.MeshLambertMaterial({ color: COLORS.marking, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
     );
     markings.renderOrder = 1;
-    this.lodMeshes.markings = [markings, this.signs.group, this.transit.group];
+    this.lodMeshes.markings = [markings, this.signs.group, this.transit.group, this.crossings.markings];
     this.signs.load(pkg);
     this.transit.load(pkg);
+    this.crossings.load(pkg);
     const structures = this.addMesh(this.networkGroup, m.structures, new THREE.MeshLambertMaterial({ color: COLORS.concrete }));
     const ghost = (opacity: number, color: number) =>
       new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
@@ -352,6 +363,7 @@ export class NetworkScene {
   dispose(): void {
     cancelAnimationFrame(this.frameHandle);
     this.simulation.dispose();
+    this.crossings.dispose();
     this.signs.clear();
     this.terrain.clear();
     this.transit.clear();

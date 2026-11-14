@@ -26,12 +26,14 @@ mod junction;
 pub use demand::DemandSource;
 mod lane_change;
 mod observe;
+mod pedestrians;
 mod perception;
 mod reroute;
 mod transit;
 pub use observe::{
     ApproachMetrics, EventCounts, JunctionMetrics, LinkMetrics, MovementMetrics, NetworkKpis, Summary,
 };
+pub use pedestrians::{CrossingMetrics, PEDESTRIAN_STRIDE, PedestrianStats, PedestrianSummary};
 pub use transit::TransitLineMetrics;
 
 use std::collections::BTreeMap;
@@ -99,6 +101,12 @@ pub struct Vehicle {
     /// Distance to the entry of a conflict zone the vehicle must hold at because a conflicting
     /// vehicle occupies it (#109), `INFINITY` if none.
     pub zone_hold: f64,
+    /// Distance to hold at before a pedestrian crossing (ADR-0020), `INFINITY` if none.
+    pub ped_hold: f64,
+    /// Why the vehicle holds before a crossing (`pedestrians::cause`).
+    ped_cause: u8,
+    /// Came to a stop in the current crossing hold (counted once).
+    ped_stopped: bool,
     /// Time spent waiting at the current stop line (s).
     pub wait: f64,
     /// Full stop at a stop sign completed.
@@ -205,6 +213,9 @@ pub struct Stats {
     pub mean_travel_time: f64,
     /// Mean speed of active vehicles (m/s).
     pub mean_speed: f64,
+    /// Pedestrians at crossings (ADR-0020); absent without pedestrians.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pedestrians: Option<PedestrianStats>,
 }
 
 /// A lane change, recorded when event logging is enabled (tests, debugging).
@@ -273,6 +284,8 @@ pub struct Simulation {
     entry_log: Vec<EntryEvent>,
     /// Buses on public transport lines (#85).
     transit: transit::Transit,
+    /// Pedestrians at crossings (ADR-0020), `None` without crossings or when disabled.
+    peds: Option<Box<pedestrians::Pedestrians>>,
 }
 
 /// Distance travelled and new speed after `dt` with constant acceleration, never reversing.
@@ -329,6 +342,7 @@ impl Simulation {
             }
         }
         let actuated = actuated::Controller::build(&net, |id| config.signal_control.actuated.includes(id));
+        let peds = pedestrians::Pedestrians::build(&net, &config, seed, demand.start_time)?;
         let segments = net.segment_count();
         let connectors = net.connectors.len();
         let mut sim = Self {
@@ -363,6 +377,7 @@ impl Simulation {
             lane_change_log: Vec::new(),
             entry_log: Vec::new(),
             transit: transit::Transit::default(),
+            peds,
             net,
         };
         sim.init_transit()?;
@@ -509,6 +524,9 @@ impl Simulation {
             ahead: [NONE; junction::CHAIN],
             stop_dist: f64::INFINITY,
             zone_hold: f64::INFINITY,
+            ped_hold: f64::INFINITY,
+            ped_cause: 0,
+            ped_stopped: false,
             wait: 0.0,
             stop_done: false,
             lc_timer: 0.0,
@@ -580,10 +598,12 @@ impl Simulation {
         self.sample_metrics();
         self.net.signals.states_into(self.time, &mut self.signal_state);
         self.update_actuated();
+        self.update_pedestrian_signals();
         self.spawn();
         self.spawn_transit();
         self.lane_change_phase();
         self.junction_phase();
+        self.pedestrian_phase();
         if self.config.perception.enabled {
             self.update_lapses();
         }
@@ -708,6 +728,9 @@ impl Simulation {
             Self::stop_at(&mut a, &idm, speed, v.zone_hold);
         }
         self.transit_stop(&mut a, &idm, i);
+        if v.ped_hold.is_finite() {
+            Self::stop_at(&mut a, &idm, speed, v.ped_hold);
+        }
         let mut dist = net.seg_length[v.seg as usize] - v.pos;
         if net.is_lane(v.seg) {
             // Vehicles that left this lane through another connector but still overlap it.
@@ -945,7 +968,7 @@ impl Simulation {
             if !net.is_lane(v.seg) {
                 f |= flags::IN_JUNCTION;
             }
-            if v.stop_dist.is_finite() || v.zone_hold.is_finite() {
+            if v.stop_dist.is_finite() || v.zone_hold.is_finite() || v.ped_hold.is_finite() {
                 f |= flags::YIELDING;
             }
             v.flags = f;
@@ -1005,6 +1028,7 @@ impl Simulation {
             } else {
                 0.0
             },
+            pedestrians: self.pedestrian_stats(),
         }
     }
 
@@ -1019,6 +1043,9 @@ impl Simulation {
         self.net.signals.states_into(self.time, &mut states);
         for c in &self.actuated {
             c.write_states(&mut states);
+        }
+        if let Some(p) = self.peds.as_deref() {
+            p.write_signal_states(&mut states);
         }
         states.into_iter().map(|s| s as u8).collect()
     }
@@ -1130,6 +1157,9 @@ impl Simulation {
         }
         h.f64(c.travel_time_sum);
         self.transit.hash(&mut h);
+        if let Some(p) = self.peds.as_deref() {
+            p.hash(&mut h);
+        }
         h.0
     }
 }

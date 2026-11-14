@@ -1,5 +1,6 @@
 import { setStartTime } from '../edits';
 import { formatClock, parseClock, type DemandModel } from '../model';
+import { pedestrianFactor, setPedestrianFactor } from '../pedestrians';
 import { autoEntries } from '../network';
 import { PROCESS_LABELS, type ProcessTotal } from '../totals';
 import { fmtVph } from './fields';
@@ -10,6 +11,8 @@ export interface OverviewTabProps {
   totals: ProcessTotal[];
   readOnly: boolean;
   onChange: (next: DemandModel) => void;
+  /** Pedestrian crossings of the network (ADR-0020); the pedestrian demand field shows when > 0. */
+  crossings?: number;
 }
 
 const duration = (s: number) => {
@@ -18,7 +21,7 @@ const duration = (s: number) => {
 };
 
 /** Start time, scenario window and generated volumes per process kind. */
-export function OverviewTab({ model, durationSeconds, totals, readOnly, onChange }: OverviewTabProps) {
+export function OverviewTab({ model, durationSeconds, totals, readOnly, onChange, crossings = 0 }: OverviewTabProps) {
   const start = model.startTimeOfDay;
   const valid = Number.isFinite(start);
   const sum = (k: 'peakVph' | 'meanVph') => totals.reduce((a, t) => a + t[k], 0);
@@ -90,6 +93,20 @@ export function OverviewTab({ model, durationSeconds, totals, readOnly, onChange
         />
         Road-class traffic at all boundary entries (through traffic)
       </label>
+      {crossings > 0 && (
+        <label className="demand-fields">
+          Pedestrian demand ({crossings} crossing{crossings === 1 ? '' : 's'})
+          <input
+            type="number"
+            min={0}
+            step={0.1}
+            value={pedestrianFactor(model)}
+            disabled={readOnly}
+            onChange={(e) => onChange(setPedestrianFactor(model, e.target.value === '' ? NaN : Number(e.target.value)))}
+          />
+          <span className="muted small">× the estimated pedestrians per crossing (0 = none)</span>
+        </label>
+      )}
       <p className="muted small">
         {model.zones.length} zone{model.zones.length === 1 ? '' : 's'} · {model.od.length} OD entr{model.od.length === 1 ? 'y' : 'ies'}
         {model.rest.autoZones === true ? ' · residential trip generation on' : ''}

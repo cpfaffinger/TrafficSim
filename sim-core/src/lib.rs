@@ -7,6 +7,7 @@
 pub mod batch;
 pub mod bench;
 pub mod config;
+pub mod crossings;
 pub mod demand;
 pub mod detmath;
 pub mod driver;

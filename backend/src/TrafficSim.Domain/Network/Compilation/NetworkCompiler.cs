@@ -95,6 +95,8 @@ public static class NetworkCompiler
             BuildConflicts();
             BuildSignalPlans();
             AssignEndSigns();
+            var nodes = _nodes.Values.Select(n => n.Node!).OrderBy(n => int.Parse(n.Id.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture)).ToList();
+            var crossings = CrossingRule.Build(data, nodes, _links, _connectors, _signals);
 
             var network = new RoadNetwork
             {
@@ -102,12 +104,13 @@ public static class NetworkCompiler
                 Area = area,
                 Polygon = polygon.IsRectangle ? null : polygon,
                 OsmTimestamp = data.DataTimestamp,
-                Nodes = _nodes.Values.Select(n => n.Node!).OrderBy(n => int.Parse(n.Id.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture)).ToList(),
+                Nodes = nodes,
                 Links = _links,
                 Connectors = _connectors,
                 Signals = _signals,
                 IgnoredSigns = _ignoredSigns,
                 Terrain = options.Terrain,
+                Crossings = crossings,
             };
             TransitRule.Apply(network, data);
             return network;
@@ -156,7 +159,7 @@ public static class NetworkCompiler
                 var structural = split.ToList();
                 for (var i = 1; i < ids.Count - 1; i++)
                 {
-                    if (split.Contains(i) || Tags.Get(data.Nodes[ids[i]].Tags, "highway") != "traffic_signals")
+                    if (split.Contains(i) || (Tags.Get(data.Nodes[ids[i]].Tags, "highway") != "traffic_signals" && !CrossingRule.IsSignalisedCrossing(data.Nodes[ids[i]].Tags)))
                     {
                         continue;
                     }
@@ -566,7 +569,7 @@ public static class NetworkCompiler
                 var ring = g.Pieces.Count(p => IsRoundabout(p));
                 var nodeSigns = SignRule.NodeSigns(tags);
                 var priorityRoad = g.Pieces.Any(p => SignRule.IsPriorityRoad(p.Way.Tags));
-                if ((highway == "traffic_signals" && !SignalsSuppressed(g)) || g.SignalNearby)
+                if (((highway == "traffic_signals" || (degree <= 2 && CrossingRule.IsSignalisedCrossing(tags))) && !SignalsSuppressed(g)) || g.SignalNearby)
                 {
                     node.Control = NodeControl.Signal;
                 }

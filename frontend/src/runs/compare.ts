@@ -1,7 +1,7 @@
 import { cellValue, type HeatmapMetric } from '../metrics/heatmapMetrics';
 import type { LaneCellsBlob, LaneRow } from '../metrics/laneCells';
 import type { Link, NetworkPackage } from '../network/types';
-import { asSummary, RUN_KPIS } from './runStats';
+import { asSummary, visibleKpis } from './runStats';
 
 /**
  * A/B comparison of two runs (#74): a cell-level diff when both runs share the lane-cell layout,
@@ -113,7 +113,7 @@ export interface KpiDelta {
 export function networkDeltas(summaryA: unknown, summaryB: unknown): KpiDelta[] {
   const sa = asSummary(summaryA);
   const sb = asSummary(summaryB);
-  return RUN_KPIS.map((k) => {
+  return visibleKpis([summaryA, summaryB]).map((k) => {
     const a = k.get(sa);
     const b = k.get(sb);
     const pct = a !== null && b !== null && a !== 0 ? ((b - a) / Math.abs(a)) * 100 : null;

@@ -196,4 +196,7 @@ public sealed class RoadNetwork
 
     /// <summary>Bus routes in the area that could not be mapped onto the links (dropped, never failing the import).</summary>
     public int DroppedTransitLines { get; set; }
+
+    /// <summary>Pedestrian crossings (ADR-0020).</summary>
+    public IReadOnlyList<Crossing> Crossings { get; init; } = [];
 }

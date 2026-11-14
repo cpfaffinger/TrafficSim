@@ -32,6 +32,8 @@ export interface SimStats {
   forcedEntries: number;
   meanTravelTime: number;
   meanSpeed: number;
+  /** Present when pedestrians run (ADR-0020). */
+  pedestrians?: { served: number; waiting: number; crossing: number; meanDelay: number };
   [key: string]: unknown;
 }
 
@@ -46,6 +48,8 @@ export interface NetworkFrame {
   /** One aspect per signal group (0 red, 1 amber, 2 green), order of `ready.signalGroupIds`. */
   signals: Uint8Array;
   stats: SimStats | null;
+  /** Pedestrians at crossings (`pedestrianSnapshot()`, 5 floats each, ADR-0020); absent without crossings. */
+  pedestrians?: Float32Array;
 }
 
 export type FromNetworkWorker =

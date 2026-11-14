@@ -147,6 +147,14 @@ impl NetworkSim {
         self.sim.snapshot()
     }
 
+    /// Packed pedestrians at crossings (ADR-0020), [`crate::sim::PEDESTRIAN_STRIDE`] floats each:
+    /// crossing index (package order), progress from the first kerb (0) to the second (1),
+    /// direction (+1 / -1), state (0 waiting, 1 walking, 2 waiting on the crossing), slot.
+    #[wasm_bindgen(js_name = pedestrianSnapshot)]
+    pub fn pedestrian_snapshot(&self) -> Vec<f32> {
+        self.sim.pedestrian_snapshot()
+    }
+
     /// Statistics as JSON (`spawned`, `arrived`, `active`, `waitingToEnter`, …).
     #[wasm_bindgen(js_name = statsJson)]
     pub fn stats_json(&self) -> String {

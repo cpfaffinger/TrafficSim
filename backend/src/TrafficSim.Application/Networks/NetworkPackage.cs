@@ -68,6 +68,24 @@ public sealed record PackageSignalGroup(string Id, IReadOnlyList<double[]> Green
 
 public sealed record PackageSignal(string Node, double Cycle, double Offset, IReadOnlyList<PackageSignalGroup> Groups);
 
+/// <summary>A directional link crossed by a crossing (ADR-0020).</summary>
+public sealed record PackageCrossingLink(string Link, double Position, double[] Span);
+
+/// <summary>A pedestrian crossing (ADR-0020); optional package key <c>crossings</c>.</summary>
+public sealed record PackageCrossing(
+    string Id,
+    long? OsmId,
+    string Kind,
+    string? Node,
+    string? SignalGroup,
+    string? SignalMode,
+    bool Implicit,
+    double Width,
+    double Depth,
+    double Demand,
+    IReadOnlyList<double[]> Geometry,
+    IReadOnlyList<PackageCrossingLink> Links);
+
 public sealed record PackageStats(int Nodes, int Links, int Lanes, int Connectors, int Signals, int IgnoredSigns = 0, int TransitLines = 0, int DroppedTransitLines = 0);
 
 public sealed record NetworkPackage(
@@ -84,7 +102,8 @@ public sealed record NetworkPackage(
     PackageStats Stats,
     IReadOnlyList<double[]>? Area = null,
     PackageTerrain? Terrain = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<PackageTransitLine>? TransitLines = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<PackageTransitLine>? TransitLines = null,
+    IReadOnlyList<PackageCrossing>? Crossings = null)
 {
     public const int CurrentFormatVersion = 1;
 

@@ -27,6 +27,9 @@ pub struct Package {
     /// Public transport lines (#85), optional.
     #[serde(default)]
     pub transit_lines: Vec<crate::transit::TransitLineDto>,
+    /// Pedestrian crossings (ADR-0020); absent (or null) in older packages.
+    #[serde(default)]
+    pub crossings: Option<Vec<Crossing>>,
 }
 
 impl Package {
@@ -260,6 +263,59 @@ pub struct SignalGroup {
     pub amber: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CrossingKind {
+    Zebra,
+    Signal,
+    Uncontrolled,
+    Unmarked,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CrossingSignalMode {
+    Parallel,
+    Request,
+    #[serde(other)]
+    Unknown,
+}
+
+/// A directional link crossed by a pedestrian crossing.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CrossingLink {
+    pub link: String,
+    pub position: f64,
+    pub span: [f64; 2],
+}
+
+/// A pedestrian crossing (ADR-0020).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Crossing {
+    pub id: String,
+    pub kind: CrossingKind,
+    #[serde(default)]
+    pub signal_group: Option<String>,
+    #[serde(default)]
+    pub signal_mode: Option<CrossingSignalMode>,
+    pub width: f64,
+    #[serde(default = "default_crossing_depth")]
+    pub depth: f64,
+    #[serde(default)]
+    pub demand: f64,
+    #[serde(default)]
+    pub geometry: Vec<Point>,
+    pub links: Vec<CrossingLink>,
+}
+
+fn default_crossing_depth() -> f64 {
+    3.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -328,5 +384,28 @@ mod tests {
         assert_eq!(p.connectors[0].turn, Turn::Unknown);
         assert!(p.connectors[0].signal_group.is_none());
         assert!(p.signals.is_empty() && p.nodes.is_empty());
+        assert!(p.crossings.is_none());
+    }
+
+    #[test]
+    fn parses_crossings() {
+        let json = r#"{"formatVersion": 1, "crossings": [
+            {"id": "x0", "osmId": 5, "kind": "signal", "node": "n1", "signalGroup": "n1:g0",
+             "signalMode": "request", "implicit": false, "width": 7, "depth": 4, "demand": 120,
+             "geometry": [[0, -3.5, 0], [0, 3.5, 0]],
+             "links": [{"link": "l0", "position": 100, "span": [0, 3.5]}]},
+            {"id": "x1", "kind": "teleporter", "width": 3, "links": [], "signalMode": "magic"}]}"#;
+        let p = Package::from_json(json).unwrap();
+        let x = p.crossings.unwrap();
+        assert_eq!(x[0].kind, CrossingKind::Signal);
+        assert_eq!(x[0].signal_mode, Some(CrossingSignalMode::Request));
+        assert_eq!(x[0].links[0].span, [0.0, 3.5]);
+        assert_eq!(
+            (x[1].kind, x[1].depth, x[1].demand),
+            (CrossingKind::Unknown, 3.0, 0.0)
+        );
+        assert_eq!(x[1].signal_mode, Some(CrossingSignalMode::Unknown));
+        let null = Package::from_json(r#"{"formatVersion": 1, "crossings": null}"#).unwrap();
+        assert!(null.crossings.is_none());
     }
 }

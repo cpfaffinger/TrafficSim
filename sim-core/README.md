@@ -51,6 +51,7 @@ sim.time;                       // simulated seconds
 sim.timeOfDay;                  // startTimeOfDay + time, wrapping at 24 h (s)
 sim.vehicleCount;
 const buf = sim.snapshot();     // Float32Array, sim.snapshotStride (= 9) floats per vehicle
+const peds = sim.pedestrianSnapshot(); // Float32Array, 5 floats per pedestrian (ADR-0020)
 JSON.parse(sim.statsJson());    // see "Statistics"
 sim.signalStates();             // Uint8Array, one per signal group: 0 red, 1 amber, 2 green
 JSON.parse(sim.signalGroupIdsJson()); // group ids in the same order
@@ -93,6 +94,18 @@ configuration.
 
 Vehicles appear in insertion order; the order changes when vehicles leave, so match by `vehicleId`
 when interpolating between frames.
+
+### Pedestrian snapshot (stride 5, `f32`, ADR-0020)
+
+| Offset | Field | Unit / encoding |
+|--------|-------|-----------------|
+| 0 | `crossing` | index into the package's `crossings[]` |
+| 1 | `progress` | 0 at the first kerb (`geometry[0]`), 1 at the second |
+| 2 | `direction` | +1 walking from the first kerb to the second, −1 back |
+| 3 | `state` | 0 waiting at the kerb, 1 walking, 2 waiting on the crossing (centre line) |
+| 4 | `slot` | small integer to spread a group (queue position while waiting) |
+
+Empty without crossings or with `pedestrians.enabled = false`.
 
 ## Configuration (`configJson`)
 
@@ -154,6 +167,16 @@ catch typos).
   },
   "merging": { "cooperation": true, "cooperationDistance": 200, "maxCooperativeDeceleration": 2.0,
                "courtesyBias": 0.5 },
+  // ---- Pedestrians at the package's crossings (ADR-0020, #86)
+  "pedestrians": {
+    "enabled": true,
+    "demandFactor": 1.0,              // × every crossing's demand (scenario level)
+    "crossings": { "x3": 250 },       // pedestrians/h per crossing (default: package `demand`; unknown ids ignored)
+    "curve": null,                    // time-of-day curve for all crossings (null = constant)
+    "walkSpeed": 1.3, "walkSpeedSpread": 0.15, // m/s, uniform ± spread
+    "gapMargin": 2.0,                 // s, uncontrolled / unmarked: gap = span time + margin
+    "minVehicleGreen": 20, "walkTime": 7 // s, push-button signals
+  },
 
   // ---- Routing (#55) and metrics (#57, #58, #62)
   "reRouting": { "enabled": true, "interval": 60, "smoothing": 0.3, "threshold": 0.1, "enRoute": true },
@@ -265,7 +288,8 @@ because the gap was not yet safe), `rerouted` (missed mandatory lane change), `s
 at a dead end), `unroutable` (no destination reachable), `laneChanges`, `laneChangeAborts`
 (lane changes reversed in their first half, #108), `forcedEntries` (deadlock
 breaker), `lapses` (distraction lapses), `commuterReroutes` (en-route route changes of familiar
-drivers), `meanTravelTime` (arrived vehicles, s), `meanSpeed` (active vehicles, m/s).
+drivers), `meanTravelTime` (arrived vehicles, s), `meanSpeed` (active vehicles, m/s),
+`pedestrians` (only with pedestrians: `{served, waiting, crossing, meanDelay}`).
 
 ## Metrics (#57, #58, #62)
 
@@ -321,7 +345,11 @@ opaque with `bucketFormat = "lane-cells-v1"`; `metrics::cells::LaneCells::decode
             "queueMax": 96, "queueMean": 31,  // m, sampled every second from the link end
             "stops": 140, "travelTime": 21.2, "freeFlowTime": 10.1}],
  "junctions": [/* as junctionsJson */],
- "events": {"tailbacks": 3, "stopAndGoWaves": 1}}
+ "events": {"tailbacks": 3, "stopAndGoWaves": 1},
+ // only with pedestrians (ADR-0020):
+ "pedestrians": {"arrived", "served", "waiting", "crossing", "meanDelay" /* s per served pedestrian */,
+                 "vehicleStops", "vehicleDelayHours" /* caused by pedestrians */, "signalPhases",
+                 "crossings": [{"id", "kind", "arrived", "served", "meanDelay", "maxWaiting"}]}}
 ```
 
 ### Junctions (`junctionsJson`, #58)
@@ -365,6 +393,27 @@ phase's detectors cover the last `detectorLength` m of the lanes feeding its con
 lasts ≥ `minGreen`; when another phase has a call it ends on gap-out (no detection for
 `extension` s) or max-out (`maxGreen`); without conflicting calls it rests in green. Then the
 groups' amber, `allRed`, and the next phase in plan order that has a call.
+
+## Pedestrians (ADR-0020, #86)
+
+Crossing demand, not agents: per crossing a Poisson process (own seeded stream, rate = package
+`demand` or `pedestrians.crossings[id]`, × `demandFactor` × `curve`) puts pedestrians at either
+kerb; everybody waiting at a kerb starts together. The crossing is split into the lateral spans of
+the crossed links; before entering a span a pedestrian checks it:
+
+| Crossing | Pedestrians enter a span when | Vehicles hold before the crossing (if they can stop) |
+|----------|-------------------------------|------------------------------------------------------|
+| `zebra` (and `signal` without group) | no vehicle on the crossing, every approaching vehicle can stop with ≤ 1.2 × its comfortable deceleration | for pedestrians on their span (≤ emergency factor × b) and waiting to step onto it (≤ 1.5 b) |
+| `uncontrolled`, `unmarked` | the next vehicle needs ≥ span width / walking speed + `gapMargin`; may wait on the centre line | for pedestrians on their span |
+| `signal`, `parallel` | walk: group green with ≥ half the crossing time left (fixed time); then as zebra | for pedestrians on their span (turning vehicles); before the crosswalk, not on it, when holding at the line |
+| `signal`, `request` | walk aspect of the push-button controller | as above |
+
+Push-button controllers replace their group's fixed-time plan: green rests until a pedestrian
+waits and `minVehicleGreen` has passed, then amber (group amber), `signalControl.allRed`,
+`walkTime`, and a clearance of width / (walkSpeed × (1 − spread)) before green. Pedestrian delay is
+the time from arrival to the far kerb minus the walking time. Packages without crossings (or
+`enabled: false`) run bit-identically; the pedestrian state is part of the state checksum only when
+pedestrians run.
 
 ## Model
 
@@ -529,3 +578,5 @@ message on stderr for bad arguments, files or configurations.
 - Wave and tailback detection works per lane; a wave crossing a link boundary is reported as two
   events.
 - Junction delay is measured over the whole approach link, not a fixed distance.
+- Pedestrians exist only at crossings (no sidewalks, no jaywalking, no pedestrian–pedestrian
+  interaction); vehicles yield per directional link (all lanes of a direction), not per lane.

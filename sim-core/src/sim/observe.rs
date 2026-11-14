@@ -143,6 +143,9 @@ pub struct Summary {
     pub links: Vec<LinkMetrics>,
     pub junctions: Vec<JunctionMetrics>,
     pub events: EventCounts,
+    /// Pedestrian KPIs (ADR-0020); absent without pedestrians.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pedestrians: Option<super::PedestrianSummary>,
 }
 
 #[derive(Serialize)]
@@ -432,6 +435,9 @@ impl Simulation {
         if let Some(m) = self.metrics.as_deref_mut() {
             m.reset_totals(t);
         }
+        if let Some(p) = self.peds.as_deref_mut() {
+            p.reset_totals();
+        }
     }
 
     /// Finished lane-cell buckets in the run.
@@ -623,6 +629,7 @@ impl Simulation {
             links,
             junctions: self.junction_metrics(),
             events,
+            pedestrians: self.pedestrian_summary(),
         }
     }
 

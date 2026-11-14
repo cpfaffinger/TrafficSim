@@ -119,6 +119,8 @@ pub struct Network {
     pub lanes: Vec<LaneInfo>,
     pub connectors: Vec<ConnectorInfo>,
     pub signals: SignalPlans,
+    /// Pedestrian crossings (ADR-0020).
+    pub crossings: crate::crossings::Crossings,
     /// Per segment (lanes, then connectors): length (m).
     pub seg_length: Vec<f64>,
     /// Per segment: speed limit (m/s). Connectors get a curve speed derived from their geometry.
@@ -202,6 +204,7 @@ impl Network {
             lanes: Vec::new(),
             connectors: Vec::with_capacity(p.connectors.len()),
             signals: SignalPlans::default(),
+            crossings: crate::crossings::Crossings::default(),
             seg_length: Vec::new(),
             seg_speed_limit: Vec::new(),
             geom_range: Vec::new(),
@@ -494,6 +497,8 @@ impl Network {
             net.lane_in.extend_from_slice(&inc);
             net.lanes[lane].in_range = (start, net.lane_in.len() as u32);
         }
+        net.crossings =
+            crate::crossings::Crossings::build(p.crossings.as_deref().unwrap_or(&[]), &net, &group_index)?;
         Ok(net)
     }
 

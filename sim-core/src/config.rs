@@ -227,6 +227,72 @@ impl Default for SignalControlConfig {
     }
 }
 
+/// Pedestrians at crossings (ADR-0020, #86). Without crossings in the package nothing changes.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PedestrianConfig {
+    /// Simulate pedestrians at the package's crossings (false = vehicles ignore crossings).
+    pub enabled: bool,
+    /// Multiplier on every crossing's demand (scenario level).
+    pub demand_factor: f64,
+    /// Pedestrians per hour per crossing id (both directions), replacing the package estimate.
+    pub crossings: BTreeMap<String, f64>,
+    /// Time-of-day curve applied to all crossings (none = constant demand).
+    pub curve: Option<String>,
+    /// Mean walking speed (m/s).
+    pub walk_speed: f64,
+    /// Relative spread of individual walking speeds (uniform, 0 to 0.5).
+    pub walk_speed_spread: f64,
+    /// Uncontrolled / unmarked crossings: a pedestrian enters a lane span when the next vehicle
+    /// reaches the crossing no earlier than the span's crossing time plus this margin (s).
+    pub gap_margin: f64,
+    /// Push-button signals: shortest vehicle green between two pedestrian phases (s).
+    pub min_vehicle_green: f64,
+    /// Push-button signals: pedestrian walk aspect (s); a clearance time for the crossing width
+    /// follows.
+    pub walk_time: f64,
+}
+
+impl Default for PedestrianConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            demand_factor: 1.0,
+            crossings: BTreeMap::new(),
+            curve: None,
+            walk_speed: 1.3,
+            walk_speed_spread: 0.15,
+            gap_margin: 2.0,
+            min_vehicle_green: 20.0,
+            walk_time: 7.0,
+        }
+    }
+}
+
+impl PedestrianConfig {
+    fn validate(&self, curves: &BTreeMap<String, TimeProfile>) -> Result<(), String> {
+        let ok = |v: f64| v.is_finite() && v >= 0.0;
+        if !ok(self.demand_factor)
+            || !self.crossings.values().all(|&v| ok(v))
+            || !(self.walk_speed.is_finite() && self.walk_speed >= 0.3 && self.walk_speed <= 3.0)
+            || !(0.0..=0.5).contains(&self.walk_speed_spread)
+            || ![self.gap_margin, self.min_vehicle_green, self.walk_time]
+                .iter()
+                .all(|&v| ok(v))
+        {
+            return Err(
+                "pedestrians need non-negative demand and times, walkSpeed in [0.3, 3] m/s \
+                 and walkSpeedSpread in [0, 0.5]"
+                    .into(),
+            );
+        }
+        if let Some(c) = &self.curve {
+            resolve_profile(curves, c)?;
+        }
+        Ok(())
+    }
+}
+
 /// Metrics (#57, #58, #62).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -324,6 +390,7 @@ pub struct SimConfig {
     pub metrics: MetricsConfig,
     pub signal_control: SignalControlConfig,
     pub merging: MergingConfig,
+    pub pedestrians: PedestrianConfig,
 }
 
 impl Default for SimConfig {
@@ -357,6 +424,7 @@ impl Default for SimConfig {
             metrics: MetricsConfig::default(),
             signal_control: SignalControlConfig::default(),
             merging: MergingConfig::default(),
+            pedestrians: PedestrianConfig::default(),
         }
     }
 }
@@ -464,6 +532,7 @@ impl SimConfig {
         {
             return Err("signalControl needs non-negative times with 0 < minGreen ≤ maxGreen".into());
         }
+        self.pedestrians.validate(&self.curves)?;
         Ok(())
     }
 
@@ -612,10 +681,35 @@ mod tests {
                 r#"{"signalControl": {"actuated": 3}}"#,
                 "invalid simulation config",
             ),
+            (r#"{"pedestrians": {"demandFactor": -1}}"#, "pedestrians"),
+            (r#"{"pedestrians": {"walkSpeed": 0.1}}"#, "pedestrians"),
+            (r#"{"pedestrians": {"walkSpeedSpread": 0.8}}"#, "pedestrians"),
+            (r#"{"pedestrians": {"crossings": {"x1": -5}}}"#, "pedestrians"),
+            (r#"{"pedestrians": {"minVehicleGreen": -5}}"#, "pedestrians"),
+            (r#"{"pedestrians": {"curve": "rush"}}"#, "unknown curve"),
         ] {
             let e = SimConfig::from_json(json).unwrap_err();
             assert!(e.contains(needle), "{json}: {e}");
         }
+    }
+
+    #[test]
+    fn pedestrian_config_defaults_and_overrides() {
+        let d = PedestrianConfig::default();
+        assert!(d.enabled && d.demand_factor == 1.0 && d.walk_speed == 1.3);
+        let c = SimConfig::from_json(
+            r#"{"pedestrians": {"enabled": false, "demandFactor": 0.5, "crossings": {"x1": 300},
+                "curve": "weekday", "walkSpeed": 1.1}}"#,
+        )
+        .unwrap();
+        let p = &c.pedestrians;
+        assert!(!p.enabled);
+        assert_eq!(
+            (p.demand_factor, p.walk_speed, p.crossings["x1"]),
+            (0.5, 1.1, 300.0)
+        );
+        assert_eq!(p.curve.as_deref(), Some("weekday"));
+        assert_eq!(p.gap_margin, d.gap_margin);
     }
 
     #[test]

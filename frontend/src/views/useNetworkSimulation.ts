@@ -7,12 +7,19 @@ import { NetworkSimClient } from '../sim/networkSimClient';
 import { SnapshotBuffer } from '../sim/snapshotBuffer';
 
 /** Glue between the network simulation worker and the scene (#47). */
-export function useNetworkSimulation(pkg: NetworkPackage | null, settings: SimulationSettings, sceneRef: RefObject<NetworkScene | null>) {
+export function useNetworkSimulation(
+  pkg: NetworkPackage | null,
+  settings: SimulationSettings,
+  sceneRef: RefObject<NetworkScene | null>,
+  scenarioDemand?: unknown,
+) {
   const clientRef = useRef<NetworkSimClient | null>(null);
   const [ready, setReady] = useState(false);
   const [running, setRunning] = useState(false);
   const [speed, setSpeedState] = useState(5);
   const [time, setTime] = useState(0);
+  const [timeOfDay, setTimeOfDay] = useState<number | null>(null);
+  const demandKey = scenarioDemand === undefined ? '' : JSON.stringify(scenarioDemand);
   const [vehicles, setVehicles] = useState(0);
   const [stats, setStats] = useState<SimStats | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +50,7 @@ export function useNetworkSimulation(pkg: NetworkPackage | null, settings: Simul
           const snapshot = message.snapshot ?? shared?.read();
           if (snapshot) sceneRef.current?.updateSimulation(snapshot, message.signals);
           setTime(message.time);
+          setTimeOfDay(message.timeOfDay);
           setVehicles(message.vehicles);
           if (message.stats) setStats(message.stats);
           break;
@@ -56,7 +64,10 @@ export function useNetworkSimulation(pkg: NetworkPackage | null, settings: Simul
     client.setSpeed(speedRef.current);
     client.init({
       packageJson: JSON.stringify(pkg),
-      configJson: buildConfig({ vehiclesPerHour: settings.vehiclesPerHour, truckShare: settings.truckShare, heterogeneity: 0.1 }),
+      configJson: buildConfig(
+        { demandScale: settings.demandScale, truckShare: settings.truckShare, heterogeneity: 0.1 },
+        demandKey ? (JSON.parse(demandKey) as unknown) : undefined,
+      ),
       seed: settings.seed,
     });
     return () => {
@@ -65,7 +76,7 @@ export function useNetworkSimulation(pkg: NetworkPackage | null, settings: Simul
       clientRef.current = null;
     };
     // Restart on a new package, new settings or an explicit restart.
-  }, [pkg, settings.vehiclesPerHour, settings.truckShare, settings.seed, generation, sceneRef]);
+  }, [pkg, settings.demandScale, settings.truckShare, settings.seed, generation, sceneRef, demandKey]);
 
   const play = useCallback(() => {
     clientRef.current?.play();
@@ -81,5 +92,5 @@ export function useNetworkSimulation(pkg: NetworkPackage | null, settings: Simul
     clientRef.current?.setSpeed(factor);
   }, []);
 
-  return { ready, running, speed, time, vehicles, stats, error, play, pause, restart, setSpeed };
+  return { ready, running, speed, time, timeOfDay, vehicles, stats, error, play, pause, restart, setSpeed };
 }

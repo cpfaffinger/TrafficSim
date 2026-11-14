@@ -36,6 +36,8 @@ export interface SimStats {
 export interface NetworkFrame {
   type: 'frame';
   time: number;
+  /** Simulated time of day in seconds (start time of the scenario + elapsed). */
+  timeOfDay: number;
   /** Packed vehicles, NETWORK_SNAPSHOT_STRIDE floats each; null when shared memory is used (#79). */
   snapshot: Float32Array | null;
   vehicles: number;
@@ -111,14 +113,20 @@ export function vehicleColor(v: Pick<VehicleView, 'speed' | 'flags'>): [number, 
   return [0.2, 0.62, 0.86];
 }
 
-/** Default config built from UI settings. */
-export function buildConfig(options: { vehiclesPerHour: number; truckShare: number; heterogeneity: number }): string {
-  const truck = clamp(options.truckShare, 0, 0.5);
-  return JSON.stringify({
-    defaultDemand: clamp(Math.round(options.vehiclesPerHour), 0, 5000),
-    vehicleMix: { car: Math.max(0, 0.9 - truck), van: 0.07, truck, motorcycle: 0.03 },
-    heterogeneity: clamp(options.heterogeneity, 0, 0.5),
-  });
+/**
+ * Simulation config from UI settings and an optional scenario demand (#115). Without a scenario the
+ * sim core's road-class profiles drive the boundary demand. `demandScale` is resolved by the worker.
+ */
+export function buildConfig(options: { demandScale: number; truckShare: number; heterogeneity: number }, scenarioDemand?: unknown): string {
+  const base: Record<string, unknown> =
+    scenarioDemand && typeof scenarioDemand === 'object' && !Array.isArray(scenarioDemand) ? structuredClone(scenarioDemand as Record<string, unknown>) : {};
+  if (!('vehicleMix' in base)) {
+    const truck = clamp(options.truckShare, 0, 0.5);
+    base.vehicleMix = { car: Math.max(0, 0.9 - truck), van: 0.07, truck, motorcycle: 0.03 };
+    base.heterogeneity = clamp(options.heterogeneity, 0, 0.5);
+  }
+  base.demandScale = clamp(options.demandScale, 0, 500) / 100;
+  return JSON.stringify(base);
 }
 
 /** Entry nodes of a package: boundary nodes with at least one outgoing link. */

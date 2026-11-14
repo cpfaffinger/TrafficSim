@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 // Network simulation worker (#47): owns a sim-core NetworkSim and advances it in fixed steps.
-import init, { NetworkSim } from '../generated/sim-core/trafficsim_sim_core.js';
+import init, { builtinRoadClassProfilesJson, NetworkSim } from '../generated/sim-core/trafficsim_sim_core.js';
+import { scaleDemand } from './demandScale';
 import { stepsFor } from './protocol';
 import { NETWORK_SNAPSHOT_STRIDE, type FromNetworkWorker, type SimStats, type ToNetworkWorker } from './networkProtocol';
 import { sharedMemoryAvailable, SnapshotBuffer } from './snapshotBuffer';
@@ -37,10 +38,10 @@ function postFrame(forceStats = false): void {
       post({ type: 'buffer', buffer: shared.buffer as SharedArrayBuffer });
     }
     shared.publish(snapshot);
-    post({ type: 'frame', time: sim.time, snapshot: null, vehicles, signals, stats }, [signals.buffer]);
+    post({ type: 'frame', time: sim.time, timeOfDay: sim.timeOfDay, snapshot: null, vehicles, signals, stats }, [signals.buffer]);
     return;
   }
-  post({ type: 'frame', time: sim.time, snapshot, vehicles, signals, stats }, [snapshot.buffer, signals.buffer]);
+  post({ type: 'frame', time: sim.time, timeOfDay: sim.timeOfDay, snapshot, vehicles, signals, stats }, [snapshot.buffer, signals.buffer]);
 }
 
 function tick(): void {
@@ -68,7 +69,11 @@ self.onmessage = async (event: MessageEvent<ToNetworkWorker>) => {
         sim?.free();
         sim = null;
         const { packageJson, configJson, seed } = message.settings;
-        sim = new NetworkSim(packageJson, configJson, BigInt(Math.max(0, Math.floor(seed))));
+        const config = JSON.parse(configJson || '{}') as Record<string, unknown>;
+        const scale = typeof config.demandScale === 'number' ? config.demandScale : 1;
+        delete config.demandScale;
+        const resolved = scaleDemand(config, scale, JSON.parse(builtinRoadClassProfilesJson()) as Record<string, { volumePerLane: number }>);
+        sim = new NetworkSim(packageJson, JSON.stringify(resolved), BigInt(Math.max(0, Math.floor(seed))));
         carry = 0;
         const groups = JSON.parse(sim.signalGroupIdsJson()) as string[];
         const pkg = JSON.parse(packageJson) as { nodes: { id: string; control: string }[]; links: { from: string }[] };

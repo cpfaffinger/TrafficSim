@@ -4,6 +4,7 @@ import { ImportPanel, type ViewerApi } from '../components/ImportPanel';
 import { InspectorPanel } from '../components/InspectorPanel';
 import { NetworkSummaryPanel } from '../components/NetworkSummaryPanel';
 import { SimulationPanel, type SimulationSettings } from '../components/SimulationPanel';
+import { DataBasisPanel, type ActivityAnalysis } from '../components/DataBasisPanel';
 import { ViewToolbar } from '../components/ViewToolbar';
 import { DrawRoadPanel } from '../editor/components/DrawRoadPanel';
 import { EditorPanel } from '../editor/components/EditorPanel';
@@ -42,8 +43,8 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
   const [geocoderAttribution, setGeocoderAttribution] = useState<string | null>(null);
   const [showTunnels, setShowTunnels] = useState(true);
   const [showBasemap, setShowBasemap] = useState(true);
-  const [simSettings, setSimSettings] = useState<SimulationSettings>({ vehiclesPerHour: 300, truckShare: 0.08, seed: 1 });
-  const sim = useNetworkSimulation(pkg, simSettings, sceneRef);
+  const [simSettings, setSimSettings] = useState<SimulationSettings>({ demandScale: 100, truckShare: 0.08, seed: 1 });
+  const [analysis, setAnalysis] = useState<ActivityAnalysis | null>(null);
   const readOnly = shareToken !== null;
   const scenarios = useMemo(() => scenarioClient ?? new ScenarioClient(), [scenarioClient]);
 
@@ -87,6 +88,21 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
   }, []);
 
   const editor = useNetworkEditor({ sceneRef, index, client: scenarios, enabled: !readOnly && index !== null, showPackage });
+  const openScenario = editor.session.scenario;
+  const sim = useNetworkSimulation(pkg, simSettings, sceneRef, openScenario?.demand ?? undefined);
+
+  // Data basis of the generated scenarios (#115).
+  const baselineForAnalysis = pkg?.baselineId ?? null;
+  useEffect(() => {
+    setAnalysis(null);
+    if (!baselineForAnalysis || !api.getNetwork) return;
+    const controller = new AbortController();
+    api
+      .getNetwork(baselineForAnalysis, controller.signal)
+      .then((n) => setAnalysis((n.analysis as ActivityAnalysis | undefined) ?? null))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [api, baselineForAnalysis]);
   const { startBaseline } = editor.session;
 
   const onPackage = useCallback(
@@ -135,6 +151,7 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
           />
         )}
         {pkg && <NetworkSummaryPanel pkg={pkg} />}
+        {pkg && analysis && <DataBasisPanel analysis={analysis} />}
         {pkg && (
           <SimulationPanel
             running={sim.running}
@@ -143,6 +160,8 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
             settings={simSettings}
             stats={sim.stats}
             time={sim.time}
+            timeOfDay={sim.timeOfDay}
+            scenarioName={openScenario?.name ?? null}
             vehicles={sim.vehicles}
             error={sim.error}
             onPlay={sim.play}

@@ -20,6 +20,7 @@ export interface ViewerApi {
   listNetworks(limit: number, signal?: AbortSignal): Promise<NetworkSummary[]>;
   renameNetwork?(id: string, name: string, signal?: AbortSignal): Promise<unknown>;
   deleteNetwork?(id: string, signal?: AbortSignal): Promise<void>;
+  getNetwork?(id: string, signal?: AbortSignal): Promise<NetworkSummary & { analysis?: unknown }>;
 }
 
 export interface ImportPanelProps {

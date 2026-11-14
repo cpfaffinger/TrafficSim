@@ -1,7 +1,8 @@
 import type { SimStats } from '../sim/networkProtocol';
 
 export interface SimulationSettings {
-  vehiclesPerHour: number;
+  /** Demand level in percent of the scenario / road-class profiles (#115). */
+  demandScale: number;
   truckShare: number;
   seed: number;
 }
@@ -13,6 +14,10 @@ export interface SimulationPanelProps {
   settings: SimulationSettings;
   stats: SimStats | null;
   time: number;
+  /** Time of day in seconds, when known. */
+  timeOfDay?: number | null;
+  /** Name of the scenario whose demand is simulated, if any. */
+  scenarioName?: string | null;
   vehicles: number;
   error: string | null;
   onPlay: () => void;
@@ -64,14 +69,14 @@ export function SimulationPanel(props: SimulationPanelProps) {
       </div>
       <div className="sim-settings">
         <label>
-          Demand per entry (veh/h)
+          Demand level (%)
           <input
             type="number"
             min={0}
-            max={5000}
-            step={50}
-            value={settings.vehiclesPerHour}
-            onChange={(e) => props.onSettings({ ...settings, vehiclesPerHour: Number(e.target.value) })}
+            max={500}
+            step={10}
+            value={settings.demandScale}
+            onChange={(e) => props.onSettings({ ...settings, demandScale: Number(e.target.value) })}
           />
         </label>
         <label>
@@ -89,10 +94,19 @@ export function SimulationPanel(props: SimulationPanelProps) {
           <input type="number" min={0} value={settings.seed} onChange={(e) => props.onSettings({ ...settings, seed: Number(e.target.value) })} />
         </label>
       </div>
+      <p className="muted sim-demand-source">
+        {props.scenarioName ? `Demand: scenario “${props.scenarioName}”` : 'Demand: road-class profiles (open a scenario for full demand)'}
+      </p>
       {props.error && <p className="error">{props.error}</p>}
       <dl className="stats">
         <dt>Time</dt>
         <dd>{formatClock(props.time)}</dd>
+        {props.timeOfDay !== undefined && props.timeOfDay !== null && (
+          <>
+            <dt>Time of day</dt>
+            <dd>{formatClock(props.timeOfDay % 86400)}</dd>
+          </>
+        )}
         <dt>Vehicles</dt>
         <dd>{props.vehicles}</dd>
         {stats && (

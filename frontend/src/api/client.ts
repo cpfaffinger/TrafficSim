@@ -23,7 +23,7 @@ export interface GeocodeResponse {
 
 export type BackendStatus = 'ok' | 'degraded' | 'down';
 
-export type ImportStatus = 'queued' | 'fetching' | 'compiling' | 'storing' | 'completed' | 'failed';
+export type ImportStatus = 'queued' | 'fetching' | 'compiling' | 'storing' | 'generating' | 'completed' | 'failed';
 
 export interface ImportJob {
   jobId: string | null;
@@ -91,6 +91,11 @@ export class ApiClient {
   /** Raw network package JSON; validate with `parseNetworkPackage`. */
   async getPackage(baselineId: string, signal?: AbortSignal): Promise<unknown> {
     return this.getJson<unknown>(`/api/v1/networks/${encodeURIComponent(baselineId)}/package`, signal);
+  }
+
+  /** One import with its scenario data basis (#115). */
+  async getNetwork(id: string, signal?: AbortSignal): Promise<NetworkSummary & { analysis?: unknown }> {
+    return this.getJson(`/api/v1/networks/${encodeURIComponent(id)}`, signal);
   }
 
   /** Renames an import (#114). */

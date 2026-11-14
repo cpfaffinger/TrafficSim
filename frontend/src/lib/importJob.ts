@@ -74,6 +74,7 @@ const PHASES: Record<ImportPhase, { label: string; fraction: number }> = {
   fetching: { label: 'Fetching OpenStreetMap data…', fraction: 0.25 },
   compiling: { label: 'Compiling the lane graph…', fraction: 0.6 },
   storing: { label: 'Storing the network…', fraction: 0.8 },
+  generating: { label: 'Analysing buildings and generating scenarios…', fraction: 0.85 },
   loading: { label: 'Loading the network package…', fraction: 0.9 },
   completed: { label: 'Import complete', fraction: 1 },
   failed: { label: 'Import failed', fraction: 1 },

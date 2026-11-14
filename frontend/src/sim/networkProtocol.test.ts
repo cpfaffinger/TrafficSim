@@ -29,13 +29,18 @@ describe('network snapshot decoding', () => {
 });
 
 describe('config and entries', () => {
-  it('builds a clamped config', () => {
-    const config = JSON.parse(buildConfig({ vehiclesPerHour: 9999, truckShare: 0.9, heterogeneity: -1 }));
-    expect(config.defaultDemand).toBe(5000);
+  it('builds a clamped config, with or without scenario demand', () => {
+    const config = JSON.parse(buildConfig({ demandScale: 900, truckShare: 0.9, heterogeneity: -1 }));
+    expect(config.demandScale).toBe(5);
+    expect(config.defaultDemand).toBeUndefined();
     expect(config.vehicleMix.truck).toBe(0.5);
     expect(config.vehicleMix.car).toBe(0.4);
     expect(config.heterogeneity).toBe(0);
-    expect(JSON.parse(buildConfig({ vehiclesPerHour: Number.NaN, truckShare: 0.1, heterogeneity: 0.1 })).defaultDemand).toBe(0);
+    expect(JSON.parse(buildConfig({ demandScale: Number.NaN, truckShare: 0.1, heterogeneity: 0.1 })).demandScale).toBe(0);
+    const scenario = { startTimeOfDay: 23400, od: [], vehicleMix: { car: 1 } };
+    const withScenario = JSON.parse(buildConfig({ demandScale: 130, truckShare: 0.2, heterogeneity: 0.1 }, scenario));
+    expect(withScenario).toEqual({ startTimeOfDay: 23400, od: [], vehicleMix: { car: 1 }, demandScale: 1.3 });
+    expect(JSON.parse(buildConfig({ demandScale: 100, truckShare: 0, heterogeneity: 0 }, [1, 2])).vehicleMix).toBeDefined();
   });
 
   it('finds boundary entry nodes', () => {

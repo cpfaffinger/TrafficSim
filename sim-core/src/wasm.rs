@@ -6,9 +6,13 @@
 use wasm_bindgen::prelude::*;
 
 use crate::ring::{RingRoad, RingRoadConfig};
+use crate::sim::Simulation;
 
 /// Floats per vehicle in [`RingRoadSim::snapshot`]: position (m), speed (m/s).
 pub const SNAPSHOT_STRIDE: usize = 2;
+
+/// Floats per vehicle in [`NetworkSim::snapshot`].
+pub const NETWORK_SNAPSHOT_STRIDE: usize = crate::sim::SNAPSHOT_STRIDE;
 
 #[wasm_bindgen]
 pub struct RingRoadSim {
@@ -92,9 +96,143 @@ impl RingRoadSim {
     }
 }
 
+/// Simulation on an imported road network (network package v1). See `sim-core/README.md` for
+/// the configuration keys, the snapshot layout and the signal state encoding.
+#[wasm_bindgen]
+pub struct NetworkSim {
+    sim: Simulation,
+}
+
+#[wasm_bindgen]
+impl NetworkSim {
+    /// Parses the network package and the configuration (`""` or `"{}"` for defaults).
+    /// `seed` is a JavaScript `BigInt`.
+    #[wasm_bindgen(constructor)]
+    pub fn new(package_json: &str, config_json: &str, seed: u64) -> Result<NetworkSim, JsError> {
+        Simulation::from_json(package_json, config_json, seed)
+            .map(|sim| Self { sim })
+            .map_err(|e| JsError::new(&e))
+    }
+
+    /// Advances the simulation by `steps` fixed time steps.
+    pub fn step(&mut self, steps: u32) {
+        self.sim.run(steps as usize);
+    }
+
+    /// Simulated time in seconds.
+    #[wasm_bindgen(getter)]
+    pub fn time(&self) -> f64 {
+        self.sim.time()
+    }
+
+    #[wasm_bindgen(getter, js_name = timeStep)]
+    pub fn time_step(&self) -> f64 {
+        self.sim.time_step()
+    }
+
+    #[wasm_bindgen(getter, js_name = vehicleCount)]
+    pub fn vehicle_count(&self) -> u32 {
+        self.sim.vehicle_count() as u32
+    }
+
+    /// Floats per vehicle in [`Self::snapshot`].
+    #[wasm_bindgen(getter, js_name = snapshotStride)]
+    pub fn snapshot_stride(&self) -> u32 {
+        NETWORK_SNAPSHOT_STRIDE as u32
+    }
+
+    /// `Float32Array` with [`NETWORK_SNAPSHOT_STRIDE`] floats per vehicle:
+    /// `x, y, z, heading, speed, length, classId, flags, vehicleId`.
+    pub fn snapshot(&self) -> Vec<f32> {
+        self.sim.snapshot()
+    }
+
+    /// Statistics as JSON (`spawned`, `arrived`, `active`, `waitingToEnter`, …).
+    #[wasm_bindgen(js_name = statsJson)]
+    pub fn stats_json(&self) -> String {
+        self.sim.stats_json()
+    }
+
+    /// `Uint8Array`, one entry per signal group (order of [`Self::signal_group_ids_json`]):
+    /// 0 = red, 1 = amber, 2 = green.
+    #[wasm_bindgen(js_name = signalStates)]
+    pub fn signal_states(&self) -> Vec<u8> {
+        self.sim.signal_states()
+    }
+
+    /// JSON array of signal group ids in package order (controllers, then groups).
+    #[wasm_bindgen(js_name = signalGroupIdsJson)]
+    pub fn signal_group_ids_json(&self) -> String {
+        serde_json::to_string(&self.sim.signal_group_ids()).unwrap_or_default()
+    }
+
+    /// Sets the arrival rate of an entry (boundary) node in vehicles per hour.
+    #[wasm_bindgen(js_name = setDemand)]
+    pub fn set_demand(&mut self, node_id: &str, vehicles_per_hour: f64) -> Result<(), JsError> {
+        self.sim
+            .set_demand(node_id, vehicles_per_hour)
+            .map_err(|e| JsError::new(&e))
+    }
+
+    /// Current arrival rate of an entry node (vehicles per hour), `undefined` if unknown.
+    pub fn demand(&self, node_id: &str) -> Option<f64> {
+        self.sim.demand(node_id)
+    }
+
+    /// Overrides the routing travel time of a link (seconds) for vehicles generated from now on.
+    #[wasm_bindgen(js_name = setLinkTravelTime)]
+    pub fn set_link_travel_time(&mut self, link_id: &str, seconds: f64) -> Result<(), JsError> {
+        self.sim
+            .set_link_travel_time(link_id, seconds)
+            .map_err(|e| JsError::new(&e))
+    }
+
+    /// Hex checksum of the complete simulation state (determinism checks).
+    #[wasm_bindgen(js_name = stateChecksum)]
+    pub fn state_checksum(&self) -> String {
+        format!("{:016x}", self.sim.state_checksum())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testnet::FIXTURE;
+
+    #[test]
+    fn network_sim_exposes_the_simulation() {
+        let mut sim = NetworkSim::new(FIXTURE, r#"{"defaultDemand": 1800}"#, 42)
+            .ok()
+            .unwrap();
+        sim.step(300);
+        assert!((sim.time() - 30.0).abs() < 1e-9);
+        assert_eq!(sim.time_step(), 0.1);
+        assert!(sim.vehicle_count() > 0);
+        assert_eq!(sim.snapshot_stride(), 9);
+        assert_eq!(
+            sim.snapshot().len(),
+            sim.vehicle_count() as usize * NETWORK_SNAPSHOT_STRIDE
+        );
+        assert!(sim.stats_json().contains("\"spawned\""));
+        assert_eq!(sim.signal_states().len(), 2);
+        assert_eq!(sim.signal_group_ids_json(), r#"["n0:g0","n0:g1"]"#);
+        assert!(sim.set_demand("n1", 100.0).is_ok());
+        assert_eq!(sim.demand("n1"), Some(100.0));
+        assert!(sim.set_link_travel_time("l2", 20.0).is_ok());
+        assert_eq!(sim.state_checksum().len(), 16);
+        let again = {
+            let mut s = NetworkSim::new(FIXTURE, r#"{"defaultDemand": 1800}"#, 42)
+                .ok()
+                .unwrap();
+            s.step(300);
+            s.state_checksum()
+        };
+        let mut reference = NetworkSim::new(FIXTURE, r#"{"defaultDemand": 1800}"#, 42)
+            .ok()
+            .unwrap();
+        reference.step(300);
+        assert_eq!(reference.state_checksum(), again);
+    }
 
     #[test]
     fn snapshot_packs_position_and_speed() {

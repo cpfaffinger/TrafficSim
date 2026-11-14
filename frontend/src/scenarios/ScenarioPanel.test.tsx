@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { Scenario } from '../api/scenarioClient';
 import type { EditOperation } from '../editor/ops';
 import { editorNetwork } from '../test/editorNetwork';
@@ -26,7 +26,7 @@ const make = (id: string, name: string, changeset: EditOperation[] = []): Scenar
 const a = make('s1', 'Base', [ban]);
 const b = make('s2', 'Variant 2');
 
-function api(): ScenarioApi & Record<string, ReturnType<typeof vi.fn>> {
+function api(): { [K in keyof ScenarioApi]: Mock<ScenarioApi[K]> } {
   return {
     listScenarios: vi.fn().mockResolvedValue([a, b]),
     createScenario: vi.fn().mockImplementation((input: { name: string; changeset: EditOperation[] }) => Promise.resolve(make('s3', input.name, input.changeset))),

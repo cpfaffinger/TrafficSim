@@ -60,20 +60,28 @@ export function junctionDiagram(index: PackageIndex, nodeId: string, movements: 
     arms: [],
     lanes: [],
   };
-  for (const [links, incoming] of [
+  const sides = [
     [incomingLinks, true],
     [outgoingLinks, false],
-  ] as const) {
+  ] as const;
+  for (const [links, incoming] of sides) {
+    for (const link of links) {
+      for (const lane of link.lanes) {
+        const p = incoming ? lane.geometry.at(-1)! : lane.geometry[0]!;
+        raw.lanes.push({ link, incoming, i: lane.index, p: [p[0] - cx, p[1] - cy] });
+      }
+    }
+  }
+  // Stubs scale with the junction size so lane dots spread over the diagram, not cluster in its centre.
+  const laneExtent = Math.max(0, ...raw.lanes.map((l) => Math.hypot(l.p[0], l.p[1])));
+  const stub = Math.min(STUB_METRES, Math.max(6, laneExtent * 0.8));
+  for (const [links, incoming] of sides) {
     for (const link of links) {
       const g = link.geometry;
       const end = incoming ? g.at(-1)! : g[0]!;
       const next = incoming ? g.at(-2)! : g[1]!;
       const [ux, uy] = unit(next[0] - end[0], next[1] - end[1]);
-      raw.arms.push({ link, incoming, a: [end[0] - cx, end[1] - cy], b: [end[0] - cx + ux * STUB_METRES, end[1] - cy + uy * STUB_METRES] });
-      for (const lane of link.lanes) {
-        const p = incoming ? lane.geometry.at(-1)! : lane.geometry[0]!;
-        raw.lanes.push({ link, incoming, i: lane.index, p: [p[0] - cx, p[1] - cy] });
-      }
+      raw.arms.push({ link, incoming, a: [end[0] - cx, end[1] - cy], b: [end[0] - cx + ux * stub, end[1] - cy + uy * stub] });
     }
   }
 

@@ -372,6 +372,11 @@ textarea[aria-invalid='true'] {
   margin-bottom: 0;
 }
 
+.scenario-panel .badge {
+  justify-self: start;
+  margin: 0;
+}
+
 .result-list button[aria-current='true'] {
   border-color: var(--accent);
   box-shadow: inset 3px 0 0 var(--accent);

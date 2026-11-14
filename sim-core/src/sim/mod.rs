@@ -659,6 +659,26 @@ impl Simulation {
             dist += net.seg_length[next as usize];
             cur = next;
         }
+        // Cooperative yielding (#81): let a merger slightly ahead on the ending lane to the right
+        // in front of us, unless our own leader is between us and it or it would take harder
+        // braking than `maxCooperativeDeceleration`.
+        let merging = &self.config.merging;
+        if merging.cooperation
+            && let Some((j, m_pos)) = self.merger_near(i, 60.0, 5.0)
+        {
+            let own_leader_ahead = v.rank > 0 && {
+                let l = self.seg_vehicles[v.seg as usize][v.rank as usize - 1];
+                self.vehicles[l as usize].pos < m_pos
+            };
+            if !own_leader_ahead {
+                let m = &self.vehicles[j as usize];
+                let gap = m_pos - m.params.length - v.pos;
+                let yield_acc = idm.acceleration(speed, gap, speed - m.speed);
+                if yield_acc >= -merging.max_cooperative_deceleration {
+                    a.limit(yield_acc);
+                }
+            }
+        }
         let lapse = (perceive && self.time < v.lapse_until).then_some(v.acc);
         a.resolve(
             lapse,

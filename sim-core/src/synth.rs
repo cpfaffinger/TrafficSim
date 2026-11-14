@@ -458,6 +458,87 @@ pub fn corridor(lanes: u32, length: f64, speed: f64) -> NetBuilder {
     b
 }
 
+const MOTORWAY_SPEED: f64 = 33.333;
+const RAMP_SPEED: f64 = 22.222;
+
+impl NetBuilder {
+    fn class(&mut self, links: &[&str], class: RoadClass) -> &mut Self {
+        for l in links {
+            self.link_mut(l).road_class = class;
+        }
+        self
+    }
+}
+
+/// Motorway on-ramp: two-lane mainline A → M1 (1000 m), a 300 m section M1 → M2 with an
+/// acceleration lane (lane 0) fed by the ramp R → M1, and the two-lane mainline M2 → B where
+/// the acceleration lane ends (lane drop).
+pub fn motorway_merge() -> NetBuilder {
+    let mut b = NetBuilder::new();
+    b.node("A", 0.0, 0.0, NodeControl::Boundary)
+        .node("M1", 1000.0, 0.0, NodeControl::None)
+        .node("M2", 1300.0, 0.0, NodeControl::None)
+        .node("B", 2000.0, 0.0, NodeControl::Boundary)
+        .node("R", 700.0, -100.0, NodeControl::Boundary)
+        .link("main_in", "A", "M1", 2, MOTORWAY_SPEED)
+        .link("accel", "M1", "M2", 3, MOTORWAY_SPEED)
+        .link("main_out", "M2", "B", 2, MOTORWAY_SPEED)
+        .link("ramp", "R", "M1", 1, RAMP_SPEED)
+        .connect("m0", "main_in", 0, "accel", 1, Priority::Major)
+        .connect("m1", "main_in", 1, "accel", 2, Priority::Major)
+        .connect("r0", "ramp", 0, "accel", 0, Priority::Major)
+        .connect("d0", "accel", 1, "main_out", 0, Priority::Major)
+        .connect("d1", "accel", 2, "main_out", 1, Priority::Major)
+        .class(&["main_in", "accel", "main_out"], RoadClass::Motorway)
+        .class(&["ramp"], RoadClass::MotorwayLink);
+    b
+}
+
+/// Lane drop: three lanes A → U → M (2 × 500 m), two lanes M → B (800 m); lane 0 ends at M.
+pub fn lane_drop() -> NetBuilder {
+    let mut b = NetBuilder::new();
+    b.node("A", 0.0, 0.0, NodeControl::Boundary)
+        .node("U", 500.0, 0.0, NodeControl::None)
+        .node("M", 1000.0, 0.0, NodeControl::None)
+        .node("B", 1800.0, 0.0, NodeControl::Boundary)
+        .link("approach", "A", "U", 3, MOTORWAY_SPEED)
+        .link("wide", "U", "M", 3, MOTORWAY_SPEED)
+        .link("narrow", "M", "B", 2, MOTORWAY_SPEED)
+        .connect("u0", "approach", 0, "wide", 0, Priority::Major)
+        .connect("u1", "approach", 1, "wide", 1, Priority::Major)
+        .connect("u2", "approach", 2, "wide", 2, Priority::Major)
+        .connect("c1", "wide", 1, "narrow", 0, Priority::Major)
+        .connect("c2", "wide", 2, "narrow", 1, Priority::Major)
+        .class(&["approach", "wide", "narrow"], RoadClass::Motorway);
+    b
+}
+
+/// Weaving section: on-ramp R joins A → W1 as auxiliary lane 0 of the 400 m section W1 → W2,
+/// which ends in the off-ramp W2 → X; the mainline continues W2 → B with two lanes.
+pub fn weaving() -> NetBuilder {
+    let mut b = NetBuilder::new();
+    b.node("A", 0.0, 0.0, NodeControl::Boundary)
+        .node("W1", 1000.0, 0.0, NodeControl::None)
+        .node("W2", 1400.0, 0.0, NodeControl::None)
+        .node("B", 2400.0, 0.0, NodeControl::Boundary)
+        .node("R", 700.0, -100.0, NodeControl::Boundary)
+        .node("X", 1700.0, -100.0, NodeControl::Boundary)
+        .link("main_in", "A", "W1", 2, MOTORWAY_SPEED)
+        .link("weave", "W1", "W2", 3, MOTORWAY_SPEED)
+        .link("main_out", "W2", "B", 2, MOTORWAY_SPEED)
+        .link("on_ramp", "R", "W1", 1, RAMP_SPEED)
+        .link("off_ramp", "W2", "X", 1, RAMP_SPEED)
+        .connect("m0", "main_in", 0, "weave", 1, Priority::Major)
+        .connect("m1", "main_in", 1, "weave", 2, Priority::Major)
+        .connect("r0", "on_ramp", 0, "weave", 0, Priority::Major)
+        .connect("o0", "weave", 0, "off_ramp", 0, Priority::Major)
+        .connect("d0", "weave", 1, "main_out", 0, Priority::Major)
+        .connect("d1", "weave", 2, "main_out", 1, Priority::Major)
+        .class(&["main_in", "weave", "main_out"], RoadClass::Motorway)
+        .class(&["on_ramp", "off_ramp"], RoadClass::MotorwayLink);
+    b
+}
+
 /// T junction J: a two-way major road W–E and a two-way minor road from S. Minor movements
 /// carry `minor_priority` (`Minor` or `Stop`); the major left turn yields to oncoming traffic.
 pub fn t_junction(minor_priority: Priority) -> NetBuilder {

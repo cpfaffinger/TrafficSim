@@ -120,6 +120,31 @@ impl Default for ReRoutingConfig {
     }
 }
 
+/// Merging at on-ramps and lane drops (#81).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MergingConfig {
+    /// Vehicles next to an ending lane let a merging vehicle ahead of them in (zipper).
+    pub cooperation: bool,
+    /// Distance before the end of the ending lane in which mergers are let in (m).
+    pub cooperation_distance: f64,
+    /// Strongest deceleration a cooperating driver accepts (m/s²).
+    pub max_cooperative_deceleration: f64,
+    /// MOBIL bias (m/s²) for moving one lane to the left away from merging traffic.
+    pub courtesy_bias: f64,
+}
+
+impl Default for MergingConfig {
+    fn default() -> Self {
+        Self {
+            cooperation: true,
+            cooperation_distance: 200.0,
+            max_cooperative_deceleration: 2.0,
+            courtesy_bias: 0.5,
+        }
+    }
+}
+
 /// Which signal controllers run actuated: `true` (all), `false` (none) or a list of node ids.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(untagged)]
@@ -269,6 +294,7 @@ pub struct SimConfig {
     pub re_routing: ReRoutingConfig,
     pub metrics: MetricsConfig,
     pub signal_control: SignalControlConfig,
+    pub merging: MergingConfig,
 }
 
 impl Default for SimConfig {
@@ -301,6 +327,7 @@ impl Default for SimConfig {
             re_routing: ReRoutingConfig::default(),
             metrics: MetricsConfig::default(),
             signal_control: SignalControlConfig::default(),
+            merging: MergingConfig::default(),
         }
     }
 }
@@ -350,6 +377,9 @@ impl SimConfig {
             self.lane_change.urgency_distance,
             self.lane_change.visual_duration,
             self.perception.emergency_factor,
+            self.merging.cooperation_distance,
+            self.merging.max_cooperative_deceleration,
+            self.merging.courtesy_bias,
         ];
         if !times.iter().all(|&t| rate_ok(t)) {
             return Err("junction and lane-change parameters must be finite and non-negative".into());

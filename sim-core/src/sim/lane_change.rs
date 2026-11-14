@@ -13,6 +13,8 @@ use crate::network::NONE;
 
 /// A vehicle still in a wrong lane re-routes at the latest this far before the lane end (m).
 const REROUTE_BEFORE_END: f64 = 15.0;
+/// MOBIL bias (m/s²) towards lanes that continue two links ahead on the route.
+const STRATEGIC_BIAS: f64 = 1.0;
 
 #[derive(Clone, Copy)]
 struct Neighbour {
@@ -45,10 +47,23 @@ impl Simulation {
             let len = self.net.seg_length[v.seg as usize];
             let zone_start = len - link.no_lane_change_zone;
             let wrong_lane = v.next_conn == NONE && self.has_next_link(v);
-            if wrong_lane && v.pos >= zone_start.min(len - REROUTE_BEFORE_END) {
+            // On an ending lane (acceleration lane, lane drop) a merger waits at the end for a
+            // gap instead of giving up, as long as a lane change is possible at all.
+            let lane = &self.net.lanes[v.seg as usize];
+            let waits = wrong_lane
+                && self.net.lane_ends(v.seg)
+                && self.mandatory_direction(i).is_some_and(|d| {
+                    if d > 0 {
+                        lane.can_change_left
+                    } else {
+                        lane.can_change_right
+                    }
+                });
+            if wrong_lane && !waits && v.pos >= zone_start.min(len - REROUTE_BEFORE_END) {
                 self.reroute(i);
                 continue;
             }
+            let v = &self.vehicles[i];
             if v.lc_timer > 0.0 || v.pos >= zone_start {
                 continue;
             }
@@ -97,6 +112,27 @@ impl Simulation {
         });
         let leader = k.checked_sub(1).map(|k| list[k]);
         (leader, list.get(k).copied())
+    }
+
+    /// Nearest merging vehicle (#81) on the ending lane to the right of vehicle `i`, between
+    /// `behind` metres behind and `ahead` metres ahead of its front and within
+    /// `merging.cooperationDistance` of the lane end: (index, front position on `i`'s lane).
+    pub(super) fn merger_near(&self, i: usize, ahead: f64, behind: f64) -> Option<(u32, f64)> {
+        let net = &self.net;
+        let v = &self.vehicles[i];
+        if !net.is_lane(v.seg) || net.lanes[v.seg as usize].index == 0 || !net.lane_ends(v.seg - 1) {
+            return None;
+        }
+        let right = v.seg - 1;
+        let (len, len_r) = (net.seg_length[v.seg as usize], net.seg_length[right as usize]);
+        let s = v.pos * len_r / len;
+        let list = &self.seg_vehicles[right as usize];
+        let k = list.partition_point(|&j| self.vehicles[j as usize].pos >= s - behind);
+        let j = *list.get(k.checked_sub(1)?)?;
+        let m = &self.vehicles[j as usize];
+        let wants_left = m.next_conn == NONE && self.has_next_link(m);
+        (wants_left && m.pos <= s + ahead && len_r - m.pos <= self.config.merging.cooperation_distance)
+            .then(|| (j, m.pos * len / len_r))
     }
 
     /// Nearest vehicle about to enter `lane` from an incoming connector (or from the lane before
@@ -191,7 +227,26 @@ impl Simulation {
             }
             let t_limit = net.seg_speed_limit[target as usize];
             let (lead, follow) = self.neighbours(target, s, v.id);
-            let new_leader = lead.map(|j| self.neighbour(j, t_limit));
+            // Without a leader on the target lane, the last vehicle on the connector (or lane)
+            // ahead on the route is the leader (position relative to the target lane start).
+            let new_leader = match lead {
+                Some(j) => Some(self.neighbour(j, t_limit)),
+                None => next_link.and_then(|n| {
+                    let c = net.choose_connector(target, n, mask);
+                    (c != NONE).then_some(c)?;
+                    let seg = net.connector_segment(c);
+                    let clen = net.seg_length[seg as usize];
+                    let to = net.connectors[c as usize].to_lane;
+                    let (j, offset) = match self.seg_vehicles[seg as usize].last() {
+                        Some(&j) => (j, t_len),
+                        None => (*self.seg_vehicles[to as usize].last()?, t_len + clen),
+                    };
+                    Some(Neighbour {
+                        pos: offset + self.vehicles[j as usize].pos,
+                        ..self.neighbour(j, t_limit)
+                    })
+                }),
+            };
             // Without a follower on the target lane, the nearest vehicle about to enter it from
             // an incoming connector (or from the lane before it) is the follower (position
             // relative to the lane start).
@@ -233,11 +288,39 @@ impl Simulation {
                 let (g_after, s_after) = gap_to(o, &leader);
                 o.acc(g_after, s_after) - o.acc(g_now, v.speed)
             });
-            let bias = if link.road_class.keep_right() {
+            let mut bias = if link.road_class.keep_right() {
                 -(d as f64) * lc.keep_right_bias
             } else {
                 0.0
             };
+            // Courtesy: make room for traffic merging from an ending lane on the right.
+            let merging = &self.config.merging;
+            if d > 0 && merging.cooperation && self.merger_near(i, 80.0, 20.0).is_some() {
+                bias += merging.courtesy_bias;
+            }
+            // Strategic lane choice two links ahead (weaving): prefer lanes whose connector
+            // leads to a lane that continues on the route.
+            if let Some(&after) = self.routes[v.route as usize].get(v.route_pos as usize + 2)
+                && let Some(next) = next_link
+            {
+                // Lane changes still needed on the next link when entering it from lane `l`.
+                let changes_after = |l: u32| -> Option<f64> {
+                    let c = net.choose_connector(l, next, mask);
+                    if c == NONE {
+                        return None;
+                    }
+                    let to = &net.lanes[net.connectors[c as usize].to_lane as usize];
+                    let n = &net.links[next as usize];
+                    (0..n.lane_count)
+                        .filter(|&j| net.choose_connector(n.first_lane + j, after, mask) != NONE)
+                        .map(|j| (j as i32 - to.index as i32).unsigned_abs())
+                        .min()
+                        .map(f64::from)
+                };
+                if let (Some(now), Some(then)) = (changes_after(v.seg), changes_after(target)) {
+                    bias += STRATEGIC_BIAS * (now - then);
+                }
+            }
             let own_gain = a_me_new - a_me + bias;
             let incentive = own_gain + v.params.politeness * (follower_gain + old_follower_gain);
             // Drivers change for their own benefit (or the keep-right rule), not only to make

@@ -1454,7 +1454,18 @@ fn golden_runs() {
                    {"from": "e", "to": "ns", "vph": 400, "vehicleMix": {"van": 1}}]}"#,
     )
     .unwrap();
-    let cases: [(&str, Simulation, usize, u64); 6] = [
+    let merge = SimConfig::from_json(
+        r#"{"defaultDemand": 0, "demand": {"A": 2600, "R": 600},
+            "driverMix": {"average": 3, "aggressive": 1, "distracted": 1}}"#,
+    )
+    .unwrap();
+    let cases: [(&str, Simulation, usize, u64); 7] = [
+        (
+            "motorway-merge",
+            Simulation::new(crate::synth::motorway_merge().network(), merge, 42).unwrap(),
+            3000,
+            0x0521_2e2c_85e2_29e3,
+        ),
         ("fixture", busy_fixture(42), 3000, 0x986d_65bf_03a7_73af),
         (
             "t-junction",
@@ -1808,6 +1819,90 @@ fn actuated_greens_gap_out_and_respect_min_and_max_green() {
         .err()
         .unwrap();
     assert!(e.contains("no signal controller"), "{e}");
+}
+
+// ---------------------------------------------------------------- #81 motorway behaviour
+
+use crate::synth::{lane_drop, motorway_merge, weaving};
+
+/// Runs a motorway scenario; returns the simulation and the number of vehicles that came to a
+/// standstill on an ending lane (mergers that found no gap while moving).
+fn motorway_run(b: &NetBuilder, json: &str, cooperation: bool, steps: usize) -> (Simulation, usize) {
+    let mut config = SimConfig::from_json(json).unwrap();
+    config.merging.cooperation = cooperation;
+    let mut s = sim(b, config);
+    s.set_event_logging(true);
+    let mut stopped = std::collections::BTreeSet::new();
+    for _ in 0..steps {
+        s.step();
+        check_invariants(&mut s);
+        for v in s.vehicles() {
+            if v.speed < 0.5 && s.network().is_lane(v.seg) && s.network().lane_ends(v.seg) {
+                stopped.insert(v.id);
+            }
+        }
+    }
+    (s, stopped.len())
+}
+
+#[test]
+fn on_ramp_traffic_merges_with_cooperative_mainline_drivers() {
+    let json = r#"{"defaultDemand": 0, "demand": {"A": 2600, "R": 600}}"#;
+    let (with, stopped_with) = motorway_run(&motorway_merge(), json, true, 6000);
+    let (without, stopped_without) = motorway_run(&motorway_merge(), json, false, 6000);
+    let (a, b) = (with.stats(), without.stats());
+    assert_eq!(
+        (a.stranded, b.stranded),
+        (0, 0),
+        "mergers wait instead of giving up"
+    );
+    assert!(
+        stopped_with < stopped_without,
+        "cooperation lets mergers in while moving: {stopped_with} vs {stopped_without}"
+    );
+    assert!(a.arrived * 10 >= b.arrived * 9, "{a:?} vs {b:?}");
+    // Mergers use the acceleration lane: they change lanes along it, not all at its start.
+    let accel = with.network().link_index("accel").unwrap();
+    let merges: Vec<f64> = with
+        .lane_change_log()
+        .iter()
+        .filter(|e| e.link == accel && e.from_index == 0 && e.mandatory)
+        .map(|e| e.pos)
+        .collect();
+    assert!(merges.len() > 50, "{}", merges.len());
+    assert!(merges.iter().all(|&p| p <= 300.0));
+}
+
+#[test]
+fn lane_drops_zip_and_weaving_traffic_reaches_its_exits() {
+    let (drop, _) = motorway_run(&lane_drop(), r#"{"defaultDemand": 3600}"#, true, 6000);
+    let st = drop.stats();
+    assert_eq!(st.stranded, 0, "{st:?}");
+    assert!(st.arrived > 400, "{st:?}");
+    // Vehicles leave the dropped lane (early by strategic choice or at the end by zipping).
+    let net = drop.network();
+    let (approach, wide) = (
+        net.link_index("approach").unwrap(),
+        net.link_index("wide").unwrap(),
+    );
+    let leaving = |link: u32| {
+        drop.lane_change_log()
+            .iter()
+            .filter(|e| e.link == link && e.from_index == 0)
+            .count()
+    };
+    assert!(
+        leaving(approach) + leaving(wide) > 50,
+        "{} {}",
+        leaving(approach),
+        leaving(wide)
+    );
+    let json = r#"{"defaultDemand": 0, "demand": {"A": 2000, "R": 600}, "destinationWeights": {"X": 0.4}}"#;
+    let (weave, _) = motorway_run(&weaving(), json, true, 6000);
+    let st = weave.stats();
+    assert_eq!(st.stranded, 0, "{st:?}");
+    // Strategic lane choice: few drivers miss their exit or their way back to the mainline.
+    assert!(st.arrived > 400 && st.rerouted < st.arrived / 6, "{st:?}");
 }
 
 // ---------------------------------------------------------------- #57 lane cells

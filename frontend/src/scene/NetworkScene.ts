@@ -9,7 +9,9 @@ import { nextPick, uniqueOwners, type PreviousPick } from '../lib/picking';
 import { fromScene, LocalTangentPlane, toScene } from '../network/geo';
 import type { MeshData, PickTarget } from '../network/meshData';
 import { buildNetworkMeshes, type NetworkMeshes } from '../network/networkMeshes';
-import type { BBox, GeoOrigin, NetworkPackage } from '../network/types';
+import type { BBox, GeoOrigin, NetworkPackage, TerrainGrid } from '../network/types';
+import { drapeOnTerrain } from '../network/terrain';
+import { TerrainLayer } from './TerrainLayer';
 import { disposeGroup, subsetGeometry, toBufferGeometry } from './geometry';
 import { RtsCameraController } from './RtsCameraController';
 import { HeatmapLayer } from './HeatmapLayer';
@@ -75,6 +77,7 @@ export class NetworkScene {
   private readonly simulation = new SimulationLayer();
   private readonly signs = new SignLayer();
   private readonly heatmap = new HeatmapLayer();
+  private readonly terrain = new TerrainLayer();
   private currentPackage: NetworkPackage | null = null;
   private lodMeshes: { markings: THREE.Object3D[]; buildings: THREE.Object3D[] } = { markings: [], buildings: [] };
   private lod: LodState = lodFor(0);
@@ -114,7 +117,7 @@ export class NetworkScene {
     this.ground.rotation.x = -Math.PI / 2;
     this.ground.position.y = -0.3;
     this.ground.scale.set(20_000, 20_000, 1);
-    this.scene.add(this.ground, this.basemapGroup, this.networkGroup, this.tunnelGroup, this.overlayGroup, this.highlightGroup, this.simulation.group, this.signs.group, this.heatmap.group);
+    this.scene.add(this.ground, this.basemapGroup, this.networkGroup, this.tunnelGroup, this.overlayGroup, this.highlightGroup, this.simulation.group, this.signs.group, this.heatmap.group, this.terrain.group);
 
     this.controls = new RtsCameraController(this.camera, this.renderer.domElement, (x, y) => this.pick(x, y));
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -203,7 +206,10 @@ export class NetworkScene {
     const margin = 500;
     this.controls.limits = { ...this.controls.limits, bounds: [rect[0] - margin, rect[1] - margin, rect[2] + margin, rect[3] + margin] };
     if (!keepCamera) this.controls.setState(frameRect(rect, (this.camera.fov * Math.PI) / 180, this.camera.aspect, this.controls.limits));
-    this.loadBasemapFor(pkg.bbox, pkg.origin);
+    // Terrain (#87): height field under the network, far ground plane below its lowest point.
+    this.terrain.load(pkg.terrain);
+    this.ground.position.y = Math.min(-0.3, (this.terrain.minHeight ?? 0) - 1);
+    this.loadBasemapFor(pkg.bbox, pkg.origin, pkg.terrain);
     this.dirty = true;
   }
 
@@ -213,7 +219,7 @@ export class NetworkScene {
     this.dirty = true;
     if (!area) {
       // Preview ended: show the loaded network's surroundings again.
-      if (this.networkBbox && this.origin) this.loadBasemapFor(this.networkBbox, this.origin);
+      if (this.networkBbox && this.origin) this.loadBasemapFor(this.networkBbox, this.origin, this.currentPackage?.terrain);
       return;
     }
     if (area.length === 0) return;
@@ -251,6 +257,11 @@ export class NetworkScene {
 
   setTunnelsVisible(visible: boolean): void {
     this.tunnelGroup.visible = visible;
+    this.dirty = true;
+  }
+
+  setTerrainVisible(visible: boolean): void {
+    this.terrain.setVisible(visible);
     this.dirty = true;
   }
 
@@ -339,6 +350,7 @@ export class NetworkScene {
     cancelAnimationFrame(this.frameHandle);
     this.simulation.dispose();
     this.signs.clear();
+    this.terrain.clear();
     this.basemapAbort?.abort();
     this.resizeObserver.disconnect();
     this.controls.dispose();
@@ -367,8 +379,9 @@ export class NetworkScene {
     this.previousPick = null;
   }
 
-  private loadBasemapFor(bbox: BBox, origin: GeoOrigin): void {
-    const key = `${bbox.join(',')}@${origin.lat},${origin.lon}`;
+  /** Loads basemap tiles around `bbox`; with `terrain` the ground polygons and buildings are draped onto it. */
+  private loadBasemapFor(bbox: BBox, origin: GeoOrigin, terrain?: TerrainGrid): void {
+    const key = `${bbox.join(',')}@${origin.lat},${origin.lon}${terrain ? '+terrain' : ''}`;
     if (key === this.basemapKey) return;
     this.basemapKey = key;
     this.basemapAbort?.abort();
@@ -380,6 +393,7 @@ export class NetworkScene {
       .then((result) => {
         if (abort.signal.aborted) return;
         const meshes = buildBasemapMeshes(result.polygons);
+        if (terrain) for (const m of Object.values(meshes)) drapeOnTerrain(m, terrain);
         const lambert = (color: number) => new THREE.MeshLambertMaterial({ color });
         this.addMesh(this.basemapGroup, meshes.landuse, lambert(COLORS.landuse));
         this.addMesh(this.basemapGroup, meshes.park, lambert(COLORS.park));

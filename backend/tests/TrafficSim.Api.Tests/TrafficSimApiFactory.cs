@@ -26,6 +26,7 @@ public sealed class TrafficSimApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<IReverseGeocodingProvider>();
             services.RemoveAll<IRoadNetworkSource>();
             services.RemoveAll<IActivitySource>();
+            services.RemoveAll<IElevationProvider>(); // no real terrain tiles in tests (C-33): imports stay flat
             services.AddSingleton<IActivitySource>(Activity);
             services.AddSingleton<IGeocodingProvider>(Geocoder);
             services.AddSingleton<IReverseGeocodingProvider>(Geocoder);

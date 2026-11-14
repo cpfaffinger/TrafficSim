@@ -86,6 +86,8 @@ pub struct VehicleType {
     pub politeness: f64,
     /// Multiplier on junction critical gaps (long vehicles need larger gaps).
     pub gap_acceptance: f64,
+    /// Usable power at the wheels per vehicle mass (W/kg); limits climbing (#87, [`crate::grade`]).
+    pub specific_power: f64,
 }
 
 /// Partial override of a vehicle type (`vehicleTypes` in the configuration).
@@ -104,6 +106,7 @@ pub struct VehicleTypePatch {
     pub safe_deceleration: Option<f64>,
     pub politeness: Option<f64>,
     pub gap_acceptance: Option<f64>,
+    pub specific_power: Option<f64>,
 }
 
 impl VehicleType {
@@ -122,6 +125,7 @@ impl VehicleType {
             safe_deceleration: 4.0,
             politeness: 0.25,
             gap_acceptance: 1.0,
+            specific_power: 50.0,
         };
         let heavy = Self {
             width: 2.55,
@@ -129,6 +133,8 @@ impl VehicleType {
             politeness: 0.4,
             safe_deceleration: 3.0,
             gap_acceptance: 1.2,
+            // Rigid truck or bus, about 220 kW for 18 t.
+            specific_power: 10.0,
             ..car
         };
         match class {
@@ -138,6 +144,7 @@ impl VehicleType {
                 width: 2.0,
                 max_speed: 44.0,
                 max_acceleration: 1.2,
+                specific_power: 35.0,
                 ..car
             },
             // Rigid truck (up to 12 m).
@@ -162,6 +169,7 @@ impl VehicleType {
                 max_acceleration: 2.5,
                 minimum_gap: 1.5,
                 gap_acceptance: 0.9,
+                specific_power: 80.0,
                 ..car
             },
         }
@@ -174,6 +182,8 @@ impl VehicleType {
             time_headway: 1.8,
             max_acceleration: 0.5,
             gap_acceptance: 1.3,
+            // About 330 kW for 40 t.
+            specific_power: 7.0,
             ..Self::for_class(VehicleClass::Truck)
         }
     }
@@ -198,6 +208,7 @@ impl VehicleType {
         set(&mut self.safe_deceleration, p.safe_deceleration);
         set(&mut self.politeness, p.politeness);
         set(&mut self.gap_acceptance, p.gap_acceptance);
+        set(&mut self.specific_power, p.specific_power);
     }
 
     fn validate(&self, name: &str) -> Result<(), String> {
@@ -210,6 +221,7 @@ impl VehicleType {
             self.delta,
             self.safe_deceleration,
             self.gap_acceptance,
+            self.specific_power,
         ];
         let non_negative = [self.time_headway, self.minimum_gap, self.politeness];
         if positive.iter().all(|v| v.is_finite() && *v > 0.0)
@@ -240,6 +252,7 @@ impl VehicleType {
             lane_change_threshold: 0.2,
             safe_deceleration: self.safe_deceleration,
             gap_acceptance_factor: self.gap_acceptance,
+            specific_power: self.specific_power,
             lapse_rate: 0.0,
             lapse_duration: 0.0,
             familiar: false,
@@ -366,6 +379,8 @@ pub struct VehicleParams {
     pub safe_deceleration: f64,
     /// Multiplier on the junction critical gaps (1 = average driver).
     pub gap_acceptance_factor: f64,
+    /// Usable power at the wheels per mass (W/kg), see [`crate::grade`].
+    pub specific_power: f64,
     /// Distraction lapses per second (Poisson rate, 0 = never distracted).
     pub lapse_rate: f64,
     /// Mean duration of a distraction lapse (s).

@@ -21,6 +21,8 @@ public sealed class ProvidersOptions
     public GoogleOptions Google { get; set; } = new();
 
     public BasemapOptions Basemap { get; set; } = new();
+
+    public TerrainTilesOptions TerrainTiles { get; set; } = new();
 }
 
 /// <summary>Persistent response cache shared by all providers.</summary>
@@ -138,4 +140,23 @@ public sealed class BasemapOptions
     public bool Enabled { get; set; } = true;
 
     public Uri StyleUrl { get; set; } = new("https://tiles.openfreemap.org/styles/positron");
+}
+
+/// <summary>AWS Open Data Terrain Tiles (Terrarium PNG) for terrain elevation (ADR-0018); disabling it keeps networks flat.</summary>
+public sealed class TerrainTilesOptions : HttpProviderOptions
+{
+    public TerrainTilesOptions()
+    {
+        BaseUrl = new Uri("https://s3.amazonaws.com/elevation-tiles-prod/");
+        Priority = 10;
+        Timeout = TimeSpan.FromSeconds(30);
+        RequestsPerSecond = 20;
+        CacheTtl = TimeSpan.FromDays(30);
+    }
+
+    /// <summary>Highest zoom level used (0–15; 13 ≈ 13–19 m pixels at mid latitudes).</summary>
+    public int Zoom { get; set; } = 13;
+
+    /// <summary>Most tiles fetched per import; larger areas use a lower zoom.</summary>
+    public int MaxTiles { get; set; } = 64;
 }

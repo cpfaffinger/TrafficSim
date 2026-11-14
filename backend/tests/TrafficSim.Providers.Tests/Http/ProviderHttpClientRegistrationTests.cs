@@ -93,7 +93,7 @@ public class ProviderHttpClientRegistrationTests
 
         var catalog = provider.GetRequiredService<IProviderCatalog>().Providers;
 
-        Assert.Equal(["photon", "nominatim", "overpass", "geofabrik", "google", "openfreemap"], catalog.Select(p => p.Name));
+        Assert.Equal(["photon", "nominatim", "overpass", "geofabrik", "google", "openfreemap", "terrain-tiles"], catalog.Select(p => p.Name));
         Assert.False(catalog.Single(p => p.Name == "google").Enabled); // no API key
         Assert.False(catalog.Single(p => p.Name == "geofabrik").Enabled); // no directory
         Assert.Contains(ProviderCapability.ReverseGeocoding, catalog.Single(p => p.Name == "photon").Capabilities);

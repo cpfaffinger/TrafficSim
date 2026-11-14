@@ -19,6 +19,7 @@ import {
   type Polyline,
   type SignalController,
   type SignalGroup,
+  type TerrainGrid,
   type Vec3, END_SIGNS } from './types';
 
 /** Thrown when a network package does not conform to format v1. `path` points at the offending value. */
@@ -301,6 +302,24 @@ function checkReferences(pkg: NetworkPackage): void {
   });
 }
 
+/** Optional terrain grid (#87); an inconsistent grid is dropped (flat view) instead of rejecting the package. */
+function terrain(value: unknown): { terrain: TerrainGrid } | null {
+  if (value === undefined || value === null) return null;
+  try {
+    const o = obj(value, 'terrain');
+    const columns = int(o.columns, 'terrain.columns');
+    const rows = int(o.rows, 'terrain.rows');
+    const cellSize = num(o.cellSize, 'terrain.cellSize');
+    const heights = list(o.heights, 'terrain.heights', num);
+    if (columns < 2 || rows < 2 || cellSize <= 0 || heights.length !== columns * rows) return null;
+    const grid = { west: num(o.west, 'terrain.west'), south: num(o.south, 'terrain.south'), cellSize, columns, rows, heights };
+    return { terrain: { ...grid, originElevation: num(o.originElevation ?? 0, 'terrain.originElevation') } };
+  } catch (e) {
+    if (e instanceof NetworkPackageError) return null;
+    throw e;
+  }
+}
+
 function stats(value: unknown, pkg: Omit<NetworkPackage, 'stats'>): PackageStats {
   if (value !== undefined && value !== null) {
     const o = obj(value, 'stats');
@@ -342,6 +361,7 @@ export function parseNetworkPackage(input: unknown): NetworkPackage {
     ...(o.area === undefined || o.area === null
       ? {}
       : { area: list(o.area, 'area', (v: unknown, p: string) => { const a = list(v, p, num); if (a.length !== 2) fail(p, 'expected [lon, lat]'); return [a[0]!, a[1]!] as const; }) }),
+    ...(terrain(o.terrain) ?? {}),
     osmTimestamp: nullable(o.osmTimestamp, 'osmTimestamp', str),
     attribution: list(o.attribution ?? [], 'attribution', str),
     nodes: list(o.nodes, 'nodes', node),

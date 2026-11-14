@@ -10,6 +10,7 @@ pub mod config;
 pub mod demand;
 pub mod detmath;
 pub mod driver;
+pub mod grade;
 pub mod idm;
 pub mod metrics;
 pub mod network;

@@ -782,10 +782,17 @@ impl Simulation {
             }
         }
         let lapse = (perceive && self.time < v.lapse_until).then_some(v.acc);
-        a.resolve(
+        let acc = a.resolve(
             lapse,
             self.config.perception.emergency_factor * p.comfortable_deceleration,
-        )
+        );
+        // Gradients (#87): untouched on level segments.
+        let grade = net.grade_at(v.seg, v.pos);
+        if grade == 0.0 {
+            acc
+        } else {
+            crate::grade::apply(acc, p.max_acceleration, p.specific_power, speed, grade)
+        }
     }
 
     fn integrate(&mut self) {

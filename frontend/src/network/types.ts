@@ -195,6 +195,8 @@ export interface NetworkPackage {
   bbox: BBox;
   /** Import polygon `[lon, lat][]` for non-rectangular imports (#110). */
   area?: readonly (readonly [number, number])[];
+  /** Terrain height grid (#87, ADR-0018); absent for flat networks. */
+  terrain?: TerrainGrid;
   osmTimestamp: string | null;
   attribution: string[];
   nodes: NetworkNode[];
@@ -212,4 +214,21 @@ export interface OsmNodeRef {
   id: number | null;
   x: number;
   y: number;
+}
+
+/**
+ * Regular terrain grid in the local plane (ADR-0018): heights in metres relative to the ground at the
+ * origin (the same datum as geometry `z`), row-major from the south-west corner.
+ */
+export interface TerrainGrid {
+  /** East coordinate of the first column (m). */
+  west: number;
+  /** North coordinate of the first row (m). */
+  south: number;
+  cellSize: number;
+  columns: number;
+  rows: number;
+  heights: readonly number[];
+  /** Ground height of the origin above sea level (m). */
+  originElevation: number;
 }

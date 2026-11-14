@@ -29,4 +29,7 @@ public sealed class CompilerOptions
     /// movements out of them are green whenever a movement into them is (#117).
     /// </summary>
     public double SignalChainMetres { get; init; } = 10;
+
+    /// <summary>Terrain under the network (ADR-0018); null keeps the network flat apart from grade separation.</summary>
+    public TerrainGrid? Terrain { get; init; }
 }

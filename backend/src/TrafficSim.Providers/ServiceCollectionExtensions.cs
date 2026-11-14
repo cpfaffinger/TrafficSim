@@ -8,6 +8,7 @@ using TrafficSim.Providers.Http;
 using TrafficSim.Providers.Nominatim;
 using TrafficSim.Providers.Overpass;
 using TrafficSim.Providers.Photon;
+using TrafficSim.Providers.TerrainTiles;
 
 namespace TrafficSim.Providers;
 
@@ -65,6 +66,12 @@ public static class ServiceCollectionExtensions
         {
             services.AddProviderHttpClient<GeofabrikRoadNetworkSource>(GeofabrikRoadNetworkSource.ProviderName, options.Geofabrik, options.Contact);
             services.AddTransient<IRoadNetworkSource>(sp => sp.GetRequiredService<GeofabrikRoadNetworkSource>());
+        }
+
+        if (options.TerrainTiles.Enabled)
+        {
+            services.AddProviderHttpClient<TerrainTilesElevationProvider>(TerrainTilesElevationProvider.ProviderName, options.TerrainTiles, options.Contact);
+            services.AddTransient<IElevationProvider>(sp => sp.GetRequiredService<TerrainTilesElevationProvider>());
         }
 
         return services;

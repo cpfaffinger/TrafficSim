@@ -10,8 +10,12 @@
 
 - JSON, UTF-8, `camelCase` keys, enum values in `snake_case` strings. Served gzip-compressed.
 - **Coordinates** are metres in the local East-North-Up plane around `origin` (ADR-0011):
-  `[x, y, z]` = `[east, north, up]`. `z` is the schematic elevation from grade separation
-  (6 m per positive `layer`, −8 m per negative layer), not terrain.
+  `[x, y, z]` = `[east, north, up]`. `z` = terrain height relative to the ground at `origin`
+  (0 without `terrain`, [ADR-0018](../adr/0018-terrain-elevation-and-gradients.md)) **plus** the
+  schematic grade-separation offset (6 m per positive `layer`, −8 m per negative layer, ramped
+  along links). Ordinary links follow the smoothed terrain; bridges, tunnels, covered ways and
+  links with `layer ≠ 0` interpolate the ground linearly between their end nodes. Readers derive
+  gradients from consecutive geometry points (the sim core clamps them to ±12 %).
 - **Right-hand traffic.** Lane `index` 0 is the **rightmost** (kerb-side) lane in driving direction;
   higher indices are further left. (OSM's `*:lanes` tags list lanes left to right; the compiler reverses them.)
 - Units: metres, seconds, metres per second. Angles are not stored.
@@ -28,6 +32,7 @@
 | `origin` | `{ lat, lon }` | Tangent-plane origin (WGS84). |
 | `bbox` | `[west, south, east, north]` | Imported area (WGS84); the bounds of `area` for polygon imports. |
 | `area` | `[lon, lat][]` \| absent | Import polygon ring for non-rectangular imports (#110); ways are clipped at its edge. Optional. |
+| `terrain` | Terrain \| null \| absent | Terrain height grid the geometry was compiled on (#87). Optional; null/absent = flat. |
 | `osmTimestamp` | string \| null | ISO-8601 OSM data timestamp, if known. |
 | `attribution` | string[] | Texts that must be displayed (ODbL, providers). |
 | `nodes` | Node[] | Junctions, link ends and network boundary points. |
@@ -36,13 +41,28 @@
 | `signals` | SignalController[] | Fixed-time signal plans. |
 | `stats` | object | Informational counts (`nodes`, `links`, `lanes`, `connectors`, `signals`, `ignoredSigns` = stop/give-way signs that could not be attached to a junction). |
 
+## Terrain
+
+A regular grid in the local plane covering the area plus one cell of margin (ADR-0018). Bilinear
+interpolation between samples gives the ground height used for `z`.
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `west`, `south` | number | Local position (m) of the first sample (south-west corner). |
+| `cellSize` | number | Sample spacing in both directions (m, ≥ 30). |
+| `columns`, `rows` | integer | Samples per row (west → east) and number of rows (south → north), each ≥ 2 and ≤ 256. |
+| `heights` | number[] | `columns × rows` heights in metres relative to the ground at `origin`, row-major from the south-west corner, rounded to 0.1 m. |
+| `originElevation` | number | Ground height of `origin` above sea level (m, source datum); informational. |
+
+Packages with terrain list the elevation source in `attribution`.
+
 ## Node
 
 | Key | Type | Description |
 |-----|------|-------------|
 | `id` | string | e.g. `"n12"`. |
 | `osmId` | number \| null | OSM node id. |
-| `x`, `y`, `z` | number | Position. |
+| `x`, `y`, `z` | number | Position (`z` = terrain + level, see conventions). |
 | `control` | enum | `none` (plain link joint), `priority`, `right_before_left`, `all_way_stop`, `signal`, `roundabout`, `level_crossing`, `boundary` (network edge: vehicles enter/leave here). |
 
 ## Link

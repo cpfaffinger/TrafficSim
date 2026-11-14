@@ -107,6 +107,7 @@ public static class NetworkCompiler
                 Connectors = _connectors,
                 Signals = _signals,
                 IgnoredSigns = _ignoredSigns,
+                Terrain = options.Terrain,
             };
         }
 
@@ -607,7 +608,7 @@ public static class NetworkCompiler
             foreach (var g in _nodes.Values)
             {
                 var level = GradeSeparationRule.NodeLevel(g.Pieces.Select(p => GradeSeparationRule.Parse(p.Way.Tags).Layer));
-                g.Position = g.Position.WithZ(GradeSeparationRule.Elevation(level));
+                g.Position = g.Position.WithZ(GradeSeparationRule.Elevation(level) + ElevationRule.Ground(options.Terrain, g.Position));
                 g.Node!.Position = g.Position;
                 var junction = (g.Node.Control is not (NodeControl.None or NodeControl.Boundary or NodeControl.LevelCrossing) && g.Pieces.Count >= 3)
                                || g.Node.Control == NodeControl.Roundabout;
@@ -621,7 +622,14 @@ public static class NetworkCompiler
                 var from = _byNodeId[link.From];
                 var to = _byNodeId[link.To];
                 var layerZ = GradeSeparationRule.Elevation(link.Layer);
-                var full = GradeSeparationRule.Apply(link.Geometry, from.Position.Z, to.Position.Z, layerZ);
+                // Terrain under the grade-separation profile (ADR-0018); identical to ADR-0016 without terrain.
+                var full = ElevationRule.Apply(
+                    link.Geometry,
+                    from.Position.Z - ElevationRule.Ground(options.Terrain, from.Position),
+                    to.Position.Z - ElevationRule.Ground(options.Terrain, to.Position),
+                    layerZ,
+                    options.Terrain,
+                    ElevationRule.FollowsTerrain(link.Structure, link.Layer));
                 var length = Polyline.PlanarLength(full);
                 var rs = from.TrimRadius;
                 var re = to.TrimRadius;

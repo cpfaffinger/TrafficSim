@@ -7,14 +7,15 @@
 //  (link geometries have three points: ends and midpoint)
 //               |
 //            S (104)  way 4000 [100, 501, 104]
-import type { Connector, Link, NetworkPackage, Vec3 } from '../network/types';
+import { VEHICLE_CLASSES, type Connector, type Link, type NetworkPackage, type Vec3 } from '../network/types';
 import { connector, node, packageOf, straightLink, type StraightLinkOptions } from './networkFactory';
 
 /** Adds OSM ids and a midpoint to the reference line (each way has one node between its ends). */
 function osmLink(link: Link, wayId: number, afterFrom: number, beforeTo: number): Link {
   const [a, b] = [link.geometry[0]!, link.geometry.at(-1)!];
   const mid: Vec3 = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
-  return { ...link, geometry: [a, mid, b], osmWayId: wayId, osmAfterFrom: afterFrom, osmBeforeTo: beforeTo };
+  const lanes = link.lanes.map((l) => ({ ...l, allowed: [...VEHICLE_CLASSES] }));
+  return { ...link, lanes, geometry: [a, mid, b], osmWayId: wayId, osmAfterFrom: afterFrom, osmBeforeTo: beforeTo };
 }
 
 function move(id: string, nodeId: string, from: Link, fromLane: number, to: Link, toLane: number, turn: Connector['turn']): Connector {

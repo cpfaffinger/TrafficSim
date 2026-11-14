@@ -1,0 +1,417 @@
+/* Network editor and scenario UI (Phase 7/8). Shares the tokens of styles.css. */
+
+.scene-side {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 360px;
+  max-width: calc(100% - 20px);
+  max-height: calc(100% - 20px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scene-side .inspector {
+  position: static;
+  width: auto;
+  max-width: none;
+  max-height: none;
+  overflow: visible;
+}
+
+.editor-panel,
+.draw-panel {
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 96%, transparent);
+  border: 1px solid var(--border);
+}
+
+.editor-panel h2,
+.draw-panel h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.editor-section {
+  border-top: 1px solid var(--border);
+  padding: 6px 0;
+}
+
+.editor-section > summary {
+  cursor: pointer;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 2px 0;
+}
+
+.editor-section-body {
+  display: grid;
+  gap: 8px;
+  padding-top: 6px;
+}
+
+.editor-section-body > button {
+  justify-self: start;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.segmented button {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.segmented button[aria-checked='true'] {
+  background: var(--accent);
+  color: #fff;
+}
+
+button.glyph {
+  min-width: 28px;
+  padding: 3px 6px;
+  line-height: 1.1;
+}
+
+button[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.danger {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.turn-toggles {
+  display: inline-flex;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+.lane-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.lane-rows li {
+  display: grid;
+  gap: 2px;
+  border-radius: 6px;
+  padding: 2px 4px;
+}
+
+.lane-rows li.selected {
+  outline: 2px solid var(--warn);
+}
+
+.lane-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lane-name {
+  min-width: 112px;
+  font-size: 12px;
+}
+
+button.boundary {
+  justify-self: center;
+  font-size: 11px;
+  padding: 1px 8px;
+  color: var(--muted);
+  background: transparent;
+  border-style: dashed;
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.field-row input[type='number'] {
+  width: 72px;
+}
+
+label.inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 10px;
+  align-items: center;
+  margin: 8px 0;
+}
+
+input[type='text'],
+textarea,
+select {
+  font: inherit;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  min-width: 0;
+}
+
+textarea {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+}
+
+input[aria-invalid='true'],
+textarea[aria-invalid='true'] {
+  border-color: var(--bad);
+}
+
+.editor-toolbar .buttons {
+  margin: 4px 0;
+}
+
+.issue-list {
+  border-left: 3px solid var(--warn);
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.issue-list p {
+  margin: 0;
+}
+
+.issue-list ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.phase-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+
+.phase-table th,
+.phase-table td {
+  text-align: left;
+  padding: 2px 4px;
+}
+
+.phase-table input[type='number'] {
+  width: 70px;
+}
+
+.signal-plan {
+  display: grid;
+  gap: 8px;
+}
+
+.timeline {
+  width: 100%;
+  height: auto;
+}
+
+.timeline .sig-red {
+  fill: #e5484d55;
+}
+
+.timeline .sig-green {
+  fill: var(--ok);
+}
+
+.timeline .sig-amber {
+  fill: var(--warn);
+}
+
+.timeline .sig-label,
+.timeline .sig-axis {
+  font-size: 9px;
+  fill: var(--text);
+}
+
+.junction-diagram {
+  width: 100%;
+  max-width: 260px;
+  justify-self: center;
+  background: var(--bg);
+  border-radius: 8px;
+}
+
+.junction-diagram .arm {
+  stroke: #8a8f98;
+  stroke-linecap: butt;
+  opacity: 0.6;
+}
+
+.junction-diagram .connection {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.2;
+  opacity: 0.6;
+}
+
+.junction-diagram .connection.active {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  opacity: 1;
+}
+
+.junction-diagram .dot {
+  stroke: var(--panel);
+  stroke-width: 1.5;
+}
+
+.junction-diagram .dot.in {
+  fill: var(--accent);
+  cursor: pointer;
+}
+
+.junction-diagram .dot.in.selected {
+  fill: var(--warn);
+}
+
+.junction-diagram .dot.out {
+  fill: #8a8f98;
+}
+
+.junction-diagram .dot.out.target {
+  cursor: pointer;
+  fill: var(--panel);
+  stroke: var(--ok);
+}
+
+.junction-diagram .dot.out.on {
+  fill: var(--ok);
+}
+
+.junction-diagram .dot:focus-visible {
+  outline: none;
+  stroke: var(--text);
+  stroke-width: 3;
+}
+
+.movement-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.movement-group {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px 8px;
+  margin: 0;
+}
+
+.movement-group legend {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.movement {
+  padding: 4px 0;
+}
+
+.movement.banned .movement-head span {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.movement-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.movement-head span {
+  flex: 1;
+  font-size: 13px;
+}
+
+.lane-grid {
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.lane-grid th,
+.lane-grid td {
+  padding: 0 6px;
+  text-align: center;
+}
+
+.scenario-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.scenario-panel h2 {
+  margin-bottom: 0;
+}
+
+.result-list button[aria-current='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.scenario-settings summary,
+.exports summary {
+  cursor: pointer;
+}
+
+.scenario-settings form {
+  margin-top: 8px;
+}
+
+.scenario-settings .field input,
+.share-link {
+  width: 100%;
+}
+
+.exports ul {
+  margin: 6px 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.exports a {
+  color: var(--accent);
+}
+
+@media (max-width: 1100px) and (min-width: 761px) {
+  .scene-side {
+    width: 320px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 760px) {
+  .scene-side {
+    top: auto;
+    bottom: 10px;
+    max-height: 50%;
+  }
+}

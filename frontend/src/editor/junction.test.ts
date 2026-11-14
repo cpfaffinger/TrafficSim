@@ -3,7 +3,9 @@ import { PackageIndex } from '../network/inspect';
 import { editorNetwork } from '../test/editorNetwork';
 import { junctionDiagram } from './junctionDiagram';
 import {
+  armLabel,
   banMovement,
+  compass,
   changesetOverrides,
   classifyTurn,
   junctionMovements,
@@ -107,6 +109,17 @@ describe('movements (#66)', () => {
     const m = movement(junctionMovements(new PackageIndex(pkg), 'n0', []), 'l0>l2');
     expect(m.key).toBeNull();
     expect(() => banMovement(m)).toThrow(/cannot be edited/);
+  });
+});
+
+describe('arm labels', () => {
+  it('names arms by compass direction seen from the junction', () => {
+    expect(compass(1, 0)).toBe('E');
+    expect(compass(-1, -1)).toBe('SW');
+    expect(compass(0, -1)).toBe('S');
+    expect(armLabel(index.links.get('l0')!, true)).toBe('from W');
+    expect(armLabel({ ...index.links.get('l2')!, name: 'Main St' }, false)).toBe('to E (Main St)');
+    expect(armLabel(index.links.get('l4')!, true)).toBe('from N');
   });
 });
 

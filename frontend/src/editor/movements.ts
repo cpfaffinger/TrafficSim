@@ -169,3 +169,18 @@ export function withoutMovementEdits(changeset: Changeset, m: Movement, which: '
     return true;
   });
 }
+
+const COMPASS = ['E', 'NE', 'N', 'NW', 'W', 'SW', 'S', 'SE'] as const;
+
+/** Compass direction of an ENU vector. */
+export function compass(dx: number, dy: number): string {
+  const i = Math.round(Math.atan2(dy, dx) / (Math.PI / 4));
+  return COMPASS[(i + 8) % 8]!;
+}
+
+/** "from W (Main St)" / "to N": which arm of the junction a link is, seen from the junction. */
+export function armLabel(link: Link, incoming: boolean): string {
+  const [dx, dy] = direction(link.geometry, incoming);
+  const side = incoming ? compass(-dx, -dy) : compass(dx, dy);
+  return `${incoming ? 'from' : 'to'} ${side}${link.name ? ` (${link.name})` : ''}`;
+}

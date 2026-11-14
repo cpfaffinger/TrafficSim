@@ -11,7 +11,8 @@ public sealed record NetworkBaselineInfo(
     DateTimeOffset? OsmTimestamp,
     PackageStats Stats,
     IReadOnlyList<string> Attribution,
-    GeoPolygon? Polygon = null)
+    GeoPolygon? Polygon = null,
+    string? Name = null)
 {
     /// <summary>The import area as a polygon (the bounds for rectangular imports).</summary>
     public GeoPolygon Shape => Polygon ?? GeoPolygon.FromBoundingBox(Area);
@@ -33,6 +34,12 @@ public interface INetworkBaselineStore
 
     /// <summary>The newest baseline with exactly this area (and polygon, if any) created after <paramref name="since"/>.</summary>
     Task<NetworkBaselineInfo?> FindRecentAsync(BoundingBox area, GeoPolygon? polygon, DateTimeOffset since, CancellationToken cancellationToken);
+
+    /// <summary>Renames a baseline; false when it does not exist.</summary>
+    Task<bool> RenameAsync(Guid id, string name, CancellationToken cancellationToken);
+
+    /// <summary>Deletes a baseline with its scenarios and runs; false when it does not exist.</summary>
+    Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken);
 }
 
 /// <summary>Lifecycle of an import job.</summary>
@@ -55,7 +62,8 @@ public sealed record ImportJob(
     string? Error,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    GeoPolygon? Polygon = null)
+    GeoPolygon? Polygon = null,
+    string? Name = null)
 {
     public GeoPolygon Shape => Polygon ?? GeoPolygon.FromBoundingBox(Area);
 }

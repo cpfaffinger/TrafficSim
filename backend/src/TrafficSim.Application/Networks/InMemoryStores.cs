@@ -49,6 +49,19 @@ public sealed class InMemoryNetworkBaselineStore : INetworkBaselineStore
         return Task.CompletedTask;
     }
 
+    public Task<bool> RenameAsync(Guid id, string name, CancellationToken cancellationToken)
+    {
+        if (!_items.TryGetValue(id, out var item))
+        {
+            return Task.FromResult(false);
+        }
+
+        _items[id] = item with { Info = item.Info with { Name = name } };
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(_items.TryRemove(id, out _));
+
     public Task<byte[]?> GetOsmDataAsync(Guid id, CancellationToken cancellationToken) =>
         Task.FromResult(_items.TryGetValue(id, out var item) ? item.Osm : null);
 

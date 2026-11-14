@@ -52,13 +52,30 @@ public sealed partial class NetworkImportService(
 
     /// <exception cref="InvalidImportAreaException">The area is too small.</exception>
     /// <exception cref="AreaTooLargeException">No source accepts an area this large.</exception>
+    public const int MaxNameLength = 120;
+
     public Task<ImportJob> StartAsync(BoundingBox requested, CancellationToken cancellationToken) =>
-        StartAsync(GeoPolygon.FromBoundingBox(Normalize(requested)), cancellationToken);
+        StartAsync(GeoPolygon.FromBoundingBox(Normalize(requested)), null, cancellationToken);
+
+    public Task<ImportJob> StartAsync(GeoPolygon requested, CancellationToken cancellationToken) => StartAsync(requested, null, cancellationToken);
+
+    /// <summary>Trimmed name, null when empty; throws when too long.</summary>
+    public static string? CleanName(string? name)
+    {
+        var trimmed = name?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            return null;
+        }
+
+        return trimmed.Length <= MaxNameLength ? trimmed : throw new InvalidImportAreaException($"The name must not exceed {MaxNameLength} characters.");
+    }
 
     /// <summary>Starts the import of a polygon area (#110); rectangles are stored as plain bounds.</summary>
-    public async Task<ImportJob> StartAsync(GeoPolygon requested, CancellationToken cancellationToken)
+    public async Task<ImportJob> StartAsync(GeoPolygon requested, string? name, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(requested);
+        name = CleanName(name);
         var shape = requested.Normalize();
         var polygon = shape.IsRectangle ? null : shape;
         var area = polygon is null ? Normalize(shape.Bounds) : shape.Bounds;
@@ -77,8 +94,12 @@ public sealed partial class NetworkImportService(
         var now = time.GetUtcNow();
         var existing = await baselines.FindRecentAsync(area, polygon, now - ReuseWindow, cancellationToken).ConfigureAwait(false);
         var job = existing is null
-            ? new ImportJob(Guid.NewGuid(), area, ImportStatus.Queued, null, null, now, now, polygon)
-            : new ImportJob(Guid.NewGuid(), area, ImportStatus.Completed, existing.Id, null, now, now, polygon);
+            ? new ImportJob(Guid.NewGuid(), area, ImportStatus.Queued, null, null, now, now, polygon, name)
+            : new ImportJob(Guid.NewGuid(), area, ImportStatus.Completed, existing.Id, null, now, now, polygon, name);
+        if (existing is not null && name is not null && existing.Name is null)
+        {
+            await baselines.RenameAsync(existing.Id, name, cancellationToken).ConfigureAwait(false);
+        }
         await jobs.SaveAsync(job, cancellationToken).ConfigureAwait(false);
         if (existing is null)
         {
@@ -111,7 +132,7 @@ public sealed partial class NetworkImportService(
             var baselineId = Guid.NewGuid();
             var attribution = new[] { OsmAttribution, answer.Attribution }.Distinct(StringComparer.Ordinal).ToList();
             var package = NetworkPackageWriter.ToPackage(network, baselineId, attribution);
-            var info = new NetworkBaselineInfo(baselineId, job.Area, time.GetUtcNow(), answer.Provider, answer.Value.DataTimestamp, package.Stats, attribution, job.Polygon);
+            var info = new NetworkBaselineInfo(baselineId, job.Area, time.GetUtcNow(), answer.Provider, answer.Value.DataTimestamp, package.Stats, attribution, job.Polygon, job.Name);
             await baselines.SaveAsync(info, NetworkPackageWriter.SerializeGzip(package), OsmDataCodec.Encode(answer.Value), cancellationToken).ConfigureAwait(false);
 
             await jobs.SaveAsync(job with { Status = ImportStatus.Completed, BaselineId = baselineId, UpdatedAt = time.GetUtcNow() }, cancellationToken).ConfigureAwait(false);

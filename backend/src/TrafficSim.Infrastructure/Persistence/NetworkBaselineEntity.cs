@@ -26,6 +26,9 @@ public sealed class NetworkBaselineEntity
 
     public required string Source { get; set; }
 
+    /// <summary>User-facing name of the import (#114).</summary>
+    public string? Name { get; set; }
+
     public DateTimeOffset? OsmTimestamp { get; set; }
 
     public int Nodes { get; set; }
@@ -57,5 +60,6 @@ internal sealed class NetworkBaselineConfiguration : IEntityTypeConfiguration<Ne
         builder.HasIndex(b => b.CreatedAt);
         builder.HasIndex(b => new { b.South, b.West, b.North, b.East });
         builder.Property(b => b.Source).HasMaxLength(64);
+        builder.Property(b => b.Name).HasMaxLength(120);
     }
 }

@@ -1,20 +1,23 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using TrafficSim.Application.Networks;
 using TrafficSim.Application.RoadSources;
+using TrafficSim.Application.Scenarios;
 using TrafficSim.Domain.Geo;
 
 namespace TrafficSim.Api.Endpoints;
 
 /// <param name="Bbox">[west, south, east, north] for a rectangle, or</param>
 /// <param name="Polygon">[[lon, lat], …] ring (WGS84) for any shape (#110).</param>
-public sealed record ImportRequest(double[]? Bbox, double[][]? Polygon = null);
+public sealed record ImportRequest(double[]? Bbox, double[][]? Polygon = null, string? Name = null);
 
-public sealed record ImportJobDto(Guid JobId, string Status, Guid? BaselineId, string? Error, double[] Bbox, double[][]? Polygon = null)
+public sealed record RenameRequest(string? Name);
+
+public sealed record ImportJobDto(Guid JobId, string Status, Guid? BaselineId, string? Error, double[] Bbox, double[][]? Polygon = null, string? Name = null)
 {
     public static ImportJobDto From(ImportJob job)
     {
         ArgumentNullException.ThrowIfNull(job);
-        return new(job.Id, job.Status.ToString().ToLowerInvariant(), job.BaselineId, job.Error, ToArray(job.Area), Ring(job.Polygon));
+        return new(job.Id, job.Status.ToString().ToLowerInvariant(), job.BaselineId, job.Error, ToArray(job.Area), Ring(job.Polygon), job.Name);
     }
 
     internal static double[] ToArray(BoundingBox a) => [a.West, a.South, a.East, a.North];
@@ -22,12 +25,12 @@ public sealed record ImportJobDto(Guid JobId, string Status, Guid? BaselineId, s
     internal static double[][]? Ring(GeoPolygon? p) => p?.Ring.Select(v => new[] { v.Longitude, v.Latitude }).ToArray();
 }
 
-public sealed record NetworkBaselineDto(Guid Id, double[] Bbox, DateTimeOffset CreatedAt, string Source, DateTimeOffset? OsmTimestamp, PackageStats Stats, IReadOnlyList<string> Attribution, double[][]? Polygon = null)
+public sealed record NetworkBaselineDto(Guid Id, double[] Bbox, DateTimeOffset CreatedAt, string Source, DateTimeOffset? OsmTimestamp, PackageStats Stats, IReadOnlyList<string> Attribution, double[][]? Polygon = null, string? Name = null)
 {
     public static NetworkBaselineDto From(NetworkBaselineInfo i)
     {
         ArgumentNullException.ThrowIfNull(i);
-        return new(i.Id, ImportJobDto.ToArray(i.Area), i.CreatedAt, i.Source, i.OsmTimestamp, i.Stats, i.Attribution, ImportJobDto.Ring(i.Polygon));
+        return new(i.Id, ImportJobDto.ToArray(i.Area), i.CreatedAt, i.Source, i.OsmTimestamp, i.Stats, i.Attribution, ImportJobDto.Ring(i.Polygon), i.Name);
     }
 }
 
@@ -40,6 +43,8 @@ internal static class NetworkEndpoints
         group.MapGet("/networks", ListAsync).WithName("ListNetworks");
         group.MapGet("/networks/{id:guid}", GetAsync).WithName("GetNetwork");
         group.MapGet("/networks/{id:guid}/package", GetPackageAsync).WithName("GetNetworkPackage");
+        group.MapPatch("/networks/{id:guid}", RenameAsync).WithName("RenameNetwork");
+        group.MapDelete("/networks/{id:guid}", DeleteAsync).WithName("DeleteNetwork");
         return group;
     }
 
@@ -74,7 +79,7 @@ internal static class NetworkEndpoints
 
         try
         {
-            var job = await service.StartAsync(area, cancellationToken).ConfigureAwait(false);
+            var job = await service.StartAsync(area, request.Name, cancellationToken).ConfigureAwait(false);
             var dto = ImportJobDto.From(job);
             return job.Status == ImportStatus.Completed
                 ? TypedResults.Ok(dto)
@@ -84,6 +89,44 @@ internal static class NetworkEndpoints
         {
             return TypedResults.Problem(statusCode: StatusCodes.Status422UnprocessableEntity, title: "Area not importable", detail: ex.Message);
         }
+    }
+
+    internal static async Task<Results<Ok<NetworkBaselineDto>, NotFound, ProblemHttpResult>> RenameAsync(
+        Guid id, RenameRequest request, INetworkBaselineStore store, CancellationToken cancellationToken)
+    {
+        string? name;
+        try
+        {
+            name = NetworkImportService.CleanName(request?.Name);
+        }
+        catch (InvalidImportAreaException ex)
+        {
+            return TypedResults.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Invalid name", detail: ex.Message);
+        }
+
+        if (name is null)
+        {
+            return TypedResults.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Invalid name", detail: "The name must not be empty.");
+        }
+
+        if (!await store.RenameAsync(id, name, cancellationToken).ConfigureAwait(false))
+        {
+            return TypedResults.NotFound();
+        }
+
+        return TypedResults.Ok(NetworkBaselineDto.From((await store.GetAsync(id, cancellationToken).ConfigureAwait(false))!));
+    }
+
+    internal static async Task<Results<NoContent, NotFound>> DeleteAsync(
+        Guid id, INetworkBaselineStore store, IScenarioStore scenarios, CancellationToken cancellationToken)
+    {
+        // In-memory stores have no cascading keys: remove dependent scenarios explicitly.
+        foreach (var s in await scenarios.ListAsync(id, int.MaxValue, cancellationToken).ConfigureAwait(false))
+        {
+            await scenarios.DeleteAsync(s.Id, cancellationToken).ConfigureAwait(false);
+        }
+
+        return await store.DeleteAsync(id, cancellationToken).ConfigureAwait(false) ? TypedResults.NoContent() : TypedResults.NotFound();
     }
 
     internal static async Task<Results<Ok<ImportJobDto>, NotFound>> GetJobAsync(Guid jobId, NetworkImportService service, CancellationToken cancellationToken) =>

@@ -25,6 +25,7 @@ public sealed class EfNetworkBaselineStore(TrafficSimDbContext db) : INetworkBas
             East = a.East,
             CreatedAt = info.CreatedAt,
             Source = info.Source,
+            Name = info.Name,
             OsmTimestamp = info.OsmTimestamp,
             Nodes = info.Stats.Nodes,
             Links = info.Stats.Links,
@@ -46,6 +47,14 @@ public sealed class EfNetworkBaselineStore(TrafficSimDbContext db) : INetworkBas
 
     public Task<byte[]?> GetPackageAsync(Guid id, CancellationToken cancellationToken) =>
         db.Set<NetworkBaselineEntity>().AsNoTracking().Where(b => b.Id == id).Select(b => (byte[]?)b.Package).FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<bool> RenameAsync(Guid id, string name, CancellationToken cancellationToken) =>
+        await db.Set<NetworkBaselineEntity>().Where(b => b.Id == id)
+            .ExecuteUpdateAsync(u => u.SetProperty(b => b.Name, name), cancellationToken).ConfigureAwait(false) > 0;
+
+    /// <summary>Scenarios and runs are removed by the cascading foreign keys.</summary>
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken) =>
+        await db.Set<NetworkBaselineEntity>().Where(b => b.Id == id).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false) > 0;
 
     public Task<byte[]?> GetOsmDataAsync(Guid id, CancellationToken cancellationToken) =>
         db.Set<NetworkBaselineEntity>().AsNoTracking().Where(b => b.Id == id).Select(b => b.OsmData).FirstOrDefaultAsync(cancellationToken);
@@ -94,6 +103,7 @@ public sealed class EfNetworkBaselineStore(TrafficSimDbContext db) : INetworkBas
         East = b.East,
         CreatedAt = b.CreatedAt,
         Source = b.Source,
+        Name = b.Name,
         OsmTimestamp = b.OsmTimestamp,
         Nodes = b.Nodes,
         Links = b.Links,
@@ -112,5 +122,6 @@ public sealed class EfNetworkBaselineStore(TrafficSimDbContext db) : INetworkBas
         e.OsmTimestamp,
         new PackageStats(e.Nodes, e.Links, e.Lanes, e.Connectors, e.Signals),
         e.Attribution,
-        e.PolygonRing is null ? null : GeoPolygon.Parse(e.PolygonRing));
+        e.PolygonRing is null ? null : GeoPolygon.Parse(e.PolygonRing),
+        e.Name);
 }

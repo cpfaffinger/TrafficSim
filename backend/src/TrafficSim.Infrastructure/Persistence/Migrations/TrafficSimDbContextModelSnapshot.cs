@@ -62,6 +62,11 @@ namespace TrafficSim.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("links");
 
+                    b.Property<string>("Name")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("name");
+
                     b.Property<int>("Nodes")
                         .HasColumnType("integer")
                         .HasColumnName("nodes");

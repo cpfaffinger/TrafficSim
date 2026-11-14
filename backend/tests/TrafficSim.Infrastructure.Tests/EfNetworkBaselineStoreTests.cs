@@ -39,6 +39,12 @@ public class EfNetworkBaselineStoreTests(PostGisFixture db)
         Assert.Null(await store.FindRecentAsync(area, null, now.AddMinutes(1), Ct));
         Assert.Null(await store.FindRecentAsync(new BoundingBox(-40, -40, -39, -39), null, now.AddDays(-1), Ct));
 
+        Assert.True(await store.RenameAsync(info.Id, "Named", Ct));
+        Assert.Equal("Named", (await store.GetAsync(info.Id, Ct))!.Name);
+        Assert.False(await store.RenameAsync(Guid.NewGuid(), "x", Ct));
+        Assert.True(await store.DeleteAsync(info.Id, Ct));
+        Assert.False(await store.DeleteAsync(info.Id, Ct));
+
         var polygon = EfNetworkBaselineStore.ToPolygon(area);
         Assert.Equal(4326, polygon.SRID);
         Assert.True(polygon.IsValid);

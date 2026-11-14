@@ -34,6 +34,7 @@
 | `links` | Link[] | Directed road segments between two nodes. |
 | `connectors` | Connector[] | Lane-to-lane movements through nodes. |
 | `signals` | SignalController[] | Fixed-time signal plans. |
+| `crossings` | Crossing[] \| absent | Pedestrian crossings (ADR-0020, #86). Optional; absent or empty in older packages. |
 | `stats` | object | Informational counts (`nodes`, `links`, `lanes`, `connectors`, `signals`, `ignoredSigns` = stop/give-way signs that could not be attached to a junction). |
 
 ## Node
@@ -137,6 +138,40 @@ A movement from the end of one lane to the start of another through a node.
 Outside green and amber a group is red. Permissive movements (e.g. left turns during the opposing
 green) carry `priority = signal` and list the opposing through connectors in `conflicts`; the
 simulation yields on conflicts even when green.
+
+## Crossing
+
+A pedestrian crossing over a carriageway ([ADR-0020](../adr/0020-pedestrian-crossings.md)). Pedestrians
+appear at one kerb, wait and walk to the other; the simulation lets them interact with the vehicles on
+the crossed links.
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `id` | string | e.g. `"x3"`. |
+| `osmId` | number \| null | OSM node (`highway=crossing`, a crossing-tagged signal node, or a node shared with a `footway=crossing` way); null for implicit crosswalks. |
+| `kind` | enum | `zebra` (pedestrian priority), `signal`, `uncontrolled` (marked, no priority), `unmarked`. |
+| `node` | string \| null | Signal node the crossing belongs to (junction or mid-block signal). |
+| `signalGroup` | string \| null | Signal group of a signalised crossing. |
+| `signalMode` | enum \| null | `parallel`: pedestrians walk during the group's green, turning vehicles yield (junction crosswalks); `request`: pedestrians request a phase that turns the group red (mid-block push-button signals). Null when not signalised; a `signal` crossing without a group behaves like a zebra crossing. |
+| `implicit` | boolean | Assumed crosswalk at a signalised junction leg or mid-block signal (not mapped in OSM). |
+| `width` | number | Kerb-to-kerb walking distance (m). |
+| `depth` | number | Extent along the road (m): 4 for signalised crossings, 3 otherwise. |
+| `demand` | number | Estimated pedestrians per hour, both directions (base value per road class × kind; scenarios override it). |
+| `geometry` | `[x,y,z][2]` | First kerb → second kerb. Positions along the crossing (`span`, snapshot progress) are measured from the first kerb. |
+| `links` | CrossingLink[] | The directional links crossed (one for one-way roads, two for two-way roads). |
+
+### CrossingLink
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `link` | string | Link id. |
+| `position` | number | Distance of the crossing centre from the link start (m); may equal the link length when the crossing sits on the node at the link end. |
+| `span` | `[from, to]` | Lateral extent of the link's lanes along the crossing (m from the first kerb). |
+
+Base demand (pedestrians/h): trunk 80, primary/secondary 120, tertiary 90, unclassified/road/busway 50,
+residential 40, living street 30, service 20, motorway 0; × 0.6 for `uncontrolled`, × 0.4 for
+`unmarked`, × 0.75 for implicit crosswalks. Generated scenarios scale it by the activity within 250 m
+(`sim-core/README.md`, `pedestrians` config).
 
 ## Example
 

@@ -1,6 +1,8 @@
 using System.Net;
 using TrafficSim.Application.Providers;
 using TrafficSim.Domain.Geo;
+using TrafficSim.Domain.Network;
+using TrafficSim.Domain.Network.Compilation;
 using TrafficSim.Providers.Overpass;
 using TrafficSim.Providers.Tests.Support;
 
@@ -34,6 +36,34 @@ public class OverpassRoadNetworkSourceTests
         Assert.Equal("traffic_signals", data.Nodes[103].Tags["highway"]);
         Assert.Empty(data.Nodes[101].Tags);
         Assert.StartsWith("https://overpass.test/api/interpreter?data=", handler.Requests[0].RequestUri!.AbsoluteUri, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Maps_crossing_nodes_and_footway_crossings_and_compiles_them()
+    {
+        var handler = StubHttpMessageHandler.Json(Fixtures.Read("overpass", "crossings.json"));
+
+        var data = await Create(handler).FetchAsync(Area, Ct);
+
+        Assert.Equal("zebra", data.Nodes[402].Tags["crossing_ref"]);
+        Assert.Equal("traffic_signals", data.Nodes[403].Tags["crossing"]);
+        var footway = Assert.Single(data.Ways, w => w.Id == 502);
+        Assert.Equal("crossing", footway.Tags["footway"]);
+
+        var net = NetworkCompiler.Compile(data, Area);
+        Assert.Equal(
+            [(402L, CrossingKind.Zebra), (403L, CrossingKind.Signal), (404L, CrossingKind.Unmarked)],
+            net.Crossings.Select(x => (x.OsmId!.Value, x.Kind)));
+        Assert.Equal(CrossingSignalMode.Request, net.Crossings.Single(x => x.OsmId == 403).SignalMode);
+        Assert.All(net.Crossings, x => Assert.Equal(2, x.Links.Count));
+    }
+
+    [Fact]
+    public void Query_includes_footway_crossings()
+    {
+        Assert.Contains("way[\"footway\"=\"crossing\"](48.2000000,16.3600000,48.2050000,16.3700000)", OverpassQuery.Build(Area, 90), StringComparison.Ordinal);
+        var triangle = new GeoPolygon([new GeoPoint(48.2, 16.36), new GeoPoint(48.2, 16.37), new GeoPoint(48.21, 16.365)]);
+        Assert.Contains("way[\"footway\"=\"crossing\"](48.2000000,16.3600000,48.2100000,16.3700000)", OverpassQuery.Build(triangle, 90), StringComparison.Ordinal);
     }
 
     [Fact]

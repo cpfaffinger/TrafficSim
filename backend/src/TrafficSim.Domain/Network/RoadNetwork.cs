@@ -187,4 +187,7 @@ public sealed class RoadNetwork
 
     /// <summary>Stop/give-way signs that could not be attached to a junction approach.</summary>
     public int IgnoredSigns { get; init; }
+
+    /// <summary>Pedestrian crossings (ADR-0020).</summary>
+    public IReadOnlyList<Crossing> Crossings { get; init; } = [];
 }

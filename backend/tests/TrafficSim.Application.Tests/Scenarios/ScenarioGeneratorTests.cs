@@ -101,6 +101,38 @@ public class ScenarioGeneratorTests
         Assert.Contains(freight.RootElement.GetProperty("od").EnumerateArray(), o => o.TryGetProperty("vehicleMix", out _));
     }
 
+    private static NetworkPackage WithCrossings() => Golden() with
+    {
+        Crossings =
+        [
+            new PackageCrossing("x0", 1, "zebra", null, null, null, false, 7, 3, 100, [[-100, -3.5, 0], [-100, 3.5, 0]], [new PackageCrossingLink("l1", 20, [0, 3.5])]),
+            new PackageCrossing("x1", 2, "unmarked", null, null, null, false, 7, 3, 40, [[2000, -3.5, 0], [2000, 3.5, 0]], [new PackageCrossingLink("l2", 20, [0, 3.5])]),
+        ],
+    };
+
+    [Fact]
+    public void Pedestrian_demand_follows_the_activity_around_crossings_and_the_scenario()
+    {
+        var (scenarios, _) = ScenarioGenerator.Generate(WithCrossings(), Pois(), 0.07);
+
+        using var morning = JsonDocument.Parse(scenarios.Single(s => s.Key == "morning").DemandJson);
+        var peds = morning.RootElement.GetProperty("pedestrians");
+        Assert.Equal(1.0, peds.GetProperty("demandFactor").GetDouble());
+        var near = peds.GetProperty("crossings").GetProperty("x0").GetDouble();
+        var far = peds.GetProperty("crossings").GetProperty("x1").GetDouble();
+        Assert.InRange(near, 51, 400); // dwellings, a school and a stadium within reach lift it above the minimum
+        Assert.Equal(20, far); // nothing within reach: minimum multiplier (0.5 × 40)
+        using var night = JsonDocument.Parse(scenarios.Single(s => s.Key == "night").DemandJson);
+        Assert.Equal(0.15, night.RootElement.GetProperty("pedestrians").GetProperty("demandFactor").GetDouble());
+
+        var (fallback, _) = ScenarioGenerator.Generate(WithCrossings(), [], 0.07);
+        using var plain = JsonDocument.Parse(fallback[0].DemandJson);
+        Assert.False(plain.RootElement.GetProperty("pedestrians").TryGetProperty("crossings", out _));
+
+        var (none, _) = ScenarioGenerator.Generate(Golden(), Pois(), 0.07);
+        Assert.All(none, s => Assert.DoesNotContain("pedestrians", s.DemandJson, StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Without_activity_data_falls_back_to_residential_generation()
     {

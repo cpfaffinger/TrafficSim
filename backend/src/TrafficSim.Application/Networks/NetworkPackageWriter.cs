@@ -27,8 +27,23 @@ public static class NetworkPackageWriter
             network.Signals.Select(s => new PackageSignal(s.NodeId, s.Cycle, s.Offset,
                 s.Groups.Select(g => new PackageSignalGroup(g.Id, g.Green.Select(i => new[] { i.Start, i.End }).ToList(), g.Amber)).ToList())).ToList(),
             new PackageStats(network.Nodes.Count, network.Links.Count, network.LaneCount, network.Connectors.Count, network.Signals.Count, network.IgnoredSigns),
-            network.Polygon?.Ring.Select(p => new[] { p.Longitude, p.Latitude }).ToList());
+            network.Polygon?.Ring.Select(p => new[] { p.Longitude, p.Latitude }).ToList(),
+            network.Crossings.Select(MapCrossing).ToList());
     }
+
+    private static PackageCrossing MapCrossing(Crossing x) => new(
+        x.Id,
+        x.OsmId,
+        Snake(x.Kind),
+        x.NodeId,
+        x.SignalGroup,
+        x.SignalMode == CrossingSignalMode.None ? null : Snake(x.SignalMode),
+        x.Implicit,
+        R(x.Width),
+        R(x.Depth),
+        R(x.Demand),
+        Points(x.Geometry),
+        x.Links.Select(l => new PackageCrossingLink(l.LinkId, R(l.Position), [R(l.SpanFrom), R(l.SpanTo)])).ToList());
 
     public static byte[] SerializeGzip(NetworkPackage package)
     {

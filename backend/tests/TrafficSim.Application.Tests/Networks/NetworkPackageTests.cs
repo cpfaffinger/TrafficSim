@@ -83,5 +83,40 @@ public class NetworkPackageTests
         Assert.Equal(package.Stats, roundTrip.Stats);
         Assert.Equal(1, roundTrip.Links[0].Boundaries[0].LeftLane);
         Assert.Equal([0.0, 40.0], roundTrip.Signals[0].Groups[0].Green[0]);
+        Assert.Contains("\"crossings\":[]", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Writer_maps_crossings()
+    {
+        var network = new RoadNetwork
+        {
+            Origin = new GeoPoint(48.2, 16.37),
+            Area = new BoundingBox(48.19, 16.36, 48.21, 16.38),
+            Crossings =
+            [
+                new Crossing
+                {
+                    Id = "x0", OsmId = 5, Kind = CrossingKind.Signal, NodeId = "n1", SignalGroup = "n1:g0", SignalMode = CrossingSignalMode.Request,
+                    Width = 7.00012, Depth = 4, Demand = 120, Geometry = [new Vec3(0, -3.5), new Vec3(0, 3.5)],
+                    Links = [new CrossingLink("l0", 100, 0, 3.5), new CrossingLink("l1", 100, 3.5, 7)],
+                },
+                new Crossing { Id = "x1", Kind = CrossingKind.Zebra, Implicit = true, Width = 3, Depth = 3, Geometry = [new Vec3(0, 0), new Vec3(0, 3)], Links = [new CrossingLink("l0", 10, 0, 3)] },
+            ],
+        };
+
+        var package = NetworkPackageWriter.ToPackage(network, null, []);
+        var json = JsonSerializer.Serialize(package, NetworkPackage.JsonOptions);
+        var roundTrip = NetworkPackageWriter.DeserializeGzip(NetworkPackageWriter.SerializeGzip(package));
+
+        Assert.Contains("\"kind\":\"signal\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"signalMode\":\"request\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"span\":[3.5,7]", json, StringComparison.Ordinal);
+        Assert.Contains("\"width\":7", json, StringComparison.Ordinal);
+        var x1 = roundTrip.Crossings![1];
+        Assert.Equal("zebra", x1.Kind);
+        Assert.Null(x1.SignalMode);
+        Assert.True(x1.Implicit);
+        Assert.Equal("l1", roundTrip.Crossings[0].Links[1].Link);
     }
 }

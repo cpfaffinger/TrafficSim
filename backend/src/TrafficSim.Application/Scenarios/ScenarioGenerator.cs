@@ -138,9 +138,10 @@ public static class ScenarioGenerator
             unattached);
 
         var boundary = package.Nodes.Where(n => n.Control == "boundary").Select(n => n.Id).ToList();
+        var pedestrians = PedestrianDemand.Estimate(package, features);
         var scenarios = Definitions(totals)
             .Select(d => new GeneratedScenario(d.Key, d.Name, d.Description, d.Start, d.Duration,
-                hasData ? Demand(d, zones.Values.ToList(), boundary, carShare, externalShare) : FallbackDemand(d)))
+                PedestrianDemand.Apply(hasData ? Demand(d, zones.Values.ToList(), boundary, carShare, externalShare) : FallbackDemand(d), d.Key, pedestrians)))
             .ToList();
         return (scenarios, summary);
     }

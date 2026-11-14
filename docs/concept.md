@@ -61,10 +61,11 @@ classDiagram
     class NetworkBaseline { id; bbox; source; importedAt; osmTimestamp }
     class Changeset { id; scenarioId; edits[] }
     class Node { id; position; kind }
-    class Link { id; fromNode; toNode; geometry; roadClass; speedLimit }
+    class Link { id; fromNode; toNode; geometry; roadClass; speedLimit; layer; structure }
     class Lane { id; linkId; index; direction; width; allowedClasses; turnMarkings }
+    class LaneBoundary { linkId; leftLane; rightLane; marking; allowLeft; allowRight }
     class LaneConnector { fromLane; toLane; turnType; priority }
-    class Junction { nodeId; control: signal|priority|stop|yield|roundabout }
+    class Junction { nodeId; control: signal|priority|stop|yield|roundabout|level_crossing }
     class SignalController { id; junction; cycleS; offsetS; phases[] }
     class DemandProfile { zones; odMatrix; timeOfDayCurve; vehicleMix }
     class VehicleType { class; length; maxAccel; comfortDecel; maxSpeed }
@@ -77,6 +78,7 @@ classDiagram
     NetworkBaseline --> Node
     NetworkBaseline --> Link
     Link --> Lane
+    Link --> LaneBoundary
     Junction --> LaneConnector
     Junction --> SignalController
     DemandProfile --> VehicleType
@@ -95,6 +97,9 @@ Key concepts:
 
 ### 3.1 OSM → lane graph compilation (summary)
 
+Roundabouts, bridges/tunnels and lane markings are specified in
+[ADR-0016](adr/0016-roundabouts-grade-separation-lane-markings.md).
+
 | OSM input | Interpretation |
 |-----------|----------------|
 | `highway=*` | road class → defaults for speed, lanes, priority |
@@ -102,7 +107,11 @@ Key concepts:
 | `turn:lanes[:forward\|:backward]` | turn markings → lane connector constraints |
 | `maxspeed[:forward\|:backward]`, `maxspeed:lanes` | speed limits (country defaults when missing) |
 | `highway=traffic_signals`, `traffic_signals:direction` | signal-controlled junctions |
-| `highway=stop\|give_way`, `junction=roundabout` | junction control |
+| `highway=stop\|give_way` | junction control (yield / stop, with direction) |
+| `junction=roundabout\|circular`, `highway=mini_roundabout` | roundabout ring (implicit one-way), entries yield to circulating traffic |
+| `layer`, `bridge`, `tunnel`, `covered` | grade separation: vertical level and structure; no junction without a shared node |
+| `change:lanes`, `change`, `overtaking`, `divider` | lane boundaries: dashed / solid / asymmetric markings, lane-change permissions |
+| `railway=level_crossing` | level crossing control |
 | `access`, `hgv`, `bus:lanes`, `psv` | vehicle class restrictions |
 | `destination:lanes`, `placement`, `width` | rendering & lane change hints (later) |
 
@@ -120,8 +129,10 @@ Details: [ADR-0007](adr/0007-microscopic-traffic-model.md).
 - **Reaction time:** drivers perceive the leader state with a per-driver delay (ring buffer of
   past states); inattentive drivers additionally get stochastic perception lapses.
 - **Lane changing:** MOBIL (politeness factor, safety criterion, keep-right bias for motorways);
-  mandatory lane changes for routing (target lane before junction) with urgency ramp.
-- **Junctions:** lane connectors with conflict zones; gap acceptance for priority / yield / stop;
+  mandatory lane changes for routing (target lane before junction) with urgency ramp. Lane
+  boundaries (solid lines) restrict which changes are allowed.
+- **Junctions:** lane connectors with conflict zones (same level only — bridges and tunnels never
+  conflict); gap acceptance for priority / yield / stop / roundabout entries;
   signals as phase plans (fixed-time first, actuated later).
 - **Routing:** time-dependent shortest path on the lane graph; periodic re-routing for a share of
   drivers (commuters "know" alternatives).

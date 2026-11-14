@@ -11,8 +11,11 @@ and the simulation core. Planned top-level structure of `formatVersion: 1`:
   "baselineId": "…",
   "origin": { "lat": 48.2082, "lon": 16.3738 },       // local tangent plane origin (ADR-0011)
   "attribution": ["© OpenStreetMap contributors (ODbL)"],
-  "nodes":    [{ "id": "n1", "x": 0.0, "y": 0.0, "control": "signal" }],
-  "links":    [{ "id": "l1", "from": "n1", "to": "n2", "roadClass": "primary", "lanes": ["l1:0", "l1:1"] }],
+  "nodes":    [{ "id": "n1", "x": 0.0, "y": 0.0, "control": "signal" }],   // signal|priority|stop|yield|roundabout|level_crossing,
+  "links":    [{ "id": "l1", "from": "n1", "to": "n2", "roadClass": "primary", "lanes": ["l1:0", "l1:1"],
+                 "layer": 0, "structure": "none",                 // none|bridge|tunnel|covered (ADR-0016)
+                 "boundaries": [{ "left": "l1:1", "right": "l1:0", "marking": "solid_dashed",
+                                  "allowLeft": false, "allowRight": true }] }],
   "lanes":    [{ "id": "l1:0", "link": "l1", "index": 0, "width": 3.25, "speedLimit": 13.89,
                  "allowed": ["car", "truck", "bus"], "turns": ["left", "through"],
                  "polyline": [[0, 0], [120.5, 3.2]], "assumed": ["width"] }],

@@ -21,3 +21,4 @@ number, open a PR. Superseded ADRs stay in place with their status updated.
 | [0013](0013-testing-strategy.md) | Test-driven development and coverage targets | Accepted |
 | [0014](0014-licensing.md) | Licensing: MIT for code, ODbL attribution for data | Accepted |
 | [0015](0015-lean-ci.md) | Lean, cost-free CI on GitHub Actions | Accepted |
+| [0016](0016-roundabouts-grade-separation-lane-markings.md) | Roundabouts, grade separation and lane markings in the network model | Accepted |

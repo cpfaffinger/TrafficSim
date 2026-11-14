@@ -65,6 +65,9 @@ Epic: [#21](https://github.com/cpfaffinger/TrafficSim/issues/21)
 - [#29](https://github.com/cpfaffinger/TrafficSim/issues/29) Network import use case: compile, persist baseline, API
 - [#30](https://github.com/cpfaffinger/TrafficSim/issues/30) Network package format v1: spec, endpoint, cross-stack contract tests
 - [#31](https://github.com/cpfaffinger/TrafficSim/issues/31) Local tangent plane conversion in .NET, TS and Rust
+- [#92](https://github.com/cpfaffinger/TrafficSim/issues/92) Roundabouts: ring topology, implicit one-way, entry yield, mini-roundabouts
+- [#93](https://github.com/cpfaffinger/TrafficSim/issues/93) Grade separation: bridges, tunnels, layers (over- and underpasses)
+- [#94](https://github.com/cpfaffinger/TrafficSim/issues/94) Lane markings: lane boundaries, solid lines, change:lanes, overtaking
 
 ## Phase 3 — 3D viewer
 
@@ -78,6 +81,8 @@ Epic: [#32](https://github.com/cpfaffinger/TrafficSim/issues/32)
 - [#36](https://github.com/cpfaffinger/TrafficSim/issues/36) Basemap ground from OpenFreeMap vector tiles
 - [#37](https://github.com/cpfaffinger/TrafficSim/issues/37) Picking & inspector panel
 - [#38](https://github.com/cpfaffinger/TrafficSim/issues/38) Attribution & legal UI
+- [#95](https://github.com/cpfaffinger/TrafficSim/issues/95) Road markings in 3D: lane lines, solid lines, stop lines, turn arrows
+- [#96](https://github.com/cpfaffinger/TrafficSim/issues/96) Bridges, tunnels and interchanges in 3D
 
 ## Phase 4 — Simulation core v1
 
@@ -94,6 +99,7 @@ Epic: [#39](https://github.com/cpfaffinger/TrafficSim/issues/39)
 - [#46](https://github.com/cpfaffinger/TrafficSim/issues/46) MOBIL lane changes incl. mandatory route changes
 - [#47](https://github.com/cpfaffinger/TrafficSim/issues/47) Worker bridge, instanced vehicle rendering and playback controls
 - [#48](https://github.com/cpfaffinger/TrafficSim/issues/48) Determinism and golden-run regression suite
+- [#97](https://github.com/cpfaffinger/TrafficSim/issues/97) Sim rules for lane markings, roundabouts and grade separation
 
 ## Phase 5 — Demand & vehicle diversity
 
@@ -134,6 +140,7 @@ Epic: [#63](https://github.com/cpfaffinger/TrafficSim/issues/63)
 - [#68](https://github.com/cpfaffinger/TrafficSim/issues/68) Signal plan editor
 - [#69](https://github.com/cpfaffinger/TrafficSim/issues/69) Add/remove roads and junctions
 - [#70](https://github.com/cpfaffinger/TrafficSim/issues/70) Undo/redo and changeset persistence
+- [#98](https://github.com/cpfaffinger/TrafficSim/issues/98) Editor tools: lane markings, roundabouts, bridges and tunnels
 
 ## Phase 8 — Scenarios & comparison
 

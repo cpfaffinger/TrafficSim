@@ -124,6 +124,10 @@ impl Simulation {
         let max_wait = self.config.junction.max_wait;
         for i in 0..self.vehicles.len() {
             self.vehicles[i].stop_dist = f64::INFINITY;
+            if self.transit_dwelling(i) {
+                self.vehicles[i].zone_hold = f64::INFINITY;
+                continue;
+            }
             self.vehicles[i].zone_hold = self.zone_hold(i);
             let Some((c, d)) = self.upcoming_decision(i) else {
                 continue;

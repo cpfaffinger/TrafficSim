@@ -28,9 +28,11 @@ mod lane_change;
 mod observe;
 mod perception;
 mod reroute;
+mod transit;
 pub use observe::{
     ApproachMetrics, EventCounts, JunctionMetrics, LinkMetrics, MovementMetrics, NetworkKpis, Summary,
 };
+pub use transit::TransitLineMetrics;
 
 use std::collections::BTreeMap;
 
@@ -61,6 +63,8 @@ pub mod flags {
     /// Holding at a stop line (red signal, stop sign or yielding) or before an occupied conflict
     /// zone (#109).
     pub const YIELDING: u8 = 16;
+    /// Bus dwelling at a stop (#85).
+    pub const DWELLING: u8 = 32;
 }
 
 /// Stop this far (m) before a stop line obstacle.
@@ -264,6 +268,8 @@ pub struct Simulation {
     log_events: bool,
     lane_change_log: Vec<LaneChangeEvent>,
     entry_log: Vec<EntryEvent>,
+    /// Buses on public transport lines (#85).
+    transit: transit::Transit,
 }
 
 /// Distance travelled and new speed after `dt` with constant acceleration, never reversing.
@@ -322,7 +328,7 @@ impl Simulation {
         let actuated = actuated::Controller::build(&net, |id| config.signal_control.actuated.includes(id));
         let segments = net.segment_count();
         let connectors = net.connectors.len();
-        Ok(Self {
+        let mut sim = Self {
             router: Router::new(&net),
             informed: Router::new(&net),
             travel_times: reroute::TravelTimes::new(&net, &config),
@@ -353,8 +359,11 @@ impl Simulation {
             log_events: false,
             lane_change_log: Vec::new(),
             entry_log: Vec::new(),
+            transit: transit::Transit::default(),
             net,
-        })
+        };
+        sim.init_transit()?;
+        Ok(sim)
     }
 
     pub fn network(&self) -> &Network {
@@ -568,6 +577,7 @@ impl Simulation {
         self.net.signals.states_into(self.time, &mut self.signal_state);
         self.update_actuated();
         self.spawn();
+        self.spawn_transit();
         self.lane_change_phase();
         self.junction_phase();
         if self.config.perception.enabled {
@@ -575,6 +585,7 @@ impl Simulation {
         }
         self.compute_accelerations();
         self.integrate();
+        self.update_transit();
         self.steps += 1;
         self.time = self.steps as f64 * self.dt;
         self.record_history();
@@ -595,6 +606,9 @@ impl Simulation {
         }
         self.shadowed.clear();
         for (i, v) in self.vehicles.iter().enumerate() {
+            if self.transit.in_bay(v) {
+                continue; // a bus standing in a bay is off its lane (#85)
+            }
             let list = &mut self.seg_vehicles[v.seg as usize];
             if list.is_empty() {
                 self.occupied.push(v.seg);
@@ -646,6 +660,9 @@ impl Simulation {
     fn acceleration(&self, i: usize) -> f64 {
         let net = &self.net;
         let v = &self.vehicles[i];
+        if self.transit.dwelling(v) {
+            return 0.0;
+        }
         let p = &v.params;
         let speed = v.speed;
         let idm = p.idm(net.seg_speed_limit[v.seg as usize]);
@@ -686,6 +703,7 @@ impl Simulation {
         if v.zone_hold.is_finite() {
             Self::stop_at(&mut a, &idm, speed, v.zone_hold);
         }
+        self.transit_stop(&mut a, &idm, i);
         let mut dist = net.seg_length[v.seg as usize] - v.pos;
         if net.is_lane(v.seg) {
             // Vehicles that left this lane through another connector but still overlap it.
@@ -1078,6 +1096,7 @@ impl Simulation {
             h.f64(c.since);
         }
         h.f64(c.travel_time_sum);
+        self.transit.hash(&mut h);
         h.0
     }
 }

@@ -20,6 +20,7 @@ pub mod routing;
 pub mod signals;
 pub mod sim;
 pub mod synth;
+pub mod transit;
 pub mod vehicle;
 pub mod wasm;
 

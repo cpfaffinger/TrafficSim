@@ -143,6 +143,9 @@ pub struct Summary {
     pub links: Vec<LinkMetrics>,
     pub junctions: Vec<JunctionMetrics>,
     pub events: EventCounts,
+    /// Public transport lines (#85); absent without lines.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub transit: Vec<super::TransitLineMetrics>,
 }
 
 #[derive(Serialize)]
@@ -623,6 +626,7 @@ impl Simulation {
             links,
             junctions: self.junction_metrics(),
             events,
+            transit: self.transit_metrics(),
         }
     }
 

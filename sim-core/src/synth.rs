@@ -10,6 +10,10 @@ use crate::package::{
 
 pub const FIXTURE: &str = include_str!("../../docs/architecture/fixtures/network-package-v1.json");
 
+/// Corridor with one bus line, a kerb stop and a bay stop (#85).
+pub const TRANSIT_FIXTURE: &str =
+    include_str!("../../docs/architecture/fixtures/network-package-transit-v1.json");
+
 pub fn fixture_package() -> Package {
     Package::from_json(FIXTURE).unwrap()
 }
@@ -50,6 +54,7 @@ impl NetBuilder {
                 links: Vec::new(),
                 connectors: Vec::new(),
                 signals: Vec::new(),
+                transit_lines: Vec::new(),
             },
             trim: 8.0,
         }

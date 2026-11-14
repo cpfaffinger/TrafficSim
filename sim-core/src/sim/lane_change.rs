@@ -17,6 +17,7 @@
 //! roles and the lateral motion continues back); in the second half it is completed. A vehicle
 //! that leaves its lane (enters a connector) completes the change at once.
 
+use super::transit::Kerb;
 use super::{LaneChangeEvent, Simulation};
 use crate::idm::IdmParams;
 use crate::network::{NONE, Network};
@@ -76,10 +77,15 @@ impl Simulation {
             if !self.net.is_lane(v.seg) || v.claimed != NONE {
                 continue;
             }
+            // Buses keep to (or move to) the kerb lane before a stop and stay put while dwelling.
+            let kerb = self.transit_kerb(i);
+            if kerb == Kerb::Dwelling {
+                continue;
+            }
             let link = &self.net.links[self.net.lanes[v.seg as usize].link as usize];
             let len = self.net.seg_length[v.seg as usize];
             let zone_start = len - link.no_lane_change_zone;
-            let wrong_lane = v.next_conn == NONE && self.has_next_link(v);
+            let wrong_lane = v.next_conn == NONE && self.has_next_link(v) && kerb == Kerb::Free;
             // On an ending lane (acceleration lane, lane drop) a merger waits at the end for a
             // gap instead of giving up, as long as a lane change is possible at all.
             let lane = &self.net.lanes[v.seg as usize];
@@ -101,7 +107,7 @@ impl Simulation {
                 self.check_abort(i);
                 continue;
             }
-            if v.lc_timer > 0.0 || v.pos >= zone_start {
+            if v.lc_timer > 0.0 || v.pos >= zone_start || kerb == Kerb::Stay {
                 continue;
             }
             let mandatory = if wrong_lane {
@@ -112,6 +118,8 @@ impl Simulation {
                         continue;
                     }
                 }
+            } else if kerb == Kerb::MoveRight {
+                Some(-1)
             } else {
                 None
             };

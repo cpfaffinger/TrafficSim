@@ -2,7 +2,7 @@
 name = "trafficsim-sim-core"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "MIT"
 description = "Deterministic microscopic traffic simulation core for TrafficSim (native + WebAssembly)."
 repository = "https://github.com/cpfaffinger/TrafficSim"
@@ -14,6 +14,9 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # Must match the wasm-bindgen-cli version used by the build (Dockerfile, CI, package.json).
 wasm-bindgen = "=0.2.130"
+# Network package / config parsing (exact pins, minimal features to keep the WASM small).
+serde = { version = "=1.0.229", default-features = false, features = ["std", "derive"] }
+serde_json = { version = "=1.0.154", default-features = false, features = ["std"] }
 
 [profile.release]
 opt-level = 3

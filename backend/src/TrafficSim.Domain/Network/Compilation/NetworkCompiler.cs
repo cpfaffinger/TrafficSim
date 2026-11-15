@@ -94,6 +94,7 @@ public static class NetworkCompiler
             var roadWays = allRoads.Where(w => Selected(w)).ToList();
             BuildPieces(roadWays);
             MarkCuts(allRoads.Where(w => !Selected(w)));
+            MarkClippedEnds(roadWays);
             PruneStubs();
             AssignNodeIds();
             BuildLinks();
@@ -310,6 +311,35 @@ public static class NetworkCompiler
         /// Where a dropped road (#131) met a kept one that ends there, e.g. a ramp leading into the local
         /// network, the end is a network boundary: traffic enters and leaves there instead of turning.
         /// </summary>
+        /// <summary>
+        /// Dead ends where OSM goes on beyond the area (#155: Prague, Wilsonova: the node lay exactly on the area
+        /// edge, the ways going on were clipped to nothing and the main road ended in a dead end): the node is
+        /// part of further road ways, or lies inside its way. Such a dead end is a cut, a boundary.
+        /// </summary>
+        private void MarkClippedEnds(List<OsmWay> roads)
+        {
+            var ways = new Dictionary<long, int>();
+            var inner = new HashSet<long>();
+            foreach (var w in roads)
+            {
+                foreach (var id in w.NodeIds.Distinct())
+                {
+                    ways[id] = ways.GetValueOrDefault(id) + 1;
+                }
+
+                for (var i = 1; i < w.NodeIds.Count - 1; i++)
+                {
+                    inner.Add(w.NodeIds[i]);
+                }
+            }
+
+            foreach (var g in _nodes.Values.Where(g => g.OsmId is { } id && g.Pieces.Count == 1 && !g.Synthetic
+                         && (ways.GetValueOrDefault(id) >= 2 || inner.Contains(id))))
+            {
+                g.Cut = true;
+            }
+        }
+
         private void MarkCuts(IEnumerable<OsmWay> dropped)
         {
             var nodes = dropped.SelectMany(w => w.NodeIds).ToHashSet();

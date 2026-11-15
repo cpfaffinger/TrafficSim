@@ -752,6 +752,33 @@ public class NetworkCompilerTests
     }
 
     [Fact]
+    public void A_road_ending_exactly_on_the_area_edge_where_osm_continues_is_a_boundary()
+    {
+        // #155: Prague, Wilsonova: the node where the road continues lies exactly on the area edge; the
+        // ways going on were clipped to nothing and the main road became a dead end without a boundary.
+        var b = new OsmBuilder()
+            .Node(1, -200, 0).Node(2, 300, 0).Node(3, 500, 0).Node(4, 450, 80)
+            .Way(10, [1, 2], ("highway", "primary"), ("oneway", "yes"))
+            .Way(11, [2, 3], ("highway", "primary"), ("oneway", "yes"))
+            .Way(12, [2, 4], ("highway", "primary_link"), ("oneway", "yes"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area(300));
+
+        var end = net.Links.Single(l => l.OsmWayId == 10).To;
+        Assert.Equal(NodeControl.Boundary, net.Nodes.Single(n => n.Id == end).Control);
+    }
+
+    [Fact]
+    public void A_real_dead_end_stays_a_dead_end()
+    {
+        var b = new OsmBuilder()
+            .Node(1, -200, 0).Node(2, 100, 0)
+            .Way(10, [1, 2], ("highway", "residential"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area(300));
+
+        Assert.NotEqual(NodeControl.Boundary, net.Nodes.Single(n => n.OsmId == 2).Control);
+    }
+
+    [Fact]
     public void Dead_end_allows_turning_around()
     {
         var b = new OsmBuilder()

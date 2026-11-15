@@ -894,6 +894,30 @@ fn residential_street() -> NetBuilder {
     b
 }
 
+/// #151: Lisbon: residential origins in one-way streets or road pieces cut by the area reach only a
+/// few destinations; trips drawing others were dropped as unroutable after eight tries. Destinations
+/// are drawn among those the origin reaches.
+#[test]
+fn residential_trips_from_a_poorly_connected_street_find_a_destination() {
+    let mut b = residential_street();
+    b.node("P", 1200.0, 300.0, NodeControl::Priority)
+        .node("Q", 1200.0, 0.0, NodeControl::Boundary)
+        .link("iso", "P", "Q", 1, 8.333);
+    b.link_mut("iso").road_class = crate::package::RoadClass::Residential;
+    let config = SimConfig::from_json(
+        r#"{"autoZones": true, "autoEntries": false, "entries": {"A": 100},
+            "residential": {"outboundPerKm": 3000, "inboundPerKm": 0}}"#,
+    )
+    .unwrap();
+    let mut s = sim(&b, config);
+    for _ in 0..6000 {
+        s.step();
+    }
+    let stats = s.stats();
+    assert!(stats.spawned > 50, "{stats:?}");
+    assert_eq!(stats.unroutable, 0, "{stats:?}");
+}
+
 #[test]
 fn residential_trips_start_and_end_inside_the_network() {
     let config = SimConfig::from_json(

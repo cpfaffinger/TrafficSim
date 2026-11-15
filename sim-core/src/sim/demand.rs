@@ -392,6 +392,10 @@ impl Demand {
             ),
         ];
         for (kind, origins, dests, per_km, curve, stream) in plans {
+            // Origins without a way to any destination generate nothing (#151: residential streets in
+            // road pieces cut by the area; their trips were dropped as unroutable).
+            let reaching = net.links_reaching(dests.iter().map(|d| d.0));
+            let origins: Vec<(u32, f64)> = origins.into_iter().filter(|o| reaching[o.0 as usize]).collect();
             if origins.is_empty() || dests.is_empty() {
                 continue;
             }
@@ -412,6 +416,16 @@ impl Demand {
                 drivers: drivers.clone(),
                 next_arrival: f64::INFINITY,
                 rng: Pcg32::new(seed, 0x3000_0000 + stream),
+            };
+            // Outbound volume follows the homes that can generate trips at all.
+            let km = if kind == SourceKind::ResidentialOut {
+                src.origins
+                    .iter()
+                    .map(|&l| net.links[l as usize].length)
+                    .sum::<f64>()
+                    / 1000.0
+            } else {
+                km
             };
             self.set_rate(&mut src, per_km * km, 0.0);
             self.sources.push(src);

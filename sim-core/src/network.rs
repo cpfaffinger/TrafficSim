@@ -680,14 +680,42 @@ impl Network {
     /// without joining the network inside).
     pub fn reaches_another_exit(&self, link: u32) -> bool {
         let origin = self.links[link as usize].from;
+        self.reachable_links(link).iter().enumerate().any(|(l, &r)| {
+            let info = &self.links[l];
+            r && info.to != origin && self.nodes[info.to as usize].control == NodeControl::Boundary
+        })
+    }
+
+    /// Links from which at least one of `targets` can be reached (the targets included), by index:
+    /// one search backwards from all of them (#151).
+    pub fn links_reaching(&self, targets: impl IntoIterator<Item = u32>) -> Vec<bool> {
+        let mut seen = vec![false; self.links.len()];
+        let mut stack: Vec<u32> = targets.into_iter().collect();
+        for &t in &stack {
+            seen[t as usize] = true;
+        }
+        while let Some(l) = stack.pop() {
+            let info = &self.links[l as usize];
+            for lane in info.first_lane..info.first_lane + info.lane_count {
+                for &c in self.lane_incoming(lane) {
+                    let prev = self.connectors[c as usize].from_link;
+                    if !seen[prev as usize] {
+                        seen[prev as usize] = true;
+                        stack.push(prev);
+                    }
+                }
+            }
+        }
+        seen
+    }
+
+    /// Links reachable from `link` (itself included) through any lanes and connectors, by index.
+    pub fn reachable_links(&self, link: u32) -> Vec<bool> {
         let mut seen = vec![false; self.links.len()];
         let mut stack = vec![link];
         seen[link as usize] = true;
         while let Some(l) = stack.pop() {
             let info = &self.links[l as usize];
-            if info.to != origin && self.nodes[info.to as usize].control == NodeControl::Boundary {
-                return true;
-            }
             for lane in info.first_lane..info.first_lane + info.lane_count {
                 for &c in self.lane_outgoing(lane) {
                     let next = self.connectors[c as usize].to_link;
@@ -698,7 +726,7 @@ impl Network {
                 }
             }
         }
-        false
+        seen
     }
 
     /// Links whose end node is a network boundary (vehicle sinks).

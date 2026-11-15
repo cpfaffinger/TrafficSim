@@ -84,6 +84,12 @@ public class NetworkCompilerTests
         {
             Assert.Subset(GreenSeconds(net, exit.SignalGroup!), GreenSeconds(net, entry.SignalGroup!));
         }
+
+        // Pedestrians cross on the outer legs only, never with an always-green group.
+        var inside = net.Links.Where(l => l.OsmWayId == 12 && l.Length < 20 && l.From != net.Nodes.Single(n => n.OsmId == 5).Id).Select(l => l.Id).ToHashSet();
+        Assert.NotEmpty(inside);
+        Assert.DoesNotContain(net.Crossings, x => x.Implicit && x.Links.Any(l => inside.Contains(l.LinkId)));
+        Assert.All(net.Crossings.Where(x => x.SignalGroup is not null), x => Assert.True(GreenSeconds(net, x.SignalGroup!).Count < net.Signals[0].Cycle, x.SignalGroup));
     }
 
     [Fact]

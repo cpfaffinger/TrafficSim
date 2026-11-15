@@ -20,6 +20,12 @@ public static class CrossingRule
     /// <summary>Extent along the road (m) of signalised crosswalks and of other crossings.</summary>
     public const double SignalDepth = 4;
 
+    /// <summary>
+    /// Legs shorter than this towards another junction node lie inside one junction (dual carriageways,
+    /// slip roads): no implicit crosswalk there (#126), pedestrians cross on the outer legs.
+    /// </summary>
+    public const double InnerLegMetres = 20;
+
     public const double OtherDepth = 3;
 
     /// <summary>Kind of a crossing node, null when the node is no (usable) crossing.</summary>
@@ -327,6 +333,10 @@ public static class CrossingRule
         private string? FirstGroup(NetworkNode node) =>
             _signalByNode.TryGetValue(node.Id, out var s) && s.Groups.Count > 0 ? s.Groups[0].Id : null;
 
+        private bool AlwaysGreen(NetworkNode node, string group) =>
+            _signalByNode.TryGetValue(node.Id, out var s) && s.Groups.FirstOrDefault(g => g.Id == group) is { } g
+            && g.Green.Sum(i => i.End - i.Start) >= s.Cycle - 1e-6;
+
         private string? GroupOf(Link incoming) => _connectorsByFrom[incoming.Id].Select(c => c.SignalGroup).FirstOrDefault(g => g is not null);
 
         /// <summary>
@@ -339,10 +349,18 @@ public static class CrossingRule
             var own = leg.In is { } i ? GroupOf(i) : null;
             string? best = null;
             var bestSin = 0.7;
+            var skippedAlways = false;
             foreach (var approach in _links.Where(l => l.To == node.Id && l != leg.In))
             {
+                // An always-green group (#117, movements inside a junction) would give pedestrians permanent green.
                 if (GroupOf(approach) is not { } group)
                 {
+                    continue;
+                }
+
+                if (AlwaysGreen(node, group))
+                {
+                    skippedAlways = true;
                     continue;
                 }
 
@@ -353,6 +371,12 @@ public static class CrossingRule
                     bestSin = sin;
                     best = group;
                 }
+            }
+
+            if (best is null && skippedAlways && _signalByNode.TryGetValue(node.Id, out var s))
+            {
+                // Only always-green movements run across the leg: pedestrians walk while the leg's own traffic is red.
+                best = s.Groups.Select(g => g.Id).FirstOrDefault(g => g != own && !AlwaysGreen(node, g));
             }
 
             return best == own ? null : best;
@@ -418,9 +442,14 @@ public static class CrossingRule
                 yield break;
             }
 
+            bool Inner(Link? link, bool outgoing) =>
+                link is not null && link.Length < InnerLegMetres
+                && NodeById[outgoing ? link.To : link.From].Control is not (NodeControl.None or NodeControl.Boundary);
+
             foreach (var leg in legs)
             {
-                if (Covered(leg.In, false) || Covered(leg.Out, true) || ParallelGroup(node, leg) is not { } group)
+                if (Covered(leg.In, false) || Covered(leg.Out, true) || Inner(leg.In, false) || Inner(leg.Out, true)
+                    || ParallelGroup(node, leg) is not { } group)
                 {
                     continue;
                 }

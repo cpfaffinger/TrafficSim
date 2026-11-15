@@ -26,9 +26,10 @@ public sealed class CompilerOptions
 
     /// <summary>
     /// Links between signal nodes shorter than this cannot hold a waiting vehicle clear of both junctions: the
-    /// movements out of them are green whenever a movement into them is (#117).
+    /// movements out of them are green whenever a movement into them is (#117). 20 m covers an articulated truck
+    /// (16.5 m + gap), which the simulation also makes pass both junctions in one go (#126).
     /// </summary>
-    public double SignalChainMetres { get; init; } = 10;
+    public double SignalChainMetres { get; init; } = 20;
 
     /// <summary>Terrain under the network (ADR-0018); null keeps the network flat apart from grade separation.</summary>
     public TerrainGrid? Terrain { get; init; }

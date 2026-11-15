@@ -102,6 +102,12 @@ public sealed class OverpassOptions : HttpProviderOptions
 
     /// <summary>Server-side query timeout in seconds.</summary>
     public int QueryTimeoutSeconds { get; set; } = 120;
+
+    /// <summary>
+    /// How long raw road responses are reused for imports inside their area (#138); zero disables the area
+    /// cache. Needs <c>Providers:Cache:Directory</c>.
+    /// </summary>
+    public TimeSpan AreaCacheTtl { get; set; } = TimeSpan.FromDays(7);
 }
 
 /// <summary>Geofabrik regional PBF extracts for areas too large for Overpass.</summary>

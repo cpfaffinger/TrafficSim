@@ -227,7 +227,9 @@ flowchart TB
   `IBasemapProvider`, later `IElevationProvider`). Each adapter is an **anti-corruption layer**
   that translates provider DTOs into canonical domain types. All adapters share one **fetch
   pipeline** (typed `HttpClient`, retries with jitter, circuit breaker, per-provider rate limiter,
-  response cache, User-Agent / contact header, attribution metadata).
+  response cache, User-Agent / contact header, attribution metadata). Raw Overpass road responses
+  are also kept by area (#138, `Providers:Overpass:AreaCacheTtl`, default 7 days): an import inside
+  an already fetched rectangle reuses that response unchanged, whichever instance served it.
 - **Provider registry** with capabilities, priority and fallback chain, e.g. geocoding:
   `photon (community)` → `photon (self-hosted)` → `nominatim` → `google (disabled)`.
 - **Simulation runs client-side** ([ADR-0006](adr/0006-rust-wasm-simulation-core.md)); the

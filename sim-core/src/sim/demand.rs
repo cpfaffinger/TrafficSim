@@ -605,6 +605,32 @@ impl Simulation {
 
     /// Inserts a pending vehicle at the start of `link` if a lane has a safe gap ahead (and,
     /// for links inside the network, behind towards vehicles arriving from upstream).
+    /// Gap and speed of the nearest vehicle beyond an empty lane along the route (#153: an entry
+    /// link of 3 m at the area boundary; vehicles were inserted on top of the queue behind it).
+    fn gap_beyond(&self, lane: u32, route: &[u32], mask: u8) -> (f64, f64) {
+        let net = &self.net;
+        let c = super::choose_on_route(net, route, lane, 1, mask);
+        if c == NONE {
+            return (f64::INFINITY, f64::INFINITY);
+        }
+        let len = net.seg_length[lane as usize];
+        let seg = net.connector_segment(c);
+        let ahead = |base: f64, seg: u32| {
+            self.last_on(seg).map(|(j, pos)| {
+                let l = &self.vehicles[j as usize];
+                (base + pos - l.params.length, l.speed)
+            })
+        };
+        ahead(len, seg)
+            .or_else(|| {
+                ahead(
+                    len + net.seg_length[seg as usize],
+                    net.connectors[c as usize].to_lane,
+                )
+            })
+            .unwrap_or((f64::INFINITY, f64::INFINITY))
+    }
+
     pub(super) fn try_insert(&mut self, link: u32, p: &Pending) -> bool {
         if p.frac > 0.0 {
             return self.try_insert_along(link, p);
@@ -629,6 +655,10 @@ impl Simulation {
                 Some((j, pos)) => {
                     let l = &self.vehicles[j as usize];
                     (pos - l.params.length, l.speed)
+                }
+                // An entry lane too short to hold the vehicle: the leader is beyond it.
+                None if self.net.seg_length[lane as usize] < p.params.length + p.params.minimum_gap => {
+                    self.gap_beyond(lane, &self.routes[p.route as usize], mask)
                 }
                 None => (f64::INFINITY, f64::INFINITY),
             };

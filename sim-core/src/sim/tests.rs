@@ -2168,6 +2168,46 @@ fn entries_without_a_way_to_another_exit_get_no_road_class_demand() {
     assert_eq!(s.stats().unroutable, 0, "{:?}", s.stats());
 }
 
+/// #153: Amsterdam, Valkenburgerstraat: the entry link at the area boundary is 3.4 m long. With a
+/// queue right behind the junction, new vehicles were inserted on the empty entry lane again and
+/// again and piled up on the connector (46 on top of each other, 214 removed as stuck).
+/// Insertion looks for the leader beyond a short entry lane.
+#[test]
+fn vehicles_are_not_inserted_into_a_queue_beyond_a_very_short_entry_link() {
+    let mut b = NetBuilder::new();
+    let v = 13.9;
+    b.node("W", -11.0, 0.0, NodeControl::Boundary)
+        .node("J", 0.0, 0.0, NodeControl::Priority)
+        .node("E", 300.0, 0.0, NodeControl::Boundary)
+        .link("in", "W", "J", 1, v)
+        .link("main", "J", "E", 1, v)
+        .connect("a", "in", 0, "main", 0, Priority::Major);
+    let config = SimConfig {
+        demand: BTreeMap::from([("W".to_string(), 1800.0)]),
+        ..quiet()
+    };
+    let mut s = sim(&b, config);
+    let entry = s.network().links[s.network().link_index("in").unwrap() as usize].first_lane;
+    assert!(
+        s.network().seg_length[entry as usize] < 4.5,
+        "the entry lane is shorter than a car"
+    );
+    let blocker = s.place_vehicle("main", 0, 12.0, 0.0, "main", car()).unwrap();
+    for _ in 0..600 {
+        s.step();
+        if let Some(v) = s.vehicles.iter_mut().find(|v| v.id == blocker) {
+            (v.pos, v.speed) = (12.0, 0.0);
+        }
+    }
+    // Behind a standing vehicle 12 m into `main` (about 26 m back to the boundary across the
+    // connector) four cars fit; it used to be 28 on top of each other.
+    assert!(
+        s.vehicles().len() <= 5,
+        "{} vehicles in a few metres",
+        s.vehicles().len()
+    );
+}
+
 /// W → J1 → J2 → E: straight (`short`) or around (`up`, `down`); a held vehicle blocks `short`.
 fn navi_net() -> NetBuilder {
     let mut b = NetBuilder::new();

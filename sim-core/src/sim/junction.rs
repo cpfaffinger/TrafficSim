@@ -738,8 +738,12 @@ impl Simulation {
         };
         let mut lane = net.connectors[c as usize].to_lane;
         let (mut len, mut occ) = (net.seg_length[lane as usize], occupied(lane));
-        // `c` leads onto the route link after the current one (see `chain_after`).
-        let first = v.route_pos as usize + 2;
+        // The route link `c` leads onto: the next one for the connector ahead, further on for a
+        // chained one (#147: the room was looked for one link too early and never found).
+        let to_link = net.connectors[c as usize].to_link;
+        let first = (v.route_pos as usize..route.len())
+            .find(|&k| route[k] == to_link)
+            .map_or(v.route_pos as usize + 2, |k| k + 1);
         for idx in first..first + 4 {
             if len >= needed {
                 break;

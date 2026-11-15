@@ -2062,6 +2062,58 @@ fn at_a_lane_widening_vehicles_enter_the_lane_that_leads_on() {
     assert_eq!(s.stats().lane_changes, 0);
 }
 
+/// #147: Bad Ischl, Auböckplatz: a bus waiting before a junction whose exit is too short to wait on
+/// decides about the roundabout entry behind it too. The ring room it needs was looked for one link
+/// too early on its route, so the 13 m ring link after the entry never had room for it.
+#[test]
+fn a_bus_chained_into_a_roundabout_with_short_ring_links_enters() {
+    let mut b = NetBuilder::new();
+    let v = 13.9;
+    b.node("W", -300.0, 0.0, NodeControl::Boundary)
+        .node("J", 0.0, 0.0, NodeControl::Priority)
+        .node("N", 0.0, 300.0, NodeControl::Boundary)
+        .node("S", 0.0, -300.0, NodeControl::Boundary)
+        .node("R", 22.0, 0.0, NodeControl::Roundabout)
+        .node("R2", 40.0, 0.0, NodeControl::Roundabout)
+        .node("P", 22.0, -300.0, NodeControl::Boundary)
+        .node("E", 340.0, 0.0, NodeControl::Boundary)
+        .link("we", "W", "J", 1, v)
+        .link("ns", "N", "J", 1, v)
+        .link("js", "J", "S", 1, v)
+        .link("short", "J", "R", 1, v)
+        .link("ring_in", "P", "R", 1, v)
+        .link("ring", "R", "R2", 1, v)
+        .link("out", "R2", "E", 1, v)
+        .connect("a", "we", 0, "short", 0, Priority::Minor)
+        .connect("x", "ns", 0, "js", 0, Priority::Major)
+        .connect("e", "short", 0, "ring", 0, Priority::RoundaboutEntry)
+        .connect("g", "ring_in", 0, "ring", 0, Priority::RoundaboutRing)
+        .connect("o", "ring", 0, "out", 0, Priority::Major)
+        .auto_conflicts("J")
+        .auto_conflicts("R");
+    let mut s = sim(&b, quiet());
+    let net = s.network();
+    let lane = |id: &str| net.links[net.link_index(id).unwrap() as usize].first_lane;
+    let bus = VehicleParams {
+        length: 12.0,
+        ..car()
+    };
+    assert!(
+        net.seg_length[lane("short") as usize] < bus.length,
+        "short must be too short to wait on"
+    );
+    assert!(
+        net.seg_length[lane("ring") as usize] < bus.length + 2.0,
+        "the ring link is shorter than the bus needs"
+    );
+    let id = s.place_vehicle("we", 0, 200.0, 8.0, "out", bus).unwrap();
+    while vehicle(&s, id).is_some() {
+        s.step();
+        assert!(s.time < 120.0, "the bus still waits at t = {}", s.time);
+    }
+    assert_eq!(s.stats().arrived, 1);
+}
+
 /// W → J1 → J2 → E: straight (`short`) or around (`up`, `down`); a held vehicle blocks `short`.
 fn navi_net() -> NetBuilder {
     let mut b = NetBuilder::new();

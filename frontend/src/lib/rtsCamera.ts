@@ -98,6 +98,22 @@ export function wheelZoomFactor(deltaY: number): number {
 }
 
 /** A view that frames the rectangle `[minX, minZ, maxX, maxZ]` (scene coordinates). */
+/**
+ * Camera limits for a network of the given extent (#122): panning reaches `margin` beyond it (at
+ * least 1.5 km, half its span for large areas) and zooming out goes far enough to frame the whole
+ * area even in a narrow portrait view (aspect ≈ 0.35).
+ */
+export function limitsFor(rect: [number, number, number, number], limits: RtsCameraLimits = DEFAULT_LIMITS): RtsCameraLimits & { margin: number } {
+  const span = Math.max(rect[2] - rect[0], rect[3] - rect[1], 1);
+  const margin = Math.max(1500, span / 2);
+  return {
+    ...limits,
+    maxDistance: Math.max(DEFAULT_LIMITS.maxDistance, 4 * span),
+    bounds: [rect[0] - margin, rect[1] - margin, rect[2] + margin, rect[3] + margin],
+    margin,
+  };
+}
+
 export function frameRect(rect: [number, number, number, number], fovY: number, aspect: number, limits = DEFAULT_LIMITS): RtsCameraState {
   const w = Math.max(rect[2] - rect[0], 1);
   const d = Math.max(rect[3] - rect[1], 1);

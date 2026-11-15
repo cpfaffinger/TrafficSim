@@ -6,6 +6,7 @@ import {
   clipPlanes,
   DEFAULT_LIMITS,
   frameRect,
+  limitsFor,
   groundAxes,
   intersectGround,
   isClick,
@@ -136,5 +137,18 @@ describe('two-finger gestures', () => {
     expect(classifyTwoFingerGesture(sample(200, 0, 100, 300), sample(200, 0, 140, 290))).toBe('pinch');
     expect(classifyTwoFingerGesture(sample(200, Math.PI / 2, 100, 300), sample(200, Math.PI / 2, 100, 280))).toBe('pinch');
     expect(classifyTwoFingerGesture(sample(200, 3.1, 100, 300), sample(200, -3.1, 100, 280))).toBe('pinch');
+  });
+});
+
+describe('limitsFor (#122)', () => {
+  it('lets a wide area be framed in a portrait view and panned beyond', () => {
+    // Krems: 6.6 km wide, 3.2 km deep, on a portrait tablet (aspect 0.55).
+    const rect: [number, number, number, number] = [-3300, -1600, 3300, 1600];
+    const limits = limitsFor(rect);
+    const s = frameRect(rect, 45 * DEG, 0.55, limits);
+    const halfWidth = s.distance * Math.tan((45 * DEG) / 2) * 0.55;
+    expect(halfWidth).toBeGreaterThanOrEqual(3300);
+    expect(limits.bounds).toEqual([-6600, -4900, 6600, 4900]);
+    expect(limitsFor([0, 0, 200, 200]).bounds).toEqual([-1500, -1500, 1700, 1700]);
   });
 });

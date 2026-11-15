@@ -3,8 +3,8 @@ import { LocalTangentPlane } from '../network/geo';
 import { encodeTile } from '../test/mvtEncoder';
 import { buildBasemapMeshes, GROUND_LEVEL, triangulate } from './basemapMeshes';
 import { classify, decodeTile, DEFAULT_BUILDING_HEIGHT } from './decode';
-import { clearTileCache, loadBasemap, mapLimit } from './loader';
-import { lonLatToTile, tileToLonLat } from './tiles';
+import { clearTileCache, loadBasemap, loadBasemapRing, mapLimit, ringStrips } from './loader';
+import { expandBbox, lonLatToTile, tileToLonLat } from './tiles';
 
 const square = (x0: number, y0: number, size: number): [number, number][] => [
   [x0, y0],
@@ -146,6 +146,34 @@ describe('loadBasemap', () => {
       Promise.resolve(url.endsWith('.pbf') ? new Response('x', { status: 500 }) : new Response(JSON.stringify(tileJson))),
     );
     await expect(loadBasemap({ bbox, origin: ORIGIN, fetchFn: tilesDown as unknown as typeof fetch })).rejects.toThrow('unavailable');
+  });
+});
+
+describe('basemap surroundings (#122)', () => {
+  beforeEach(() => clearTileCache());
+
+  it('splits the ring into strips around the inner box', () => {
+    expect(ringStrips([1, 1, 2, 2], [0, 0, 3, 3])).toEqual([
+      [0, 0, 3, 1],
+      [0, 2, 3, 3],
+      [0, 1, 1, 2],
+      [2, 1, 3, 2],
+    ]);
+    // An inner box reaching past the outer edge leaves no strip on that side.
+    expect(ringStrips([1, 1, 4, 2], [0, 0, 3, 3])).toHaveLength(3);
+  });
+
+  it('loads ground polygons only, outside the detailed area', async () => {
+    const tile = sampleTile();
+    const tileJson = { tiles: ['https://tiles.example/{z}/{x}/{y}.pbf'], maxzoom: 14, attribution: 'OpenFreeMap' };
+    const fetchFn = vi.fn((url: string) =>
+      Promise.resolve(url.endsWith('.pbf') ? new Response(tile.slice().buffer) : new Response(JSON.stringify(tileJson))),
+    );
+    const inner = [16.3718, 48.2068, 16.3758, 48.2096] as const;
+    const result = await loadBasemapRing({ inner: [...inner], outer: expandBbox([...inner], 2), origin: ORIGIN, fetchFn: fetchFn as unknown as typeof fetch });
+    expect(result.tileCount).toBeGreaterThan(4);
+    expect(result.polygons.length).toBeGreaterThan(0);
+    expect(result.polygons.some((p) => p.kind === 'building')).toBe(false);
   });
 });
 

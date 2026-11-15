@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { buildBasemapMeshes } from '../basemap/basemapMeshes';
 import { isRing, type Ring } from '../lib/polygonArea';
-import { loadBasemap } from '../basemap/loader';
+import { loadBasemap, loadBasemapRing } from '../basemap/loader';
+import { expandBbox as expandBboxKm } from '../basemap/tiles';
 import { lodFor, sameLod, type LodState } from '../lib/lod';
 import { expandBbox } from '../lib/area';
-import { frameRect } from '../lib/rtsCamera';
+import { frameRect, limitsFor } from '../lib/rtsCamera';
 import { nextPick, uniqueOwners, type PreviousPick } from '../lib/picking';
 import { fromScene, LocalTangentPlane, toScene } from '../network/geo';
 import type { MeshData, PickTarget } from '../network/meshData';
@@ -27,6 +28,9 @@ const GROUND_ORDER = ['landuse', 'park', 'water'] as const;
 /** The preview basemap covers this multiple of the proposed area's width/height. */
 const PREVIEW_BASEMAP_FACTOR = 3;
 
+/** Margin (km) of the detailed basemap around a network (`loadBasemap`'s default). */
+const BASEMAP_MARGIN_KM = 0.3;
+
 const COLORS = {
   sky: 0xdfe6ec,
   ground: 0xeceae4,
@@ -41,6 +45,8 @@ const COLORS = {
   highlight: 0xff8a00,
   area: 0x3e63dd,
 };
+
+const GROUND_COLORS = { landuse: COLORS.landuse, park: COLORS.park, water: COLORS.water } as const;
 
 export type BasemapStatus = 'idle' | 'loading' | 'ready' | 'unavailable';
 
@@ -101,6 +107,8 @@ export class NetworkScene {
   private basemapAbort: AbortController | null = null;
   private origin: GeoOrigin | null = null;
   private basemapKey = '';
+  /** How far (km) the basemap surroundings reach around the loaded network (#122). */
+  private surroundingsKm = 0;
   private clickHandler: SceneClickHandler | null = null;
 
   constructor(
@@ -222,13 +230,14 @@ export class NetworkScene {
 
     const [minE, minN, maxE, maxN] = m.extent;
     const rect: [number, number, number, number] = [minE, -maxN, maxE, -minN];
-    const margin = 500;
-    this.controls.limits = { ...this.controls.limits, bounds: [rect[0] - margin, rect[1] - margin, rect[2] + margin, rect[3] + margin] };
+    const { margin, ...limits } = limitsFor(rect, this.controls.limits);
+    this.controls.limits = limits;
+    this.surroundingsKm = margin / 1000 + 1;
     if (!keepCamera) this.controls.setState(frameRect(rect, (this.camera.fov * Math.PI) / 180, this.camera.aspect, this.controls.limits));
     // Terrain (#87): height field under the network, far ground plane below its lowest point.
     this.terrain.load(pkg.terrain);
     this.ground.position.y = Math.min(-0.3, (this.terrain.minHeight ?? 0) - 1);
-    this.loadBasemapFor(pkg.bbox, pkg.origin, pkg.terrain);
+    this.loadBasemapFor(pkg.bbox, pkg.origin, pkg.terrain, this.surroundingsKm);
     this.dirty = true;
   }
 
@@ -238,7 +247,7 @@ export class NetworkScene {
     this.dirty = true;
     if (!area) {
       // Preview ended: show the loaded network's surroundings again.
-      if (this.networkBbox && this.origin) this.loadBasemapFor(this.networkBbox, this.origin, this.currentPackage?.terrain);
+      if (this.networkBbox && this.origin) this.loadBasemapFor(this.networkBbox, this.origin, this.currentPackage?.terrain, this.surroundingsKm);
       return;
     }
     if (area.length === 0) return;
@@ -268,7 +277,7 @@ export class NetworkScene {
     fill.rotation.x = -Math.PI / 2;
     fill.position.set((w + e) / 2, 0.5, -(s + n) / 2);
     this.overlayGroup.add(outline, fill);
-    this.controls.limits = { ...this.controls.limits, bounds: [w - 3000, -n - 3000, e + 3000, -s + 3000] };
+    this.controls.limits = { ...limitsFor([w, -n, e, -s], this.controls.limits), bounds: [w - 3000, -n - 3000, e + 3000, -s + 3000] };
     this.controls.setState(frameRect([w, -n, e, -s], (this.camera.fov * Math.PI) / 180, this.camera.aspect, this.controls.limits));
     // Basemap around the proposed area (with room to draw a custom shape), also over a loaded network.
     this.loadBasemapFor(expandBbox(bbox, PREVIEW_BASEMAP_FACTOR), this.origin!);
@@ -401,8 +410,35 @@ export class NetworkScene {
   }
 
   /** Loads basemap tiles around `bbox`; with `terrain` the ground polygons and buildings are draped onto it. */
-  private loadBasemapFor(bbox: BBox, origin: GeoOrigin, terrain?: TerrainGrid): void {
-    const key = `${bbox.join(',')}@${origin.lat},${origin.lon}${terrain ? '+terrain' : ''}`;
+  /**
+   * Land, parks and water around a loaded network out to where the camera may pan (#122), after
+   * the detailed basemap; ground layers only, drawn below the detailed ones.
+   */
+  private loadSurroundings(bbox: BBox, origin: GeoOrigin, km: number, signal: AbortSignal, terrain?: TerrainGrid): void {
+    const inner = expandBboxKm(bbox, BASEMAP_MARGIN_KM);
+    loadBasemapRing({ inner, outer: expandBboxKm(bbox, km), origin, signal })
+      .then((result) => {
+        if (signal.aborted) return;
+        const meshes = buildBasemapMeshes(result.polygons);
+        if (terrain) {
+          for (const kind of GROUND_ORDER) {
+            meshes[kind] = subdivide(meshes[kind], terrain.cellSize * 4);
+            drapeOnTerrain(meshes[kind], terrain);
+          }
+        }
+        GROUND_ORDER.forEach((kind, order) => {
+          const mesh = this.addMesh(this.basemapGroup, meshes[kind], new THREE.MeshLambertMaterial({ color: GROUND_COLORS[kind], depthWrite: false }));
+          mesh.renderOrder = -3.5 + order * 0.1;
+        });
+        this.dirty = true;
+      })
+      .catch(() => {
+        // The surroundings are decoration: the network and its own basemap are already shown.
+      });
+  }
+
+  private loadBasemapFor(bbox: BBox, origin: GeoOrigin, terrain?: TerrainGrid, surroundings = 0): void {
+    const key = `${bbox.join(',')}@${origin.lat},${origin.lon}${terrain ? '+terrain' : ''}+${surroundings}`;
     if (key === this.basemapKey) return;
     this.basemapKey = key;
     this.basemapAbort?.abort();
@@ -432,6 +468,7 @@ export class NetworkScene {
         this.applyLod(true);
         this.dirty = true;
         this.callbacks.onBasemap?.('ready', result.attribution);
+        if (surroundings) this.loadSurroundings(bbox, origin, surroundings, abort.signal, terrain);
       })
       .catch(() => {
         if (abort.signal.aborted) return;

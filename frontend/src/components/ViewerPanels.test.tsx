@@ -95,6 +95,25 @@ describe('ViewToolbar', () => {
     expect(props.onReset).toHaveBeenCalled();
     expect(screen.getByRole('status').textContent).toContain('plain ground');
   });
+
+  it('folds the options behind a toggle (phones)', () => {
+    render(
+      <ViewToolbar
+        showBasemap
+        showTunnels
+        basemapStatus="ready"
+        canReset
+        onShowBasemap={vi.fn()}
+        onShowTunnels={vi.fn()}
+        onReset={vi.fn()}
+      />,
+    );
+    const toggle = screen.getByRole('button', { name: 'Show view options' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(screen.getByRole('toolbar').className).toContain('open');
+    expect(screen.getByRole('button', { name: 'Hide view options' }).getAttribute('aria-expanded')).toBe('true');
+  });
 });
 
 describe('summaries', () => {

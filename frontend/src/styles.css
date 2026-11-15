@@ -154,6 +154,11 @@ body,
   max-width: calc(100% - 20px);
 }
 
+/* Phones only (#121): the options fold behind this button. */
+.view-toolbar-toggle {
+  display: none;
+}
+
 .camera-help summary {
   cursor: pointer;
   color: var(--muted);
@@ -549,16 +554,44 @@ dl.stats dd {
     min-height: 100%;
   }
 
+  /* The scene fills the screen below the header; a strip of the panel stays visible so the page
+     can be scrolled there (touches on the scene move the map, not the page) (#121). */
   .ring-view {
     grid-template-columns: 1fr;
-    grid-template-rows: 50vh 140px auto;
+    grid-template-rows: calc(100vh - 260px) 140px auto;
+    grid-template-rows: calc(100svh - 260px) 140px auto;
     grid-template-areas: 'scene' 'heatmap' 'panel';
   }
 
   .viewer {
     grid-template-columns: 1fr;
-    grid-template-rows: 65vh auto;
+    grid-template-rows: calc(100vh - 120px) auto;
+    grid-template-rows: calc(100svh - 120px) auto;
     grid-template-areas: 'scene' 'panel';
+  }
+
+  .view-toolbar {
+    top: 8px;
+    left: 8px;
+    padding: 4px;
+  }
+
+  .view-toolbar:not(.open) > :not(.view-toolbar-toggle) {
+    display: none;
+  }
+
+  .view-toolbar.open {
+    padding: 6px 10px 6px 4px;
+  }
+
+  .view-toolbar-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    min-height: 36px;
+    padding: 0;
+    font-size: 18px;
   }
 
   .panel {

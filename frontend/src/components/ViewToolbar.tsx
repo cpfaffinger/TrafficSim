@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { BasemapStatus } from '../scene/NetworkScene';
 
 export interface ViewToolbarProps {
@@ -18,11 +19,24 @@ const BASEMAP_NOTE: Partial<Record<BasemapStatus, string>> = {
   unavailable: 'basemap unavailable — plain ground',
 };
 
-/** View options and camera help over the 3D scene (#33, #36, #96). */
+/**
+ * View options and camera help over the 3D scene (#33, #36, #96). On phones the options fold
+ * into one button so the scene keeps the space (#121); desktops always show them.
+ */
 export function ViewToolbar(p: ViewToolbarProps) {
   const note = BASEMAP_NOTE[p.basemapStatus];
+  const [open, setOpen] = useState(false);
   return (
-    <div className="view-toolbar" role="toolbar" aria-label="View options">
+    <div className={open ? 'view-toolbar open' : 'view-toolbar'} role="toolbar" aria-label="View options">
+      <button
+        type="button"
+        className="view-toolbar-toggle"
+        aria-expanded={open}
+        aria-label={open ? 'Hide view options' : 'Show view options'}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {open ? '✕' : '☰'}
+      </button>
       <label>
         <input type="checkbox" checked={p.showBasemap} onChange={(e) => p.onShowBasemap(e.target.checked)} /> Basemap
       </label>

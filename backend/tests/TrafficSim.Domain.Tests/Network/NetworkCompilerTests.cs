@@ -148,6 +148,57 @@ public class NetworkCompilerTests
     }
 
     [Fact]
+    public void Marked_lanes_continue_where_the_way_is_split_before_the_junction()
+    {
+        // #118: B3 in Krems; the arrows for the exit ahead are already on the way before it.
+        var b = new OsmBuilder()
+            .Node(1, -200, 0).Node(2, 0, 0).Node(3, 200, 0)
+            .Way(10, [1, 2], ("highway", "trunk"), ("oneway", "yes"), ("turn:lanes", "through|slight_right"))
+            .Way(11, [2, 3], ("highway", "trunk"), ("oneway", "yes"), ("turn:lanes", "through|slight_right"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var approach = net.Links.Single(l => l.OsmWayId == 10);
+        var pairs = net.Connectors.Where(c => c.FromLink == approach.Id).Select(c => (c.FromLane, c.ToLane)).Order();
+        Assert.Equal([(0, 0), (1, 1)], pairs);
+    }
+
+    [Theory]
+    [InlineData("through|slight_right")]
+    [InlineData("none|slight_right")]
+    [InlineData("|slight_right")]
+    public void Marked_lanes_split_at_a_fork_by_their_arrows(string turnLanes)
+    {
+        var b = new OsmBuilder()
+            .Node(1, -200, 0).Node(2, 0, 0).Node(3, 200, 30).Node(4, 200, -40)
+            .Way(10, [1, 2], ("highway", "trunk"), ("oneway", "yes"), ("turn:lanes", turnLanes))
+            .Way(11, [2, 3], ("highway", "trunk"), ("oneway", "yes"), ("lanes", "1"))
+            .Way(12, [2, 4], ("highway", "trunk_link"), ("oneway", "yes"), ("lanes", "1"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var approach = net.Links.Single(l => l.OsmWayId == 10);
+        var fromApproach = net.Connectors.Where(c => c.FromLink == approach.Id).ToList();
+        Assert.All(fromApproach, c => Assert.Equal(Turn.Through, c.Turn));
+        Assert.Equal([1], fromApproach.Where(c => c.ToLink == net.Links.Single(l => l.OsmWayId == 11).Id).Select(c => c.FromLane));
+        Assert.Equal([0], fromApproach.Where(c => c.ToLink == net.Links.Single(l => l.OsmWayId == 12).Id).Select(c => c.FromLane));
+    }
+
+    [Fact]
+    public void Every_lane_leads_somewhere_when_no_arrow_fits()
+    {
+        // Arrows that match no movement at the node (mapping errors) must not strand a lane.
+        var b = new OsmBuilder()
+            .Node(1, -200, 0).Node(2, 0, 0).Node(3, 200, 0).Node(4, 0, -200)
+            .Way(10, [1, 2], ("highway", "primary"), ("oneway", "yes"), ("turn:lanes", "left|left|through"))
+            .Way(11, [2, 3], ("highway", "primary"), ("oneway", "yes"), ("lanes", "1"))
+            .Way(12, [2, 4], ("highway", "primary"), ("oneway", "yes"), ("lanes", "1"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var approach = net.Links.Single(l => l.OsmWayId == 10);
+        var lanes = net.Connectors.Where(c => c.FromLink == approach.Id).Select(c => c.FromLane).Distinct().Order();
+        Assert.Equal([0, 1, 2], lanes);
+    }
+
+    [Fact]
     public void Priority_junction_major_road_has_right_of_way()
     {
         var b = new OsmBuilder()

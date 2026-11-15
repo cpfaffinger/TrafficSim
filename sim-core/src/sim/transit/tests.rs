@@ -356,3 +356,20 @@ fn headway_overrides_factor_and_validation() {
         );
     }
 }
+
+/// #137: Manhattan: a bus pulling out of a bay looked at the occupants of its lane after the
+/// departed vehicles were dropped, through indices that no longer existed (a panic).
+#[test]
+fn a_bus_pulling_out_of_a_bay_while_vehicles_depart_does_not_panic() {
+    let net = line_builder(1, &[("up", 60.0, true)], 90.0).network();
+    let mut cfg = config(40.0, 10.0);
+    cfg.default_demand = Some(1400.0);
+    let mut s = sim_on(net, cfg, 3);
+    let mut served = 0;
+    for _ in 0..(1800.0 / s.time_step()) as usize {
+        s.step();
+        served = served.max(s.transit_metrics().first().map_or(0, |m| m.stops_served));
+    }
+    assert!(served > 0);
+    assert!(s.stats().arrived > 100, "{:?}", s.stats());
+}

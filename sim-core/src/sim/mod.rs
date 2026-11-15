@@ -1176,8 +1176,11 @@ impl Simulation {
         self.remove_departed();
     }
 
-    /// Drops departed vehicles, keeping the order of the others (and their histories).
+    /// Drops departed vehicles, keeping the order of the others (and their histories). The lane
+    /// lists keep valid indices (#137: the transit update and readers between steps, such as the
+    /// debug views, looked up vehicles through indices past the end).
     fn remove_departed(&mut self) {
+        let mut index = vec![NONE; self.vehicles.len()];
         let mut w = 0;
         for r in 0..self.vehicles.len() {
             if self.vehicles[r].alive {
@@ -1185,11 +1188,34 @@ impl Simulation {
                     self.vehicles.swap(w, r);
                     self.history.swap(w, r);
                 }
+                index[r] = w as u32;
                 w += 1;
             }
         }
+        if w == self.vehicles.len() {
+            return;
+        }
         self.vehicles.truncate(w);
         self.history.truncate(w);
+        let remap = |list: &mut Vec<u32>| {
+            list.retain_mut(|j| {
+                *j = index[*j as usize];
+                *j != NONE
+            });
+        };
+        // A lane can be listed twice (emptied and filled again during the step): remap it once.
+        let mut segs = self.occupied.clone();
+        segs.sort_unstable();
+        segs.dedup();
+        for seg in segs {
+            remap(&mut self.seg_vehicles[seg as usize]);
+        }
+        let mut lanes = self.shadowed.clone();
+        lanes.sort_unstable();
+        lanes.dedup();
+        for lane in lanes {
+            remap(&mut self.seg_shadows[lane as usize]);
+        }
     }
 
     /// Current statistics.

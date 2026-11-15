@@ -673,9 +673,21 @@ impl Simulation {
             .filter(|&c| self.net.connectors[c as usize].class_mask & mask != 0)
             .collect();
         // Prefer the original destination; if it cannot be reached from this lane any more,
-        // fall back to the nearest reachable exit.
+        // fall back to the nearest reachable exit. A vehicle whose lane leads on only past a
+        // dimension limit it exceeds takes that way rather than be lost (#162: a bus in Warsaw
+        // that missed its lane change in front of a 2 t street).
         let mut best: Option<(f64, u32, u32)> = None;
-        for targets in [vec![dest], self.net.exit_links()] {
+        let exits = self.net.exit_links();
+        let passes = [
+            (fit, vec![dest]),
+            (fit, exits.clone()),
+            (crate::routing::Fit::class(class), vec![dest]),
+            (crate::routing::Fit::class(class), exits),
+        ];
+        for (k, (fit, targets)) in passes.into_iter().enumerate() {
+            if k >= 2 && best.is_some() {
+                break;
+            }
             for &c in &options {
                 let to = self.net.connectors[c as usize].to_link;
                 let seg = self.net.connector_segment(c) as usize;

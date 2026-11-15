@@ -2119,6 +2119,56 @@ fn mandatory_lane_changes_look_through_short_links() {
     assert!(changed);
 }
 
+/// #162: Warsaw, Aleje Jerozolimskie: a bus that missed its lane change ends up in a turn lane
+/// whose only way on is a street with a 2 t limit. Rather than be lost, it takes that street.
+#[test]
+fn a_vehicle_whose_lane_leads_on_only_past_a_limit_it_exceeds_is_not_lost() {
+    let mut b = NetBuilder::new();
+    b.node("W", -400.0, 0.0, NodeControl::Boundary)
+        .node("J", 0.0, 0.0, NodeControl::Priority)
+        .node("E", 400.0, 0.0, NodeControl::Boundary)
+        .node("K1", 0.0, -150.0, NodeControl::Priority)
+        .node("K2", 0.0, -300.0, NodeControl::Priority)
+        .node("S", 0.0, -450.0, NodeControl::Boundary)
+        .link("in", "W", "J", 2, 13.9)
+        .link("east", "J", "E", 1, 13.9)
+        .link("s1", "J", "K1", 1, 13.9)
+        .link("s2", "K1", "K2", 1, 13.9)
+        .link("s3", "K2", "S", 1, 13.9)
+        .connect("right", "in", 0, "s1", 0, Priority::Major)
+        .connect("ahead", "in", 1, "east", 0, Priority::Major)
+        .connect("k1", "s1", 0, "s2", 0, Priority::Major)
+        .connect("k2", "s2", 0, "s3", 0, Priority::Major);
+    // The whole street is limited (routes exempt their first and last link).
+    for l in ["s1", "s2", "s3"] {
+        b.limits(
+            l,
+            crate::package::Limits {
+                max_length: None,
+                max_width: None,
+                max_height: None,
+                max_weight: Some(2.0),
+            },
+        );
+    }
+    let mut s = sim(&b, quiet());
+    let bus = s
+        .place_vehicle(
+            "in",
+            0,
+            380.0,
+            0.0,
+            "east",
+            VehicleParams::for_class(VehicleClass::Bus),
+        )
+        .unwrap();
+    let i = s.vehicles().iter().position(|v| v.id == bus).unwrap();
+    s.reroute(i);
+    let v = &s.vehicles()[i];
+    assert!(!v.lost);
+    assert_eq!(v.next_conn, s.network().connector_index("right").unwrap());
+}
+
 /// #141: Villach, Steinwenderstrasse: a single lane widens into a right-turn lane (into streets
 /// without a way out) and a through lane. Through traffic took the turn lane, had to change lanes in
 /// front of the signal queue and was lost when it could not. It enters the through lane.

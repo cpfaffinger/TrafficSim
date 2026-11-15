@@ -39,4 +39,7 @@ public sealed class CompilerOptions
 
     /// <summary>Assumed length limit (m) on the ring of a tight roundabout: rigid trucks and buses fit.</summary>
     public double TightRoundaboutMaxLength { get; init; } = 12;
+
+    /// <summary>Dead-end pieces of minor roads shorter than this are dropped (driveway stubs, #127).</summary>
+    public double StubMetres { get; init; } = 30;
 }

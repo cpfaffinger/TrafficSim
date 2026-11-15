@@ -447,6 +447,23 @@ public class NetworkCompilerTests
     }
 
     [Fact]
+    public void Short_dead_end_stubs_of_minor_roads_are_dropped()
+    {
+        // #127: Krems n2184: a 5 m service stub (driveway entrance) made a junction leading nowhere.
+        var b = new OsmBuilder()
+            .Node(1, -200, 0).Node(2, 0, 0).Node(3, 200, 0).Node(4, 0, -5).Node(5, 100, 0).Node(6, 100, -80)
+            .Way(10, [1, 2, 5, 3], ("highway", "primary"))
+            .Way(11, [2, 4], ("highway", "service"))
+            .Way(12, [5, 6], ("highway", "residential"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        Assert.DoesNotContain(net.Links, l => l.OsmWayId == 11);
+        Assert.DoesNotContain(net.Nodes, n => n.OsmId == 4);
+        Assert.Equal(NodeControl.None, net.Nodes.Single(n => n.OsmId == 2).Control);
+        Assert.Contains(net.Links, l => l.OsmWayId == 12); // an 80 m cul-de-sac stays
+    }
+
+    [Fact]
     public void Dead_end_allows_turning_around()
     {
         var b = new OsmBuilder()

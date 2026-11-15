@@ -86,6 +86,7 @@ public static class NetworkCompiler
                 .OrderBy(w => w.Id)
                 .ToList();
             BuildPieces(roadWays);
+            PruneStubs();
             AssignNodeIds();
             BuildLinks();
             CaptureSignsAndSignals();
@@ -281,6 +282,45 @@ public static class NetworkCompiler
             _pieces.Add(piece);
             _nodes[start].Pieces.Add(piece);
             _nodes[end].Pieces.Add(piece);
+        }
+
+        /// <summary>
+        /// Drops short dead-end stubs of minor roads (#127): OSM often maps the first metres of a driveway or
+        /// parking entrance as a service road whose rest is not a road we import. Such a stub leads nowhere,
+        /// yet makes its node a junction with turning traffic. Repeated, so chains of stubs go too; longer
+        /// dead ends (cul-de-sacs) and major roads stay.
+        /// </summary>
+        private void PruneStubs()
+        {
+            var minor = new HashSet<RoadClass> { RoadClass.Service, RoadClass.Residential, RoadClass.LivingStreet, RoadClass.Unclassified, RoadClass.Road };
+            bool removed;
+            do
+            {
+                removed = false;
+                foreach (var piece in _pieces.ToList())
+                {
+                    if (!minor.Contains(piece.RoadClass) || Polyline.PlanarLength(piece.Points) >= options.StubMetres)
+                    {
+                        continue;
+                    }
+
+                    var (start, end) = (_nodes[piece.StartKey], _nodes[piece.EndKey]);
+                    bool DeadEnd(GraphNode n) => !n.Synthetic && n.Pieces.Count == 1;
+                    if ((DeadEnd(start) && end.Pieces.Count > 1) || (DeadEnd(end) && start.Pieces.Count > 1))
+                    {
+                        _pieces.Remove(piece);
+                        start.Pieces.Remove(piece);
+                        end.Pieces.Remove(piece);
+                        removed = true;
+                    }
+                }
+            }
+            while (removed);
+
+            foreach (var key in _nodes.Where(kv => kv.Value.Pieces.Count == 0).Select(kv => kv.Key).ToList())
+            {
+                _nodes.Remove(key);
+            }
         }
 
         private string NodeKey(OsmWay way, int pieceIndex, long? osmId, Vec3 position, string suffix)

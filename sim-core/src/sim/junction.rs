@@ -307,7 +307,13 @@ impl Simulation {
         let v = &self.vehicles[i];
         let b = v.params.comfortable_deceleration;
         let conflicts = net.conflicts(c);
-        let blocked = || conflicts.iter().any(|&k| !self.zone_clear(i, c, d, k));
+        // A chained junction is crossed with the rear still in the one before: it is not entered
+        // while a conflicting vehicle that has claimed through the first one is still to pass (#161).
+        let blocked = || {
+            conflicts
+                .iter()
+                .any(|&k| !self.zone_clear(i, c, d, k) || (chained && !self.zone_unclaimed(i, c, k)))
+        };
         match info.priority {
             Priority::Signal => match self.signal_state[info.signal_group as usize] {
                 SignalState::Red => return Decision::Stop,
@@ -408,7 +414,7 @@ impl Simulation {
     /// Calls `f(vehicle, front position along k)` for every vehicle committed to connector `k`:
     /// physically on it ([`Self::on_connector`]) or claimed and approaching (negative position:
     /// distance to its start).
-    fn committed(&self, k: u32, overhang: bool, mut f: impl FnMut(u32, f64)) {
+    fn committed(&self, k: u32, overhang: bool, chained: bool, mut f: impl FnMut(u32, f64)) {
         self.on_connector(k, overhang, &mut f);
         let claims = self.conn_claims[k as usize];
         if claims == 0 {
@@ -436,9 +442,54 @@ impl Simulation {
                 let v = &self.vehicles[j as usize];
                 if v.claimed == k {
                     f(j, v.pos - clen - len);
+                    found += 1;
+                    if found == claims {
+                        return;
+                    }
                 }
             }
         }
+        // Claimed through a chained junction (#117) by a vehicle still before it (#161): without
+        // these, two vehicles chaining through a pair of junctions in opposite directions both
+        // enter and wait for each other on the short lanes in between.
+        if chained {
+            self.chained_to(k, lane, -len, 0, claims - found, &mut f);
+        }
+    }
+
+    /// Vehicles before the junction ahead of `lane` (starting `front` metres before `k`, negative)
+    /// whose chained claims include `k` at position `depth` (#161).
+    fn chained_to(
+        &self,
+        k: u32,
+        lane: u32,
+        front: f64,
+        depth: usize,
+        mut left: u32,
+        f: &mut impl FnMut(u32, f64),
+    ) -> u32 {
+        let net = &self.net;
+        for &ic in net.lane_incoming(lane) {
+            if left == 0 {
+                break;
+            }
+            let from = net.connectors[ic as usize].from_lane;
+            let before =
+                front - net.seg_length[net.connector_segment(ic) as usize] - net.seg_length[from as usize];
+            if self.conn_claims[ic as usize] > 0 {
+                for &j in &self.seg_vehicles[from as usize] {
+                    let v = &self.vehicles[j as usize];
+                    if v.claimed == ic && v.ahead[depth] == k {
+                        f(j, before + v.pos);
+                        left -= 1;
+                    }
+                }
+            }
+            if depth + 1 < CHAIN && left > 0 {
+                left = self.chained_to(k, from, before, depth + 1, left, f);
+            }
+        }
+        left
     }
 
     /// Cheap pre-check of [`Self::committed`]: false if certainly no vehicle is committed to `k`.
@@ -481,7 +532,7 @@ impl Simulation {
         let merge = net.merges(c, k);
         let mut own: Option<Window> = None;
         let mut clear = true;
-        self.committed(k, !merge, |j, front| {
+        self.committed(k, !merge, false, |j, front| {
             if !clear || j == i as u32 || front - self.vehicles[j as usize].params.length >= theirs.1 {
                 return;
             }
@@ -494,6 +545,35 @@ impl Simulation {
             };
         });
         clear
+    }
+
+    /// For vehicle `i` chaining through `c` behind its next connector: whether no other vehicle is
+    /// committed to crossing `k` (before it has left its conflict zone with `c`) that has itself
+    /// claimed a connector crossing `i`'s next one. Two such vehicles would each stop on the short
+    /// lane between the junctions with the rear in the other's path (#161). Merges always pass.
+    fn zone_unclaimed(&self, i: usize, c: u32, k: u32) -> bool {
+        let net = &self.net;
+        let next = self.vehicles[i].next_conn;
+        if next == NONE || net.merges(c, k) || !self.may_be_committed(k) {
+            return true;
+        }
+        let Some(theirs) = net.conflict_zone(k, c) else {
+            return true;
+        };
+        let first = net.conflicts(next);
+        let mut free = true;
+        self.committed(k, true, true, |j, front| {
+            let q = &self.vehicles[j as usize];
+            if j != i as u32
+                && front - q.params.length < theirs.1
+                && std::iter::once(&q.claimed)
+                    .chain(&q.ahead)
+                    .any(|&m| m != NONE && m != k && first.binary_search(&m).is_ok())
+            {
+                free = false;
+            }
+        });
+        free
     }
 
     /// Nearest vehicle ahead of a vehicle with `remaining` metres to the end of connector `c`
@@ -571,7 +651,7 @@ impl Simulation {
             let entry_rem = clen - zone.0 - v.params.minimum_gap;
             let mine = early(i as u32, dist, net.connector_segment(c));
             let mut blocked = false;
-            self.committed(k, !merge, |j, f| {
+            self.committed(k, !merge, false, |j, f| {
                 let q = &self.vehicles[j as usize];
                 if blocked || j == i as u32 || f - q.params.length >= theirs.1 {
                     return;

@@ -1898,6 +1898,73 @@ fn chained_junctions_are_entered_only_when_all_can_be_passed() {
     }
 }
 
+/// #161: Warsaw, Koszykowa across both carriageways of Aleja Niepodległości: two junctions joined
+/// by short two-way links. Two vehicles chaining through both in opposite directions, each crossing
+/// the other's path at its second junction, must not both enter: each would stop on the short link
+/// with its rear in the other's path, and neither could go on.
+#[test]
+fn opposite_chains_through_a_junction_pair_do_not_deadlock() {
+    let mut b = NetBuilder::new();
+    let v = 13.889;
+    // Tight junctions as in Warsaw: 4 m from the node centre to the stop lines, 2 m between.
+    let gap = 10.0;
+    b.trim = 4.0;
+    b.node("J1", 0.0, 0.0, NodeControl::Signal)
+        .node("J2", gap, 0.0, NodeControl::Signal)
+        .node("W", -300.0, 0.0, NodeControl::Boundary)
+        .node("E", 300.0 + gap, 0.0, NodeControl::Boundary)
+        .node("N", gap, 300.0, NodeControl::Boundary)
+        .node("S", 0.0, -300.0, NodeControl::Boundary)
+        .link("wa", "W", "J1", 1, v)
+        .link("ab", "J1", "J2", 1, v)
+        .link("ba", "J2", "J1", 1, v)
+        .link("eb", "E", "J2", 1, v)
+        .link("jn", "J2", "N", 1, v)
+        .link("js", "J1", "S", 1, v)
+        .connect("a1", "wa", 0, "ab", 0, Priority::Signal)
+        .connect("a2", "ab", 0, "jn", 0, Priority::Signal)
+        .connect("b1", "eb", 0, "ba", 0, Priority::Signal)
+        .connect("b2", "ba", 0, "js", 0, Priority::Signal)
+        .conflict("a2", "b1")
+        .conflict("b2", "a1")
+        .signal("J1", 60.0, &[("g1", 0.0, 60.0, 3.0)])
+        .signal("J2", 60.0, &[("g2", 0.0, 60.0, 3.0)]);
+    for c in ["a1", "a2", "b1", "b2"] {
+        let g = if c == "a1" || c == "b2" { "g1" } else { "g2" };
+        let conn = b.connector_mut(c);
+        conn.signal_group = Some(g.into());
+        // Both movements count as through: neither yields, as at the Warsaw pair.
+        conn.turn = crate::package::Turn::Through;
+    }
+    for offset in [0.0, 0.3, 0.6, 1.0, 1.5, 2.0, 3.0] {
+        let mut s = sim(&b, quiet());
+        let net = s.network().clone();
+        assert!(
+            net.conflict_zone(
+                net.connector_index("a2").unwrap(),
+                net.connector_index("b1").unwrap()
+            )
+            .is_some()
+        );
+        let len = net.seg_length[net.link_lane(net.link_index("wa").unwrap(), 0).unwrap() as usize];
+        let a = s.place_vehicle("wa", 0, len - 6.0, 2.0, "jn", car()).unwrap();
+        let b2 = s
+            .place_vehicle("eb", 0, len - 6.0 - offset, 2.0, "js", car())
+            .unwrap();
+        let mut done = [false; 2];
+        while done != [true, true] {
+            s.step();
+            for (k, (id, exit)) in [(a, "jn"), (b2, "js")].into_iter().enumerate() {
+                match vehicle(&s, id) {
+                    Some(v) => done[k] |= link_of(&s, v) == exit,
+                    None => assert!(done[k], "vehicle {id} taken out (offset {offset})"),
+                }
+            }
+            assert!(s.time < 60.0, "deadlock on the short links (offset {offset})");
+        }
+    }
+}
+
 /// #126: B3 in Krems: two chained signals that are never green together. The vehicle gives up on
 /// the chain after twice `maxWait` and waits at the second stop line instead of forever at the first.
 #[test]

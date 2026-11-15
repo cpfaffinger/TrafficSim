@@ -32,6 +32,10 @@ pub struct JunctionConfig {
     /// Minimum time (s) between one vehicle leaving a conflict zone and a conflicting vehicle
     /// entering it (post-encroachment time, #109).
     pub clearance_time: f64,
+    /// A vehicle standing still inside a junction (on a connector) this long is taken out of the
+    /// network (`removedStuck`, #126): it dissolves gridlocks, e.g. vehicles that missed their lane
+    /// and turn around in a junction of several nodes, filling its inner links. 0 disables it.
+    pub stuck_timeout: f64,
 }
 
 impl Default for JunctionConfig {
@@ -45,6 +49,7 @@ impl Default for JunctionConfig {
             follow_up_time: 2.0,
             max_wait: 45.0,
             clearance_time: 1.0,
+            stuck_timeout: 120.0,
         }
     }
 }
@@ -473,6 +478,7 @@ impl SimConfig {
             j.follow_up_time,
             j.max_wait,
             j.clearance_time,
+            j.stuck_timeout,
             self.lane_change.keep_right_bias,
             self.lane_change.cooldown,
             self.lane_change.urgency_distance,

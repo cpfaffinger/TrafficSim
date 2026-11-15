@@ -108,6 +108,8 @@ pub struct NetworkKpis {
     pub active: u64,
     pub waiting_to_enter: u64,
     pub stranded: u64,
+    /// Taken out after standing still inside a junction (`junction.stuckTimeout`, #126).
+    pub removed_stuck: u64,
     pub unroutable: u64,
     pub rerouted: u64,
     pub commuter_reroutes: u64,
@@ -617,6 +619,7 @@ impl Simulation {
                 active: stats.active,
                 waiting_to_enter: stats.waiting_to_enter,
                 stranded: stats.stranded,
+                removed_stuck: stats.removed_stuck,
                 unroutable: stats.unroutable,
                 rerouted: stats.rerouted,
                 commuter_reroutes: stats.commuter_reroutes,

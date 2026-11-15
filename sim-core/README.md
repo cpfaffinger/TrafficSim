@@ -154,6 +154,7 @@ catch typos).
     "criticalGapRightBeforeLeft": 3.0, "criticalGapPermissive": 4.0,  // s, see "Junctions"
     "followUpTime": 2.0,              // s, minimum between two entries of a yielding movement
     "maxWait": 45.0,                  // s, deadlock breaker (2 × maxWait: a vehicle stops waiting for chained junctions, #126)
+    "stuckTimeout": 120.0,            // s standing still inside a junction before the vehicle is taken out (removedStuck, #126); 0 = off
     "clearanceTime": 1.0              // s, post-encroachment time on a conflict zone (#109)
   },
   "signalControl": { "actuated": false /* true or ["n0", …] */, "minGreen": 7, "maxGreen": 60,
@@ -302,7 +303,8 @@ the road-class default.
 
 `time`, `spawned`, `arrived`, `active`, `waitingToEnter` (generated vehicles queued at their entry
 because the gap was not yet safe), `rerouted` (missed mandatory lane change), `stranded` (removed
-at a dead end), `unroutable` (no destination reachable), `laneChanges`, `laneChangeAborts`
+at a dead end), `removedStuck` (taken out after standing still inside a junction for
+`junction.stuckTimeout`, #126), `unroutable` (no destination reachable), `laneChanges`, `laneChangeAborts`
 (lane changes reversed in their first half, #108), `forcedEntries` (deadlock
 breaker), `lapses` (distraction lapses), `commuterReroutes` (en-route route changes of familiar
 drivers), `meanTravelTime` (arrived vehicles, s), `meanSpeed` (active vehicles, m/s),
@@ -349,7 +351,7 @@ opaque with `bucketFormat = "lane-cells-v1"`; `metrics::cells::LaneCells::decode
 
 ```jsonc
 {"formatVersion": 1, "time": 3900, "duration": 3600 /* since resetMetrics */, "startTimeOfDay": 25200,
- "network": {"spawned", "arrived", "active", "waitingToEnter", "stranded", "unroutable", "rerouted",
+ "network": {"spawned", "arrived", "active", "waitingToEnter", "stranded", "removedStuck", "unroutable", "rerouted",
              "commuterReroutes", "laneChanges", "lapses", "meanTravelTime", "meanSpeed",
              "vehicleKm", "vehicleHours", "delayHours", "stops"},
  "links": [{"id": "l1", "length": 140, "lanes": 2,

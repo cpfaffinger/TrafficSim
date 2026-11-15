@@ -144,6 +144,8 @@ pub struct Vehicle {
     pub stopped_time: f64,
     pub stops: u32,
     halted: bool,
+    /// Seconds at a standstill without interruption (stuck timeout, #126).
+    still: f64,
     /// End of the current distraction lapse (s); in the past when attentive.
     pub lapse_until: f64,
     /// Start of the next distraction lapse (s).
@@ -178,6 +180,7 @@ struct Counters {
     arrived: u64,
     rerouted: u64,
     stranded: u64,
+    removed_stuck: u64,
     unroutable: u64,
     lane_changes: u64,
     lane_change_aborts: u64,
@@ -239,6 +242,8 @@ pub struct Stats {
     pub rerouted: u64,
     /// Vehicles removed at a dead end without reaching their destination.
     pub stranded: u64,
+    /// Vehicles taken out after standing still inside a junction (`junction.stuckTimeout`, #126).
+    pub removed_stuck: u64,
     /// Generated vehicles dropped because no destination was reachable.
     pub unroutable: u64,
     pub lane_changes: u64,
@@ -596,6 +601,7 @@ impl Simulation {
             stopped_time: 0.0,
             stops: 0,
             halted: speed < cells::STOP_SPEED,
+            still: 0.0,
             lapse_until: f64::NEG_INFINITY,
             next_lapse,
             lc_phase: (self.steps % u64::from(self.config.lane_change.interval)) as u32,
@@ -898,6 +904,7 @@ impl Simulation {
         let counters = &mut self.counters;
         let travel_times = &mut self.travel_times;
         let lateral_rate = 3.25 / self.config.lane_change.visual_duration.max(dt);
+        let stuck_timeout = self.config.junction.stuck_timeout;
         let arrival_time = self.time + dt;
         let mut metrics = self.metrics.as_deref_mut();
         let lane_count = net.lane_count() as u32;
@@ -1002,6 +1009,11 @@ impl Simulation {
             }
             let lost = dt * (1.0 - v.speed / net.seg_speed_limit[v.seg as usize]).max(0.0);
             v.lost_time += lost;
+            v.still = if v.speed < 0.1 { v.still + dt } else { 0.0 };
+            if stuck_timeout > 0.0 && v.alive && v.still > stuck_timeout && !net.is_lane(v.seg) {
+                counters.removed_stuck += 1;
+                v.alive = false;
+            }
             if v.speed < cells::STOP_SPEED {
                 v.stopped_time += dt;
                 if !v.halted {
@@ -1077,6 +1089,7 @@ impl Simulation {
             waiting_to_enter: self.demand.waiting(),
             rerouted: c.rerouted,
             stranded: c.stranded,
+            removed_stuck: c.removed_stuck,
             unroutable: c.unroutable,
             lane_changes: c.lane_changes,
             lane_change_aborts: c.lane_change_aborts,

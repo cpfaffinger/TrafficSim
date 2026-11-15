@@ -1901,6 +1901,93 @@ fn chained_signals_never_green_together_do_not_hold_a_vehicle_forever() {
     }
 }
 
+/// #126: a vehicle standing still inside a junction for `junction.stuckTimeout` is taken out, so a
+/// gridlock among the inner links of a junction dissolves; vehicles on lanes are kept.
+#[test]
+fn vehicles_stuck_inside_a_junction_are_taken_out() {
+    let mut b = NetBuilder::new();
+    b.node("W", -300.0, 0.0, NodeControl::Boundary)
+        .node("J", 0.0, 0.0, NodeControl::Priority)
+        .node("E", 300.0, 0.0, NodeControl::Boundary)
+        .link("in", "W", "J", 1, 13.9)
+        .link("out", "J", "E", 1, 13.9)
+        .connect("go", "in", 0, "out", 0, Priority::Major);
+    let mut config = quiet();
+    config.junction.stuck_timeout = 20.0;
+    let mut s = sim(&b, config);
+    // Gridlock: a vehicle that cannot move on right behind the junction.
+    let blocker = s.place_vehicle("out", 0, 4.0, 0.0, "out", crawler()).unwrap();
+    let inside = s.place_vehicle("in", 0, 291.0, 0.0, "out", car()).unwrap();
+    put_on_connector(&mut s, inside, "go", 6.0);
+    let waiting = s.place_vehicle("in", 0, 200.0, 0.0, "out", car()).unwrap();
+    let hold = |s: &mut Simulation| {
+        if let Some(v) = s.vehicles.iter_mut().find(|v| v.id == blocker) {
+            (v.pos, v.speed) = (4.0, 0.0);
+        }
+    };
+    while s.time < 15.0 {
+        s.step();
+        hold(&mut s);
+    }
+    assert!(vehicle(&s, inside).is_some());
+    while s.time < 40.0 {
+        s.step();
+        hold(&mut s);
+    }
+    assert!(vehicle(&s, inside).is_none(), "taken out of the junction");
+    assert!(
+        vehicle(&s, waiting).is_some() && vehicle(&s, blocker).is_some(),
+        "vehicles on lanes stay"
+    );
+    assert_eq!(s.stats().removed_stuck, 1);
+}
+
+/// #126: a lane that reaches the next link but there only a turn the route does not take (a junction
+/// of several nodes with 1 m links) is no target for a discretionary lane change.
+#[test]
+fn discretionary_lane_changes_look_through_short_links() {
+    let build = |left_turn_only: bool| {
+        let mut b = NetBuilder::new();
+        b.node("W", -400.0, 0.0, NodeControl::Boundary)
+            .node("J1", 0.0, 0.0, NodeControl::Priority)
+            .node("J2", 17.0, 0.0, NodeControl::Priority)
+            .node("E", 400.0, 0.0, NodeControl::Boundary)
+            .node("N", 17.0, 400.0, NodeControl::Boundary)
+            .link("in", "W", "J1", 2, 13.9)
+            .link("mid", "J1", "J2", 2, 13.9)
+            .link("east", "J2", "E", 1, 13.9)
+            .link("north", "J2", "N", 1, 13.9)
+            .connect("a0", "in", 0, "mid", 0, Priority::Major)
+            .connect("a1", "in", 1, "mid", 1, Priority::Major)
+            .connect("b0", "mid", 0, "east", 0, Priority::Major)
+            .connect("b1", "mid", 1, "north", 0, Priority::Major);
+        if !left_turn_only {
+            b.connect("b2", "mid", 1, "east", 0, Priority::Major);
+        }
+        b
+    };
+    for left_turn_only in [true, false] {
+        let b = build(left_turn_only);
+        let mut s = sim(&b, quiet());
+        let slow = VehicleParams {
+            max_speed: 3.0,
+            ..car()
+        };
+        s.place_vehicle("in", 0, 150.0, 3.0, "east", slow).unwrap();
+        let id = s.place_vehicle("in", 0, 60.0, 13.0, "east", car()).unwrap();
+        let mut changed = false;
+        while let Some(v) = vehicle(&s, id) {
+            if !s.network().is_lane(v.seg) || link_of(&s, v) != "in" {
+                break;
+            }
+            changed |= s.network().lanes[v.seg as usize].index == 1;
+            s.step();
+            assert!(s.time < 120.0);
+        }
+        assert_eq!(changed, !left_turn_only, "left turn only: {left_turn_only}");
+    }
+}
+
 /// #116: dense grids, deterministic per seed. Blocks of 28 m leave exit lanes of 12 m that cannot
 /// hold a merging car and the reserved space for a prioritised one: yielding merges must still
 /// enter them while they are empty (c598e2b: 72 arrivals). Blocks of 60 m: yielding merges never

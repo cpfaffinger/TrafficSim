@@ -402,6 +402,30 @@ impl Simulation {
         }
     }
 
+    /// Whether `lane` leads along the route from `route[idx]` on (#126): through links too short to
+    /// change lanes on (a junction of several nodes) up to the first one long enough. A lane that
+    /// only reaches the next link but then a turn the route does not take is a dead end there.
+    fn lane_leads_on(&self, lane: u32, route: u32, idx: u32, mask: u8) -> bool {
+        const ROOM: f64 = 30.0;
+        let net = &self.net;
+        let route = &self.routes[route as usize];
+        let mut lane = lane;
+        for k in idx as usize..idx as usize + 4 {
+            let Some(&next) = route.get(k) else {
+                return true;
+            };
+            let c = net.choose_connector(lane, next, mask);
+            if c == NONE {
+                return false;
+            }
+            lane = net.connectors[c as usize].to_lane;
+            if net.seg_length[lane as usize] >= ROOM {
+                return true;
+            }
+        }
+        true
+    }
+
     /// Target lane of an advisable and safe lane change, if any.
     fn evaluate_lane_change(&self, i: usize, mandatory: Option<i32>, zone_start: f64) -> Option<u32> {
         let net = &self.net;
@@ -453,7 +477,9 @@ impl Simulation {
             if net.lanes[target as usize].class_mask & mask == 0 {
                 continue;
             }
-            if mandatory.is_none() && next_link.is_some_and(|n| net.choose_connector(target, n, mask) == NONE)
+            if mandatory.is_none()
+                && next_link.is_some()
+                && !self.lane_leads_on(target, v.route, v.route_pos + 1, mask)
             {
                 continue;
             }

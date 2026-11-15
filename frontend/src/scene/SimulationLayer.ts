@@ -83,6 +83,8 @@ export class SimulationLayer {
   /** Id of the vehicle nearest along the ray, or null (#125). */
   vehicleAt(raycaster: THREE.Raycaster): number | null {
     if (!this.last || this.vehicles.count === 0) return null;
+    // three.js caches the bounding sphere of all instances at the first raycast; vehicles move.
+    this.vehicles.computeBoundingSphere();
     const hit = raycaster.intersectObject(this.vehicles, false)[0];
     if (hit?.instanceId === undefined) return null;
     const id = this.last[hit.instanceId * NETWORK_SNAPSHOT_STRIDE + 8];

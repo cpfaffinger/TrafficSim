@@ -73,8 +73,9 @@ pub struct CrossingInfo {
 impl CrossingInfo {
     pub fn rule(&self) -> Rule {
         match (self.kind, self.signal_group) {
-            (CrossingKind::Signal, g) if g != NONE => Rule::Signal,
-            (CrossingKind::Zebra | CrossingKind::Signal, _) => Rule::Priority,
+            // A signal crossing without a vehicle signal group gets its own push button (#152).
+            (CrossingKind::Signal, _) => Rule::Signal,
+            (CrossingKind::Zebra, _) => Rule::Priority,
             _ => Rule::Gap,
         }
     }
@@ -300,7 +301,8 @@ mod tests {
         let l = &net.crossings.list;
         assert_eq!((l[0].mode, l[0].rule()), (SignalMode::Request, Rule::Signal));
         assert_eq!(l[1].mode, SignalMode::Parallel);
-        assert_eq!((l[2].mode, l[2].rule()), (SignalMode::None, Rule::Priority));
+        // Without a vehicle signal group: a push button of its own (#152).
+        assert_eq!((l[2].mode, l[2].rule()), (SignalMode::None, Rule::Signal));
     }
 
     #[test]

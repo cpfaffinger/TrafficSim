@@ -108,6 +108,9 @@ enum Stage {
     Clearance,
 }
 
+/// Warning time before the walk phase of a push button without a vehicle signal (#152).
+const STANDALONE_AMBER: f64 = 3.0;
+
 /// Push-button signal: a pedestrian phase on request (replaces the group's fixed-time plan).
 #[derive(Debug, Clone, PartialEq)]
 struct RequestController {
@@ -238,9 +241,25 @@ impl Pedestrians {
         for (x, info) in net.crossings.list.iter().enumerate() {
             let demand = pc.crossings.get(&info.id).copied().unwrap_or(info.demand);
             let mut controller = NONE;
-            if info.mode == SignalMode::Request {
+            if info.kind == CrossingKind::Signal && info.signal_group == NONE {
+                // No vehicle signal (#152: crossing=traffic_signals on an unsignalled junction): a push
+                // button of its own; vehicles give way to the pedestrians walking in its phases.
+                controllers.push(RequestController {
+                    group: NONE,
+                    crossings: vec![x as u32],
+                    stage: Stage::VehicleGreen,
+                    since: 0.0,
+                    amber: STANDALONE_AMBER,
+                    clearance: info.width / slowest,
+                    phases: 0,
+                });
+                controller = (controllers.len() - 1) as u32;
+            } else if info.mode == SignalMode::Request {
                 let clearance = info.width / slowest;
-                let k = match controllers.iter().position(|c| c.group == info.signal_group) {
+                let k = match controllers
+                    .iter()
+                    .position(|c| c.group != NONE && c.group == info.signal_group)
+                {
                     Some(k) => k,
                     None => {
                         controllers.push(RequestController {
@@ -308,7 +327,7 @@ impl Pedestrians {
 
     /// Request controllers' aspects over the fixed-time states of their groups.
     pub(super) fn write_signal_states(&self, out: &mut [SignalState]) {
-        for c in &self.controllers {
+        for c in self.controllers.iter().filter(|c| c.group != NONE) {
             out[c.group as usize] = match c.stage {
                 Stage::VehicleGreen => SignalState::Green,
                 Stage::VehicleAmber => SignalState::Amber,
@@ -478,6 +497,10 @@ impl Simulation {
     /// Whether pedestrians may start crossing `x` on its signal (true for unsignalised crossings).
     fn walk_aspect(&self, p: &Pedestrians, x: usize) -> bool {
         let info = &self.net.crossings.list[x];
+        let controller = p.crossings[x].controller;
+        if info.signal_group == NONE && controller != NONE {
+            return p.controllers[controller as usize].stage == Stage::Walk;
+        }
         match info.mode {
             SignalMode::None => true,
             SignalMode::Request => p.controllers[p.crossings[x].controller as usize].stage == Stage::Walk,

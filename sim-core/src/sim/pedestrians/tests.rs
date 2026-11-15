@@ -514,3 +514,72 @@ fn snapshot_reports_waiting_and_walking_pedestrians() {
     s.reset_metrics();
     assert_eq!(s.pedestrian_summary().unwrap().arrived, 0);
 }
+
+/// #152: Salzburg: a signalised crossing (crossing=traffic_signals) on an unsignalled junction has
+/// no vehicle signal group. It was run as a zebra, so vehicles also stopped for every pedestrian
+/// waiting at the kerb and waited up to 500 s on a busy crossing. It works as a push button now:
+/// pedestrians cross together in walk phases, vehicles flow in between.
+#[test]
+fn signal_crossings_without_a_vehicle_signal_serve_pedestrians_in_push_button_phases() {
+    let run = |kind| {
+        let mut c = config();
+        c.default_demand = Some(700.0);
+        c.pedestrians.demand_factor = 4.0; // 1200 pedestrians per hour
+        let mut s = Simulation::new(road(kind).network(), c, 5).unwrap();
+        s.run(6000);
+        (s.stats().arrived, served(&s))
+    };
+    let (zebra_cars, _) = run(package::CrossingKind::Zebra);
+    let (signal_cars, signal_peds) = run(package::CrossingKind::Signal);
+    assert!(signal_peds > 50, "pedestrians served: {signal_peds}");
+    assert!(
+        signal_cars > zebra_cars + 10,
+        "vehicles: push button {signal_cars}, zebra {zebra_cars}"
+    );
+}
+
+/// #152: Salzburg, Ignaz-Harrer-Strasse: a queue reached back to a crosswalk at the start of the
+/// link behind a junction; vehicles entered with room for themselves only and stood on the
+/// crosswalk, the pedestrians on its island waited for them and the vehicles waited for the
+/// pedestrians. Vehicles enter only with room for themselves beyond the crosswalk.
+#[test]
+fn vehicles_do_not_stop_on_a_crosswalk_at_the_start_of_the_link_behind_a_junction() {
+    let mut b = NetBuilder::new();
+    b.node("A", -300.0, 0.0, NodeControl::Boundary)
+        .node("J", 0.0, 0.0, NodeControl::Priority)
+        .node("B", 300.0, 0.0, NodeControl::Boundary)
+        .node("N", 0.0, 300.0, NodeControl::Boundary)
+        .link("aj", "A", "J", 1, 13.9)
+        .link("nj", "N", "J", 1, 13.9)
+        .link("jb", "J", "B", 1, 13.9)
+        .connect("a", "aj", 0, "jb", 0, Priority::Minor)
+        .connect("n", "nj", 0, "jb", 0, Priority::Major)
+        .auto_conflicts("J");
+    b.package.crossings = Some(vec![crossing(
+        "x0",
+        package::CrossingKind::Zebra,
+        3.25,
+        &[("jb", 2.0, [0.0, 3.25])],
+    )]);
+    let mut s = sim(&b, config());
+    let parked = VehicleParams {
+        max_speed: 0.01,
+        ..car()
+    };
+    let blocker = s.place_vehicle("jb", 0, 12.0, 0.0, "jb", parked).unwrap();
+    let id = s.place_vehicle("aj", 0, 200.0, 10.0, "jb", car()).unwrap();
+    for _ in 0..600 {
+        s.step();
+        // The end of a queue standing still.
+        if let Some(v) = s.vehicles.iter_mut().find(|v| v.id == blocker) {
+            v.pos = 12.0;
+            v.speed = 0.0;
+        }
+    }
+    let v = vehicle(&s, id).unwrap();
+    assert_eq!(
+        link_of(&s, v),
+        "aj",
+        "waits before the junction, not on the crosswalk"
+    );
+}

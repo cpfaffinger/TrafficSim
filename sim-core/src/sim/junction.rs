@@ -799,6 +799,9 @@ impl Simulation {
                 return false;
             }
         }
+        // A crosswalk at the start of the exit lane is kept clear (#152): the room counts from its far
+        // side, so a vehicle does not stop on it at the end of a queue.
+        needed += self.crosswalk_at_start(info.to_lane, needed);
         match self.last_on(info.to_lane) {
             None => true,
             Some((j, pos)) => {
@@ -806,6 +809,25 @@ impl Simulation {
                 pos - last.params.length >= needed || last.speed > 3.0
             }
         }
+    }
+
+    /// Far side (m from the lane start) of a crosswalk that begins within `within` metres of the
+    /// start of `lane`, or 0.
+    fn crosswalk_at_start(&self, lane: u32, within: f64) -> f64 {
+        let net = &self.net;
+        let cr = &net.crossings;
+        let link = net.lanes[lane as usize].link;
+        let scale = net.seg_length[lane as usize] / net.links[link as usize].length.max(1e-9);
+        cr.on_link(link)
+            .iter()
+            .map(|&e| {
+                let entry = &cr.entries[e as usize];
+                let half = 0.5 * cr.list[entry.crossing as usize].depth;
+                (entry.pos * scale - half, entry.pos * scale + half)
+            })
+            .filter(|&(start, _)| start < within)
+            .map(|(_, end)| end.max(0.0))
+            .fold(0.0, f64::max)
     }
 }
 

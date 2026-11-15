@@ -42,4 +42,20 @@ public sealed class CompilerOptions
 
     /// <summary>Dead-end pieces of minor roads shorter than this are dropped (driveway stubs, #127).</summary>
     public double StubMetres { get; init; } = 30;
+
+    /// <summary>Which roads to build (#131): all, or only major roads / motorways with their ramps.</summary>
+    public RoadSelection Roads { get; init; } = RoadSelection.All;
+}
+
+/// <summary>Road classes an import keeps (#131); the OSM data stays the same, the compiler drops the rest.</summary>
+public enum RoadSelection
+{
+    /// <summary>Every drivable road.</summary>
+    All,
+
+    /// <summary>Motorways, trunk and primary roads (federal roads) with their links.</summary>
+    Major,
+
+    /// <summary>Motorways and trunk roads (expressways) with their links.</summary>
+    Motorways,
 }

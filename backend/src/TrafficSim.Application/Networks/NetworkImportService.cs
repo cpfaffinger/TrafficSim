@@ -79,7 +79,11 @@ public sealed partial class NetworkImportService(
     }
 
     /// <summary>Starts the import of a polygon area (#110); rectangles are stored as plain bounds.</summary>
-    public async Task<ImportJob> StartAsync(GeoPolygon requested, string? name, CancellationToken cancellationToken)
+    public Task<ImportJob> StartAsync(GeoPolygon requested, string? name, CancellationToken cancellationToken) =>
+        StartAsync(requested, name, RoadSelection.All, cancellationToken);
+
+    /// <summary>Starts an import that keeps only the selected road classes (#131).</summary>
+    public async Task<ImportJob> StartAsync(GeoPolygon requested, string? name, RoadSelection roads, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(requested);
         name = CleanName(name);
@@ -99,9 +103,13 @@ public sealed partial class NetworkImportService(
         }
 
         var now = time.GetUtcNow();
-        var existing = await baselines.FindRecentAsync(area, polygon, now - ReuseWindow, cancellationToken).ConfigureAwait(false);
+        // A recent import of the same area is reused only for the full network (stored imports do not
+        // record a road selection).
+        var existing = roads == RoadSelection.All
+            ? await baselines.FindRecentAsync(area, polygon, now - ReuseWindow, cancellationToken).ConfigureAwait(false)
+            : null;
         var job = existing is null
-            ? new ImportJob(Guid.NewGuid(), area, ImportStatus.Queued, null, null, now, now, polygon, name)
+            ? new ImportJob(Guid.NewGuid(), area, ImportStatus.Queued, null, null, now, now, polygon, name, roads)
             : new ImportJob(Guid.NewGuid(), area, ImportStatus.Completed, existing.Id, null, now, now, polygon, name);
         if (existing is not null && name is not null && existing.Name is null)
         {
@@ -136,7 +144,7 @@ public sealed partial class NetworkImportService(
             var ground = terrain is null ? null : await terrain.SampleAsync(job.Shape, cancellationToken).ConfigureAwait(false);
 
             job = await UpdateAsync(job, ImportStatus.Compiling, cancellationToken).ConfigureAwait(false);
-            var network = NetworkCompiler.Compile(answer.Value, job.Shape, new CompilerOptions { Terrain = ground?.Grid });
+            var network = NetworkCompiler.Compile(answer.Value, job.Shape, new CompilerOptions { Terrain = ground?.Grid, Roads = job.Roads });
 
             job = await UpdateAsync(job, ImportStatus.Storing, cancellationToken).ConfigureAwait(false);
             var baselineId = Guid.NewGuid();

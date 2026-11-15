@@ -463,6 +463,27 @@ public class NetworkCompilerTests
         Assert.Contains(net.Links, l => l.OsmWayId == 12); // an 80 m cul-de-sac stays
     }
 
+    [Theory]
+    [InlineData(RoadSelection.All, true)]
+    [InlineData(RoadSelection.Motorways, false)]
+    public void Road_selection_keeps_motorways_and_ramps_and_cuts_the_rest(RoadSelection roads, bool local)
+    {
+        // #131: a motorway with an exit ramp into the local network.
+        var b = new OsmBuilder()
+            .Node(1, -300, 0).Node(2, 0, 0).Node(3, 300, 0).Node(4, 150, -60).Node(5, 150, -260).Node(6, 400, -60)
+            .Way(10, [1, 2, 3], ("highway", "motorway"), ("oneway", "yes"))
+            .Way(11, [2, 4], ("highway", "motorway_link"), ("oneway", "yes"))
+            .Way(12, [5, 4, 6], ("highway", "residential"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area(), new CompilerOptions { Roads = roads });
+
+        Assert.Equal(local, net.Links.Any(l => l.OsmWayId == 12));
+        Assert.Contains(net.Links, l => l.OsmWayId == 11);
+        var rampEnd = net.Nodes.Single(n => n.OsmId == 4);
+        Assert.Equal(local ? NodeControl.Priority : NodeControl.Boundary, rampEnd.Control);
+        // The ramp end is an exit, no turning point.
+        Assert.DoesNotContain(net.Connectors, c => c.NodeId == rampEnd.Id && c.Turn == Turn.Reverse);
+    }
+
     [Fact]
     public void Dead_end_allows_turning_around()
     {

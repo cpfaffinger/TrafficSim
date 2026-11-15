@@ -44,6 +44,15 @@ describe('ApiClient', () => {
     await new ApiClient(vi.fn().mockResolvedValue(new Response(null, { status: 404 }))).deleteNetwork('gone');
   });
 
+  it('sends the road selection only when not all roads (#131)', async () => {
+    const fetchFn = vi.fn().mockImplementation(() => Promise.resolve(json({ jobId: 'j1', status: 'queued', baselineId: null }, 202)));
+    await new ApiClient(fetchFn).startImport([16.37, 48.2, 16.38, 48.21], undefined, 'A1', 'motorways');
+    await new ApiClient(fetchFn).startImport([16.37, 48.2, 16.38, 48.21], undefined, undefined, 'all');
+    const body = (i: number) => JSON.parse((fetchFn.mock.calls[i]![1] as RequestInit).body as string) as unknown;
+    expect(body(0)).toEqual({ bbox: [16.37, 48.2, 16.38, 48.21], name: 'A1', roads: 'motorways' });
+    expect(body(1)).toEqual({ bbox: [16.37, 48.2, 16.38, 48.21] });
+  });
+
   it('starts imports with a JSON body', async () => {
     const fetchFn = vi.fn().mockImplementation(() => Promise.resolve(json({ jobId: 'j1', status: 'queued', baselineId: null }, 202)));
     const job = await new ApiClient(fetchFn).startImport([16.37, 48.2, 16.38, 48.21]);

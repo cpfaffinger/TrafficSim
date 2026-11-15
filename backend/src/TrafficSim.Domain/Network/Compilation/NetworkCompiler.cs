@@ -45,6 +45,9 @@ public static class NetworkCompiler
 
         public bool Synthetic { get; init; }
 
+        /// <summary>Dead end where a road dropped by the road selection continued (#131): a boundary.</summary>
+        public bool Cut { get; set; }
+
         public bool SignalNearby { get; set; }
 
         public NetworkNode? Node { get; set; }
@@ -81,11 +84,13 @@ public static class NetworkCompiler
         {
             _clip = polygon.Ring.Select(p => _plane.ToLocal(p)).Select(p => new Vec3(p.East, p.North)).ToList();
 
-            var roadWays = data.Ways
+            var allRoads = data.Ways
                 .Where(w => RoadClasses.TryParse(Tags.Get(w.Tags, "highway"), out _) && Tags.Get(w.Tags, "area") != "yes")
                 .OrderBy(w => w.Id)
                 .ToList();
+            var roadWays = allRoads.Where(w => Selected(w)).ToList();
             BuildPieces(roadWays);
+            MarkCuts(allRoads.Where(w => !Selected(w)));
             PruneStubs();
             AssignNodeIds();
             BuildLinks();
@@ -284,6 +289,31 @@ public static class NetworkCompiler
             _nodes[end].Pieces.Add(piece);
         }
 
+        private bool Selected(OsmWay way)
+        {
+            if (options.Roads == RoadSelection.All)
+            {
+                return true;
+            }
+
+            RoadClasses.TryParse(Tags.Get(way.Tags, "highway"), out var c);
+            return c is RoadClass.Motorway or RoadClass.MotorwayLink or RoadClass.Trunk or RoadClass.TrunkLink
+                || (options.Roads == RoadSelection.Major && c is RoadClass.Primary or RoadClass.PrimaryLink);
+        }
+
+        /// <summary>
+        /// Where a dropped road (#131) met a kept one that ends there, e.g. a ramp leading into the local
+        /// network, the end is a network boundary: traffic enters and leaves there instead of turning.
+        /// </summary>
+        private void MarkCuts(IEnumerable<OsmWay> dropped)
+        {
+            var nodes = dropped.SelectMany(w => w.NodeIds).ToHashSet();
+            foreach (var g in _nodes.Values.Where(g => g.OsmId is { } id && nodes.Contains(id) && g.Pieces.Count == 1))
+            {
+                g.Cut = true;
+            }
+        }
+
         /// <summary>
         /// Drops short dead-end stubs of minor roads (#127): OSM often maps the first metres of a driveway or
         /// parking entrance as a service road whose rest is not a road we import. Such a stub leads nowhere,
@@ -305,7 +335,7 @@ public static class NetworkCompiler
                     }
 
                     var (start, end) = (_nodes[piece.StartKey], _nodes[piece.EndKey]);
-                    bool DeadEnd(GraphNode n) => !n.Synthetic && n.Pieces.Count == 1;
+                    bool DeadEnd(GraphNode n) => !n.Synthetic && !n.Cut && n.Pieces.Count == 1;
                     if ((DeadEnd(start) && end.Pieces.Count > 1) || (DeadEnd(end) && start.Pieces.Count > 1))
                     {
                         _pieces.Remove(piece);
@@ -382,7 +412,7 @@ public static class NetworkCompiler
                     Id = $"n{i.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
                     OsmId = ordered[i].OsmId,
                     Position = ordered[i].Position,
-                    Control = ordered[i].Synthetic ? NodeControl.Boundary : NodeControl.None,
+                    Control = ordered[i].Synthetic || ordered[i].Cut ? NodeControl.Boundary : NodeControl.None,
                 };
                 _byNodeId[ordered[i].Node!.Id] = ordered[i];
             }

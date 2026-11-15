@@ -65,7 +65,8 @@ public sealed record ImportJob(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     GeoPolygon? Polygon = null,
-    string? Name = null)
+    string? Name = null,
+    TrafficSim.Domain.Network.Compilation.RoadSelection Roads = TrafficSim.Domain.Network.Compilation.RoadSelection.All)
 {
     public GeoPolygon Shape => Polygon ?? GeoPolygon.FromBoundingBox(Area);
 }

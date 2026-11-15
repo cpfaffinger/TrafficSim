@@ -73,14 +73,16 @@ export class ApiClient {
   }
 
   /** Starts (or reuses) an import of the area; `202` while running, `200` if an identical import exists. */
+  /** `roads` (#131): only major roads or motorways (with their ramps) instead of every road. */
   /** Starts an import of a `[w, s, e, n]` box or a `[lon, lat][]` polygon ring (#110). */
   async startImport(
     area: readonly [number, number, number, number] | readonly (readonly [number, number])[],
     signal?: AbortSignal,
     name?: string,
+    roads?: RoadSelection,
   ): Promise<ImportJob> {
     const shape = area.length > 0 && Array.isArray(area[0]) ? { polygon: area } : { bbox: area };
-    const body = name ? { ...shape, name } : shape;
+    const body = { ...shape, ...(name ? { name } : {}), ...(roads && roads !== 'all' ? { roads } : {}) };
     return this.sendJson<ImportJob>('POST', '/api/v1/networks/import', body, signal);
   }
 
@@ -158,3 +160,6 @@ export class ApiClient {
     return (await response.json()) as T;
   }
 }
+
+/** Roads an import keeps (#131): all, motorways + trunk + primary roads, or motorways + trunk roads (each with ramps). */
+export type RoadSelection = 'all' | 'major' | 'motorways';

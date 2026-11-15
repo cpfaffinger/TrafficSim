@@ -8,7 +8,9 @@ namespace TrafficSim.Api.Endpoints;
 
 /// <param name="Bbox">[west, south, east, north] for a rectangle, or</param>
 /// <param name="Polygon">[[lon, lat], …] ring (WGS84) for any shape (#110).</param>
-public sealed record ImportRequest(double[]? Bbox, double[][]? Polygon = null, string? Name = null);
+/// <param name="Roads">Road selection (#131): <c>all</c> (default), <c>major</c> (motorways, trunk and primary roads with
+/// their links) or <c>motorways</c> (motorways and trunk roads with their links).</param>
+public sealed record ImportRequest(double[]? Bbox, double[][]? Polygon = null, string? Name = null, string? Roads = null);
 
 public sealed record RenameRequest(string? Name);
 
@@ -80,7 +82,14 @@ internal static class NetworkEndpoints
 
         try
         {
-            var job = await service.StartAsync(area, request.Name, cancellationToken).ConfigureAwait(false);
+            var roads = request.Roads switch
+            {
+                null or "" or "all" => TrafficSim.Domain.Network.Compilation.RoadSelection.All,
+                "major" => TrafficSim.Domain.Network.Compilation.RoadSelection.Major,
+                "motorways" => TrafficSim.Domain.Network.Compilation.RoadSelection.Motorways,
+                _ => throw new InvalidImportAreaException("roads must be all, major or motorways."),
+            };
+            var job = await service.StartAsync(area, request.Name, roads, cancellationToken).ConfigureAwait(false);
             var dto = ImportJobDto.From(job);
             return job.Status == ImportStatus.Completed
                 ? TypedResults.Ok(dto)

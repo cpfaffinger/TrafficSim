@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { GeocodeResponse, GeocodeResult, ImportJob, NetworkSummary } from '../api/client';
+import type { GeocodeResponse, GeocodeResult, ImportJob, NetworkSummary, RoadSelection } from '../api/client';
 import { proposeArea, roundBbox } from '../lib/area';
 import { runImport, type ImportPhase } from '../lib/importJob';
 import { parseNetworkPackage } from '../network/parse';
@@ -14,7 +14,7 @@ import { RecentNetworks } from './RecentNetworks';
 /** The backend calls the import workflow needs (implemented by ApiClient; faked in tests). */
 export interface ViewerApi {
   geocode(query: string, limit: number, signal?: AbortSignal, lang?: string): Promise<GeocodeResponse>;
-  startImport(area: BBox | Ring, signal?: AbortSignal, name?: string): Promise<ImportJob>;
+  startImport(area: BBox | Ring, signal?: AbortSignal, name?: string, roads?: RoadSelection): Promise<ImportJob>;
   getImportJob(jobId: string, signal?: AbortSignal): Promise<ImportJob>;
   getPackage(baselineId: string, signal?: AbortSignal): Promise<unknown>;
   listNetworks(limit: number, signal?: AbortSignal): Promise<NetworkSummary[]>;
@@ -132,12 +132,20 @@ export function ImportPanel({ api, onArea, onDraw, onPackage, onGeocoderAttribut
     }
   };
 
+  const [roads, setRoads] = useState<RoadSelection>('all');
   const startImport = () => {
     const area: BBox | Ring | null = shape ? (shape.ring.length >= 3 ? roundRing(shape.ring) : null) : selection ? roundBbox(selection.bbox) : null;
     if (!area) return;
     const importName = name.trim() || selection?.label;
     void load((signal) =>
-      runImport(api, area, { signal, onPhase: setPhase, pollIntervalMs, ...(sleep ? { sleep } : {}), ...(importName ? { name: importName } : {}) }),
+      runImport(api, area, {
+        signal,
+        onPhase: setPhase,
+        pollIntervalMs,
+        roads,
+        ...(sleep ? { sleep } : {}),
+        ...(importName ? { name: importName } : {}),
+      }),
     );
   };
 
@@ -165,6 +173,16 @@ export function ImportPanel({ api, onArea, onDraw, onPackage, onGeocoderAttribut
         <div className="field import-name">
           <label htmlFor="import-name">Name of the import</label>
           <input id="import-name" value={name} maxLength={120} disabled={busy} onChange={(e) => setName(e.target.value)} placeholder="e.g. Vienna inner city" />
+        </div>
+      )}
+      {(selection ?? shape) && (
+        <div className="field import-roads">
+          <label htmlFor="import-roads">Roads</label>
+          <select id="import-roads" value={roads} disabled={busy} onChange={(e) => setRoads(e.target.value as RoadSelection)}>
+            <option value="all">All roads</option>
+            <option value="major">Motorways and federal roads (with ramps)</option>
+            <option value="motorways">Motorways only (with ramps)</option>
+          </select>
         </div>
       )}
       {selection && !shape && (

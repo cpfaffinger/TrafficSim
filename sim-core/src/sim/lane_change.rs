@@ -21,6 +21,7 @@ use super::transit::Kerb;
 use super::{LaneChangeEvent, Simulation};
 use crate::idm::IdmParams;
 use crate::network::{NONE, Network};
+use crate::routing::LANE_CHOICE_ROOM;
 
 /// `3p² − 2p³`: smooth lateral position profile of a lane change (zero lateral speed at both ends).
 pub(super) fn smoothstep(p: f64) -> f64 {
@@ -85,7 +86,10 @@ impl Simulation {
             let link = &self.net.links[self.net.lanes[v.seg as usize].link as usize];
             let len = self.net.seg_length[v.seg as usize];
             let zone_start = len - link.no_lane_change_zone;
-            let wrong_lane = v.next_conn == NONE && self.has_next_link(v) && kerb == Kerb::Free;
+            // Wrong lane: none to the next link, or one that ends in a junction of short links
+            // without a way on while another lane has one (#134: A23, a 1 m link before a fork).
+            let wrong_lane =
+                kerb == Kerb::Free && self.has_next_link(v) && (v.next_conn == NONE || self.misses_route(i));
             // On an ending lane (acceleration lane, lane drop) a merger waits at the end for a
             // gap instead of giving up, as long as a lane change is possible at all.
             let lane = &self.net.lanes[v.seg as usize];
@@ -98,7 +102,12 @@ impl Simulation {
                         lane.can_change_right
                     }
                 });
-            if wrong_lane && !waits && v.pos >= zone_start.min(len - REROUTE_BEFORE_END) {
+            // Once per link for a lane that reaches the next link (the new route may still miss).
+            let missed_here = v.next_conn != NONE
+                && v.nav_events
+                    .last()
+                    .is_some_and(|e| e.kind == "missedTurn" && e.link == lane.link);
+            if wrong_lane && !waits && !missed_here && v.pos >= zone_start.min(len - REROUTE_BEFORE_END) {
                 self.reroute(i);
                 continue;
             }
@@ -130,6 +139,14 @@ impl Simulation {
                 self.apply_lane_change(i, target, mandatory.is_some());
             }
         }
+    }
+
+    /// The own lane reaches the next link but not the route beyond it through very short links,
+    /// and another lane does.
+    pub(super) fn misses_route(&self, i: usize) -> bool {
+        let v = &self.vehicles[i];
+        !self.lane_leads_on(v.seg, v.route, v.route_pos + 1, v.params.class.mask())
+            && self.mandatory_direction(i).is_some_and(|d| d != 0)
     }
 
     /// Direction (−1 right, +1 left) to the nearest lane of the current link that connects to
@@ -667,7 +684,12 @@ impl Simulation {
                     let Some(route) = self.route_id(to, target, fit, informed) else {
                         continue;
                     };
-                    let cost = conn_time
+                    // A route the connector's lane cannot follow through short links comes last.
+                    let to_lane = self.net.connectors[c as usize].to_lane;
+                    let stuck = self.net.seg_length[to_lane as usize] < LANE_CHOICE_ROOM
+                        && !super::leads_on(&self.net, &self.routes[route as usize], to_lane, 1, mask, 4);
+                    let cost = if stuck { 1.0e6 } else { 0.0 }
+                        + conn_time
                         + self.router_for(informed).link_travel_time(to)
                         + self.router_for(informed).route_cost(&self.routes[route as usize]);
                     if best.is_none_or(|(b, _, _)| cost < b) {
@@ -675,7 +697,8 @@ impl Simulation {
                     }
                 }
             }
-            if best.is_some() {
+            // A route this lane can follow; else try the exits (a missed exit, #134).
+            if best.is_some_and(|(cost, _, _)| cost < 1.0e6) {
                 break;
             }
         }

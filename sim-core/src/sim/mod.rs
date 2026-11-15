@@ -399,9 +399,7 @@ fn ballistic(speed: f64, acc: f64, dt: f64) -> (f64, f64) {
 
 use perception::exponential;
 
-/// Links shorter than this cannot be used to change lanes (a junction of several nodes): a lane is
-/// judged by where it leads through them (#126, #133).
-const LANE_CHOICE_ROOM: f64 = 30.0;
+use crate::routing::LANE_CHOICE_ROOM;
 
 /// Whether `lane` leads along `route` from `route[idx]` on: some connector reaches that link on a
 /// lane that is long enough to change lanes or itself leads on (up to `depth` links ahead).

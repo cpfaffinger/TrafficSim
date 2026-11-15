@@ -43,7 +43,17 @@ struct Edge {
     to: u32,
     time: f64,
     mask: u8,
+    /// Lane indices (within their links) the connector leaves from and arrives on.
+    from_lane: u8,
+    to_lane: u8,
 }
+
+/// Links shorter than this leave no room to change lanes (a junction of several nodes): routes
+/// through them must follow the lane connections (#126, #133, #134).
+pub const LANE_CHOICE_ROOM: f64 = 30.0;
+
+/// All lanes of a link reachable (long links, where vehicles can change lanes).
+const ALL_LANES: u32 = u32::MAX;
 
 #[derive(Debug, Clone)]
 pub struct Router {
@@ -51,6 +61,8 @@ pub struct Router {
     link_time: Vec<f64>,
     link_mask: Vec<u8>,
     link_limits: Vec<[f64; 4]>,
+    /// Links too short to change lanes on (see [`LANE_CHOICE_ROOM`]).
+    short: Vec<bool>,
     /// Distinct finite limits per dimension, ascending (see [`Router::fit_key`]).
     thresholds: [Vec<f64>; 4],
     through: Vec<bool>,
@@ -97,6 +109,8 @@ impl Router {
                 to: c.to_link,
                 time: net.seg_length[seg] / net.seg_speed_limit[seg],
                 mask: c.class_mask,
+                from_lane: net.lanes[c.from_lane as usize].index.min(31) as u8,
+                to_lane: net.lanes[c.to_lane as usize].index.min(31) as u8,
             });
         }
         let mut edges = Vec::new();
@@ -117,6 +131,11 @@ impl Router {
             free_flow,
             link_mask: net.links.iter().map(|l| l.class_mask).collect(),
             link_limits: net.links.iter().map(|l| l.limits).collect(),
+            short: net
+                .links
+                .iter()
+                .map(|l| l.length < LANE_CHOICE_ROOM && l.lane_count <= 32)
+                .collect(),
             thresholds,
             through: net.links.iter().map(|l| l.through_traffic).collect(),
             edge_range,
@@ -186,15 +205,35 @@ impl Router {
         if from == to {
             return Some(vec![from]);
         }
-        let n = self.link_time.len();
-        let mut dist = vec![f64::INFINITY; 3 * n];
-        let mut prev = vec![u32::MAX; 3 * n];
+        // States: (phase, link, lanes reachable on it). On short links only the lanes the previous
+        // connectors arrive on lead on (#134); long links let vehicles change lanes (all lanes).
+        let mut index: std::collections::HashMap<(u8, u32, u32), u32> = std::collections::HashMap::new();
+        let mut states: Vec<(u8, u32, u32)> = Vec::new();
+        let mut dist: Vec<f64> = Vec::new();
+        let mut prev: Vec<u32> = Vec::new();
+        let mut state_of = |key: (u8, u32, u32),
+                            states: &mut Vec<(u8, u32, u32)>,
+                            dist: &mut Vec<f64>,
+                            prev: &mut Vec<u32>|
+         -> u32 {
+            *index.entry(key).or_insert_with(|| {
+                states.push(key);
+                dist.push(f64::INFINITY);
+                prev.push(u32::MAX);
+                (states.len() - 1) as u32
+            })
+        };
         let start_phase = if self.through[from as usize] {
             THROUGH
         } else {
             ORIGIN_AREA
         };
-        let start = (start_phase * n + from as usize) as u32;
+        let start = state_of(
+            (start_phase as u8, from, ALL_LANES),
+            &mut states,
+            &mut dist,
+            &mut prev,
+        );
         dist[start as usize] = 0.0;
         let mut heap = BinaryHeap::new();
         heap.push(Entry {
@@ -202,32 +241,55 @@ impl Router {
             state: start,
         });
         let mut goal = None;
+        let mut targets: Vec<(u32, u32, f64)> = Vec::new();
         while let Some(Entry { cost, state }) = heap.pop() {
             if cost > dist[state as usize] {
                 continue;
             }
-            let (phase, link) = (state as usize / n, (state as usize % n) as u32);
+            let (phase, link, lanes) = states[state as usize];
             if link == to {
                 goal = Some(state);
                 break;
             }
+            // Next links with the lanes their connectors arrive on and the fastest connector time.
+            targets.clear();
             let (a, b) = self.edge_range[link as usize];
             for e in &self.edges[a as usize..b as usize] {
-                if e.mask & mask == 0
+                if lanes & (1u32 << e.from_lane) == 0
+                    || e.mask & mask == 0
                     || self.link_mask[e.to as usize] & mask == 0
                     || (e.to != to && !self.fits(e.to, fit))
                 {
                     continue;
                 }
+                let arrive = if self.short[e.to as usize] {
+                    1u32 << e.to_lane
+                } else {
+                    ALL_LANES
+                };
+                match targets.iter_mut().find(|t| t.0 == e.to) {
+                    Some(t) => {
+                        t.1 |= arrive;
+                        t.2 = t.2.min(e.time);
+                    }
+                    None => targets.push((e.to, arrive, e.time)),
+                }
+            }
+            for &(next_link, next_lanes, time) in &targets {
                 // A no-through link is fine as the destination itself, whatever the phase.
-                let next_phase = if e.to == to && !self.through[e.to as usize] {
+                let next_phase = if next_link == to && !self.through[next_link as usize] {
                     Some(DESTINATION_AREA)
                 } else {
-                    self.phase_after(phase, e.to)
+                    self.phase_after(phase as usize, next_link)
                 };
                 let Some(next_phase) = next_phase else { continue };
-                let next = (next_phase * n + e.to as usize) as u32;
-                let c = cost + e.time + self.link_time[e.to as usize];
+                let next = state_of(
+                    (next_phase as u8, next_link, next_lanes),
+                    &mut states,
+                    &mut dist,
+                    &mut prev,
+                );
+                let c = cost + time + self.link_time[next_link as usize];
                 if c < dist[next as usize] {
                     dist[next as usize] = c;
                     prev[next as usize] = state;
@@ -236,10 +298,10 @@ impl Router {
             }
         }
         let mut state = goal?;
-        let mut route = vec![(state as usize % n) as u32];
+        let mut route = vec![states[state as usize].1];
         while prev[state as usize] != u32::MAX {
             state = prev[state as usize];
-            route.push((state as usize % n) as u32);
+            route.push(states[state as usize].1);
         }
         route.reverse();
         Some(route)
@@ -330,6 +392,47 @@ mod tests {
         // Vehicles that exceed the same limits share a cache key; a car exceeds none.
         assert_eq!(r.fit_key(&car), 0);
         assert_ne!(r.fit_key(&rigid), r.fit_key(&articulated));
+    }
+
+    /// #134: through a link too short to change lanes on, a route follows the lane connections:
+    /// `gate` (17 m) is entered on its right lane only, which leads east, not north.
+    #[test]
+    fn routes_follow_the_lanes_through_short_links() {
+        let build = |both_lanes: bool| {
+            let mut b = NetBuilder::new();
+            b.node("W", -300.0, 0.0, NodeControl::Boundary)
+                .node("J1", 0.0, 0.0, NodeControl::Priority)
+                .node("J2", 17.0, 0.0, NodeControl::Priority)
+                .node("K", 8.0, -200.0, NodeControl::Priority)
+                .node("E", 400.0, 0.0, NodeControl::Boundary)
+                .node("N", 17.0, 400.0, NodeControl::Boundary)
+                .link("in", "W", "J1", 1, 13.9)
+                .link("gate", "J1", "J2", 2, 13.9)
+                .link("up", "J1", "K", 1, 13.9)
+                .link("back", "K", "J2", 1, 13.9)
+                .link("east", "J2", "E", 1, 13.9)
+                .link("north", "J2", "N", 1, 13.9)
+                .connect("a", "in", 0, "gate", 0, Priority::Major)
+                .connect("b", "in", 0, "up", 0, Priority::Major)
+                .connect("c", "up", 0, "back", 0, Priority::Major)
+                .connect("d", "gate", 0, "east", 0, Priority::Major)
+                .connect("e", "gate", 1, "north", 0, Priority::Major)
+                .connect("f", "back", 0, "north", 0, Priority::Major);
+            if both_lanes {
+                b.connect("g", "in", 0, "gate", 1, Priority::Major);
+            }
+            b.network()
+        };
+        let car = Fit::of(&VehicleParams::for_class(VehicleClass::Car));
+        for (both_lanes, expected) in [
+            (false, vec!["in", "up", "back", "north"]),
+            (true, vec!["in", "gate", "north"]),
+        ] {
+            let net = build(both_lanes);
+            let r = Router::new(&net);
+            let (from, to) = (net.link_index("in").unwrap(), net.link_index("north").unwrap());
+            assert_eq!(ids(&net, &r.route_for(from, to, &car).unwrap()), expected);
+        }
     }
 
     #[test]

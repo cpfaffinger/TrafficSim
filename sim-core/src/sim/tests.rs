@@ -1988,6 +1988,46 @@ fn discretionary_lane_changes_look_through_short_links() {
     }
 }
 
+/// #134: A23 Vienna: a lane that reaches a very short link before a fork, there only onto the branch the
+/// route does not take, is a wrong lane: the vehicle has to change lanes before it (in heavy traffic
+/// it did not and was stranded).
+#[test]
+fn mandatory_lane_changes_look_through_short_links() {
+    let mut b = NetBuilder::new();
+    b.node("W", -400.0, 0.0, NodeControl::Boundary)
+        .node("J1", 0.0, 0.0, NodeControl::Priority)
+        .node("J2", 17.0, 0.0, NodeControl::Priority)
+        .node("E", 400.0, 0.0, NodeControl::Boundary)
+        .node("N", 17.0, 400.0, NodeControl::Boundary)
+        .link("in", "W", "J1", 2, 13.9)
+        .link("mid", "J1", "J2", 2, 13.9)
+        .link("east", "J2", "E", 1, 13.9)
+        .link("north", "J2", "N", 1, 13.9)
+        .connect("a0", "in", 0, "mid", 0, Priority::Major)
+        .connect("a1", "in", 1, "mid", 1, Priority::Major)
+        .connect("b0", "mid", 0, "east", 0, Priority::Major)
+        .connect("b1", "mid", 1, "north", 0, Priority::Major);
+    let mut s = sim(&b, quiet());
+    let wrong = s.place_vehicle("in", 0, 60.0, 13.0, "north", car()).unwrap();
+    let right = s.place_vehicle("in", 1, 60.0, 13.0, "north", car()).unwrap();
+    let east = s.place_vehicle("in", 0, 120.0, 13.0, "east", car()).unwrap();
+    let index = |s: &Simulation, id: u32| s.vehicles().iter().position(|v| v.id == id).unwrap();
+    // The lane reaches `mid`, but there only the branch the route does not take: a wrong lane,
+    // even when heavy traffic takes away any incentive to change lanes on its own.
+    assert!(s.misses_route(index(&s, wrong)));
+    assert!(!s.misses_route(index(&s, right)));
+    assert!(!s.misses_route(index(&s, east)));
+    let mut changed = false;
+    while let Some(v) = vehicle(&s, wrong) {
+        changed |= s.network().is_lane(v.seg)
+            && link_of(&s, v) == "in"
+            && s.network().lanes[v.seg as usize].index == 1;
+        s.step();
+        assert!(s.time < 120.0);
+    }
+    assert!(changed);
+}
+
 /// W → J1 → J2 → E: straight (`short`) or around (`up`, `down`); a held vehicle blocks `short`.
 fn navi_net() -> NetBuilder {
     let mut b = NetBuilder::new();

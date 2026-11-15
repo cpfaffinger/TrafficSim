@@ -1093,6 +1093,7 @@ public static class NetworkCompiler
                     if (!custom)
                     {
                         ConnectDeadLanes(incoming, planned);
+                        CoverLaneClasses(incoming, planned);
                     }
 
                     foreach (var (outgoing, turn, pairs) in planned)
@@ -1196,6 +1197,49 @@ public static class NetworkCompiler
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Every lane must lead somewhere for each vehicle class it carries (#150: a lane given only to a bus-only
+        /// link stranded its cars): a lane whose classes have no way on copies the movement of the nearest lane that
+        /// has one for them, onto the adjacent target lane.
+        /// </summary>
+        private static void CoverLaneClasses(Link incoming, List<(Link Out, Turn Turn, List<(int From, int To)> Pairs)> planned)
+        {
+            for (var lane = 0; lane < incoming.Lanes.Count; lane++)
+            {
+                var covered = planned
+                    .SelectMany(p => p.Pairs.Where(x => x.From == lane).Select(x => p.Out.Lanes[x.To].Allowed))
+                    .Aggregate(VehicleClasses.None, (a, c) => a | c);
+                var missing = incoming.Lanes[lane].Allowed & ~covered;
+                if (missing == VehicleClasses.None)
+                {
+                    continue;
+                }
+
+                var from = lane;
+                var donor = planned
+                    .SelectMany(p => p.Pairs.Where(x => x.From != from && (p.Out.Lanes[x.To].Allowed & missing) != VehicleClasses.None).Select(x => (p.Out, p.Pairs, x.From, x.To)))
+                    .OrderBy(t => Math.Abs(t.From - from))
+                    .ThenBy(t => t.From)
+                    .Select(t => ((Link Out, List<(int From, int To)> Pairs, int From, int To)?)t)
+                    .FirstOrDefault();
+                if (donor is not { } d)
+                {
+                    continue;
+                }
+
+                var to = Math.Clamp(d.To + lane - d.From, 0, d.Out.Lanes.Count - 1);
+                if ((d.Out.Lanes[to].Allowed & missing) == VehicleClasses.None)
+                {
+                    to = d.To;
+                }
+
+                if (!d.Pairs.Contains((lane, to)))
+                {
+                    d.Pairs.Add((lane, to));
+                }
+            }
         }
 
         /// <summary>

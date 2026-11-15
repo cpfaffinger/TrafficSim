@@ -729,6 +729,29 @@ public class NetworkCompilerTests
     }
 
     [Fact]
+    public void A_lane_given_only_to_a_bus_link_keeps_a_way_on_for_cars()
+    {
+        // #150: Zurich, Quaibruecke: two unmarked lanes split into the two-lane bridge road going on (slightly
+        // right) and a bus-only link (slightly left); the left lane got only the bus link and its cars were lost.
+        var b = new OsmBuilder()
+            .Node(1, -117, -30).Node(2, 0, 0).Node(3, 300, -56).Node(4, 138, 76)
+            .Way(10, [1, 2], ("highway", "secondary"), ("oneway", "yes"), ("lanes", "2"))
+            .Way(11, [2, 3], ("highway", "secondary"), ("oneway", "yes"), ("lanes", "2"))
+            .Way(12, [2, 4], ("highway", "service"), ("oneway", "yes"), ("access", "no"), ("psv", "yes"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var approach = net.Links.Single(l => l.OsmWayId == 10);
+        foreach (var lane in approach.Lanes)
+        {
+            var carTargets = net.Connectors
+                .Where(c => c.FromLink == approach.Id && c.FromLane == lane.Index)
+                .Select(c => net.Links.Single(l => l.Id == c.ToLink).Lanes[c.ToLane])
+                .Where(t => (t.Allowed & VehicleClasses.Car) != 0);
+            Assert.NotEmpty(carTargets);
+        }
+    }
+
+    [Fact]
     public void Dead_end_allows_turning_around()
     {
         var b = new OsmBuilder()

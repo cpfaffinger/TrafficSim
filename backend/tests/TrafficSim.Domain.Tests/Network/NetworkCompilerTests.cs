@@ -93,6 +93,33 @@ public class NetworkCompilerTests
     }
 
     [Fact]
+    public void Signals_where_ways_join_just_before_a_junction_control_the_junction()
+    {
+        // #135: Linz, Ziegeleistrasse x Waldeggstrasse: a signal on each approach, each on the node where
+        // the approach way joins the short junction way. The junction stayed a priority junction inside
+        // three uncoordinated signals; the minor road never got through.
+        var b = new OsmBuilder()
+            .Node(1, -200, 0).Node(3, 200, 0).Node(4, 0, 200).Node(5, 0, -200).Node(2, 0, 0)
+            .Node(61, -2, 0, ("highway", "traffic_signals"))
+            .Node(62, 2, 0, ("highway", "traffic_signals"))
+            .Node(63, 0, 15, ("highway", "traffic_signals"))
+            .Way(10, [1, 61], ("highway", "secondary"))
+            .Way(11, [61, 2, 62], ("highway", "secondary"))
+            .Way(12, [62, 3], ("highway", "secondary"))
+            .Way(13, [4, 63], ("highway", "primary"))
+            .Way(14, [63, 2, 5], ("highway", "primary"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var junction = net.Nodes.Single(n => n.OsmId == 2);
+        Assert.Equal(NodeControl.Signal, junction.Control);
+        Assert.All(net.Nodes.Where(n => n.OsmId is 61 or 62 or 63), n => Assert.NotEqual(NodeControl.Signal, n.Control));
+        var atJunction = net.Connectors.Where(c => c.NodeId == junction.Id).ToList();
+        Assert.All(atJunction, c => Assert.Equal(ConnectorPriority.Signal, c.Priority));
+        string Group(long way) => atJunction.First(c => net.Links.Single(l => l.Id == c.FromLink).OsmWayId == way).SignalGroup!;
+        Assert.NotEqual(Group(11), Group(14));
+    }
+
+    [Fact]
     public void Signal_nodes_of_one_junction_run_a_coordinated_plan()
     {
         // #117: a side road crossing a dual carriageway (carriageways 16 m apart): OSM has a

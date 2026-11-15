@@ -50,6 +50,9 @@ public static class NetworkCompiler
 
         public bool SignalNearby { get; set; }
 
+        /// <summary>A signal on this way joint was moved to the junction just ahead of it (#135).</summary>
+        public bool SignalMoved { get; set; }
+
         public NetworkNode? Node { get; set; }
 
         public List<Piece> Pieces { get; } = [];
@@ -584,6 +587,22 @@ public static class NetworkCompiler
                     }
                 }
             }
+
+            // A signal on the node where two ways join (#135: Linz, the approach way ends at the signal, a short
+            // way crosses the junction) controls the junctions just ahead of it like a signal inside a way.
+            foreach (var g in _nodes.Values.Where(g => g.Pieces.Count == 2 && Tags.Get(g.Tags, "highway") == "traffic_signals" && !SignalsSuppressed(g)))
+            {
+                foreach (var piece in g.Pieces)
+                {
+                    var other = NodeByKey(piece.StartKey == g.Key ? piece.EndKey : piece.StartKey);
+                    if (other.Pieces.Count >= 3 && other.Node!.Control != NodeControl.Boundary && !SignalsSuppressed(other)
+                        && Polyline.PlanarLength(piece.Points) <= options.SignalCaptureMetres)
+                    {
+                        other.SignalNearby = true;
+                        g.SignalMoved = true;
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -640,7 +659,7 @@ public static class NetworkCompiler
                 var ring = g.Pieces.Count(p => IsRoundabout(p));
                 var nodeSigns = SignRule.NodeSigns(tags);
                 var priorityRoad = g.Pieces.Any(p => SignRule.IsPriorityRoad(p.Way.Tags));
-                if (((highway == "traffic_signals" || (degree <= 2 && CrossingRule.IsSignalisedCrossing(tags))) && !SignalsSuppressed(g)) || g.SignalNearby)
+                if (((highway == "traffic_signals" || (degree <= 2 && CrossingRule.IsSignalisedCrossing(tags))) && !SignalsSuppressed(g) && !g.SignalMoved) || g.SignalNearby)
                 {
                     node.Control = NodeControl.Signal;
                 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { VehicleInfo } from '../sim/networkProtocol';
-import { duration, inspectVehicle } from './vehicleInspect';
+import { duration, inspectVehicle, tookDetour } from './vehicleInspect';
 
 const info: VehicleInfo = {
   id: 42,
@@ -24,6 +24,14 @@ const info: VehicleInfo = {
   route: ['l1', 'l2', 'l3'],
   routePos: 1,
   familiar: false,
+  navi: true,
+  compliance: 0.7,
+  trail: ['l1', 'l2'],
+  originalRoute: ['l1', 'l5', 'l3'],
+  events: [
+    { time: 60, link: 'l1', kind: 'ignored', gain: 42, route: ['l1', 'l2', 'l3'] },
+    { time: 120, link: 'l1', kind: 'accepted', gain: 35.4, route: ['l1', 'l2', 'l3'] },
+  ],
 };
 
 describe('vehicle inspector (#125)', () => {
@@ -50,5 +58,11 @@ describe('vehicle inspector (#125)', () => {
     expect(field('To')).toBe('B3');
     expect(field('Progress')).toBe('link 2 of 3 · 1 to go');
     expect(inspectVehicle(info, () => null, true).title).toBe('Vehicle 42 (left the network)');
+    expect(field('Detour')).toBe('yes, off its original route');
+    expect(field('Device')).toBe('navi, follows 70 % of its proposals');
+    expect(field('Proposals')).toBe('1 followed, 1 ignored');
+    expect(field('1. at 1:00')).toBe('navi detour ignored on Ringstraße (saves ~42 s)');
+    expect(field('2. at 2:00')).toBe('navi detour taken on Ringstraße (saves ~35 s)');
+    expect(tookDetour({ ...info, originalRoute: ['l1', 'l2', 'l3'] })).toBe(false);
   });
 });

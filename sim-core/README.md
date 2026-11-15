@@ -71,7 +71,8 @@ JSON.parse(sim.summaryJson());  // run KPIs + per-link metrics, see "Summary"
 JSON.parse(sim.junctionsJson());// queues, delays and level of service per junction
 JSON.parse(sim.eventsJson());   // tailbacks and stop-and-go waves
 sim.resetMetrics();             // restart the totals (e.g. after a warm-up)
-JSON.parse(sim.vehicleJson(42));       // one vehicle: type, dimensions, trip so far, route (null once it left, #125)
+JSON.parse(sim.vehicleJson(42));       // one vehicle: type, dimensions, trip so far, route, trail, navi events (null once it left, #125, #129)
+JSON.parse(sim.debugJson("lane", "l7", 0)); // debug snapshot of a vehicle ("vehicle", "42"), link, lane or junction ("node") (#129)
 JSON.parse(sim.vehicleTypesJson());   // catalogue of this run
 JSON.parse(sim.driverProfilesJson()); // driver profiles of this run
 // Free functions: builtinVehicleTypesJson(), builtinDriverProfilesJson(), builtinRoadClassProfilesJson()
@@ -193,6 +194,10 @@ catch typos).
 
   // ---- Routing (#55) and metrics (#57, #58, #62)
   "reRouting": { "enabled": true, "interval": 60, "smoothing": 0.3, "threshold": 0.1, "enRoute": true },
+  // Navigation devices (#129): share of drivers with a navi re-planning on live travel times every
+  // reRouting.interval; a proposal (>= threshold and minGain s faster) is followed with the driver's
+  // compliance (uniform in compliance ± complianceSpread), else ignored.
+  "navigation": { "share": 0.5, "compliance": 0.7, "complianceSpread": 0.2, "minGain": 30 },
   "metrics": { "enabled": true, "cellLength": 10, "bucketDuration": 30, "maxBuckets": 480,
                "queueSpeed": 2.0, "jamGap": 20, "detectionInterval": 5, "congestedSpeed": 5.0,
                "tailbackMinLength": 50 }
@@ -304,7 +309,8 @@ the road-class default.
 `time`, `spawned`, `arrived`, `active`, `waitingToEnter` (generated vehicles queued at their entry
 because the gap was not yet safe), `rerouted` (missed mandatory lane change), `stranded` (removed
 at a dead end), `removedStuck` (taken out after standing still inside a junction for
-`junction.stuckTimeout`, #126), `unroutable` (no destination reachable), `laneChanges`, `laneChangeAborts`
+`junction.stuckTimeout`, #126), `navAccepted` / `navIgnored` (navigation proposals followed /
+ignored, #129), `unroutable` (no destination reachable), `laneChanges`, `laneChangeAborts`
 (lane changes reversed in their first half, #108), `forcedEntries` (deadlock
 breaker), `lapses` (distraction lapses), `commuterReroutes` (en-route route changes of familiar
 drivers), `meanTravelTime` (arrived vehicles, s), `meanSpeed` (active vehicles, m/s),
@@ -351,7 +357,7 @@ opaque with `bucketFormat = "lane-cells-v1"`; `metrics::cells::LaneCells::decode
 
 ```jsonc
 {"formatVersion": 1, "time": 3900, "duration": 3600 /* since resetMetrics */, "startTimeOfDay": 25200,
- "network": {"spawned", "arrived", "active", "waitingToEnter", "stranded", "removedStuck", "unroutable", "rerouted",
+ "network": {"spawned", "arrived", "active", "waitingToEnter", "stranded", "removedStuck", "navAccepted", "navIgnored", "unroutable", "rerouted",
              "commuterReroutes", "laneChanges", "lapses", "meanTravelTime", "meanSpeed",
              "vehicleKm", "vehicleHours", "delayHours", "stops"},
  "links": [{"id": "l1", "length": 140, "lanes": 2,

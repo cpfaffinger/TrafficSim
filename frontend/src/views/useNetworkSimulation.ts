@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { SimulationSettings } from '../components/SimulationPanel';
 import type { NetworkPackage } from '../network/types';
 import type { NetworkScene } from '../scene/NetworkScene';
-import { buildConfig, NETWORK_SNAPSHOT_STRIDE, type SimStats, type VehicleInfo } from '../sim/networkProtocol';
+import { buildConfig, NETWORK_SNAPSHOT_STRIDE, type DebugKind, type SimStats, type VehicleInfo } from '../sim/networkProtocol';
 import { NetworkSimClient } from '../sim/networkSimClient';
 import { SnapshotBuffer } from '../sim/snapshotBuffer';
 
@@ -118,5 +118,29 @@ export function useNetworkSimulation(
     clientRef.current?.watchVehicle(id);
   }, []);
 
-  return { ready, running, speed, time, timeOfDay, vehicles, stats, error, play, pause, restart, setSpeed, requestResults, generation, vehicle, watchVehicle };
+  const requestDebug = useCallback(
+    (kind: DebugKind, id: string, lane?: number) =>
+      clientRef.current ? clientRef.current.requestDebug(kind, id, lane) : Promise.reject(new Error('The simulation is not running.')),
+    [],
+  );
+
+  return {
+    ready,
+    running,
+    speed,
+    time,
+    timeOfDay,
+    vehicles,
+    stats,
+    error,
+    play,
+    pause,
+    restart,
+    setSpeed,
+    requestResults,
+    generation,
+    vehicle,
+    watchVehicle,
+    requestDebug,
+  };
 }

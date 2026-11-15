@@ -128,6 +128,15 @@ self.onmessage = async (event: MessageEvent<ToNetworkWorker>) => {
         watched = message.vehicle;
         postFrame(true);
         break;
+      case 'debug': {
+        try {
+          const json = sim ? sim.debugJson(message.kind, message.id, message.lane) : null;
+          post({ type: 'debug', requestId: message.requestId, json, error: sim ? null : 'The simulation is not running.' });
+        } catch (error) {
+          post({ type: 'debug', requestId: message.requestId, json: null, error: error instanceof Error ? error.message : String(error) });
+        }
+        break;
+      }
       case 'dispose':
         sim?.free();
         sim = null;

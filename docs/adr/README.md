@@ -26,3 +26,4 @@ number, open a PR. Superseded ADRs stay in place with their status updated.
 | [0018](0018-terrain-elevation-and-gradients.md) | Terrain elevation and gradients | Accepted |
 | [0019](0019-public-transport-lines-and-stops.md) | Public transport lines and stops from OSM route relations | Accepted |
 | [0020](0020-pedestrian-crossings.md) | Pedestrian crossings as crossing demand | Accepted |
+| [0021](0021-navigation-devices.md) | Navigation devices with driver compliance | Accepted |

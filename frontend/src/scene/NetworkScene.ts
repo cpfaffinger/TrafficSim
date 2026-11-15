@@ -379,31 +379,34 @@ export class NetworkScene {
   }
 
   /**
-   * Draws a vehicle's route (#125): the links still ahead bright, the ones behind faint; null clears it.
+   * Draws a vehicle's trip (#125, #129): the links still ahead bright, the links driven so far faint,
+   * and the rest of its original route, where it no longer follows it, in a second colour; null clears it.
    */
-  showRoute(route: readonly string[] | null, position = 0): void {
+  showRoute(trip: { ahead: readonly string[]; driven: readonly string[]; original: readonly string[] } | null): void {
     disposeGroup(this.routeGroup);
     this.dirty = true;
-    if (!route || !this.currentPackage) return;
+    if (!trip || !this.currentPackage) return;
     const links = new Map(this.currentPackage.links.map((l) => [l.id, l]));
-    const ahead: [number, number, number][][] = [];
-    const behind: [number, number, number][][] = [];
-    route.forEach((id, i) => {
-      const geometry = links.get(id)?.geometry;
-      if (geometry && geometry.length > 1) (i < position ? behind : ahead).push(geometry as [number, number, number][]);
-    });
-    const ribbon = (lines: [number, number, number][][], opacity: number) => {
+    const lines = (ids: readonly string[]) =>
+      ids.map((id) => links.get(id)?.geometry).filter((g): g is [number, number, number][] => !!g && g.length > 1) as [number, number, number][][];
+    const ribbon = (ids: readonly string[], color: number, opacity: number, lift: number, width: number) => {
       const data = new MeshData();
-      for (const line of lines) addRibbon(data, line, 1.6, 0.6);
-      const mesh = new THREE.Mesh(
-        toBufferGeometry(data),
-        new THREE.MeshBasicMaterial({ color: COLORS.route, transparent: true, opacity, depthTest: false, depthWrite: false }),
-      );
+      for (const line of lines(ids)) addRibbon(data, line, width, lift);
+      if (data.triangleCount === 0) return;
+      const mesh = new THREE.Mesh(toBufferGeometry(data), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false }));
       mesh.renderOrder = 9;
       this.routeGroup.add(mesh);
     };
-    if (behind.length) ribbon(behind, 0.25);
-    if (ahead.length) ribbon(ahead, 0.8);
+    const used = new Set([...trip.ahead, ...trip.driven]);
+    ribbon(
+      trip.original.filter((id) => !used.has(id)),
+      COLORS.highlight,
+      0.55,
+      0.5,
+      1.2,
+    );
+    ribbon(trip.driven, COLORS.route, 0.3, 0.55, 1.6);
+    ribbon(trip.ahead, COLORS.route, 0.85, 0.6, 1.6);
   }
 
   /** Routes clicks to a tool before picking (null restores plain picking). */

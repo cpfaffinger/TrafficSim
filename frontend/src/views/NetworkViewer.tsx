@@ -28,6 +28,8 @@ import { RunsPanel, type SimResults } from '../runs/RunsPanel';
 import { useNetworkEditor } from './useNetworkEditor';
 import { confirmDiscard } from '../editor/discard';
 import type { LonLat, Ring } from '../lib/polygonArea';
+import { debugFileName, debugReport, debugSelection, downloadText } from '../lib/debugReport';
+import { BUILD_ID } from '../lib/version';
 import '../editor/editor.css';
 
 export interface NetworkViewerProps {
@@ -119,7 +121,7 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
     pendingResults.current = null;
   }, []);
   const sim = useNetworkSimulation(pkg, simSettings, sceneRef, openScenario?.demand ?? undefined, heat.onCells, onResults);
-  const { requestResults, watchVehicle } = sim;
+  const { requestResults, watchVehicle, requestDebug } = sim;
 
   // Vehicle inspector (#125): the worker reports the watched vehicle with every stats frame. A new
   // run (restart, other package or settings) has other vehicles: the selection ends.
@@ -135,14 +137,35 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
     if (vehicleId === null) sceneRef.current?.showRoute(null);
   }, [vehicleId, watchVehicle]);
   const watched = sim.vehicle;
-  const routeKey = watched ? `${watched.info.id}:${watched.info.routePos}:${watched.info.route.length}:${watched.left}` : '';
+  const routeKey = watched
+    ? `${watched.info.id}:${watched.info.routePos}:${watched.info.route.join()}:${watched.info.trail.length}:${watched.left}`
+    : '';
   useEffect(() => {
     if (!watched || vehicleId === null) return;
-    sceneRef.current?.showRoute(watched.left ? null : watched.info.route, watched.info.routePos);
+    const info = watched.info;
+    sceneRef.current?.showRoute(watched.left ? null : { ahead: info.route.slice(info.routePos), driven: info.trail.slice(0, -1), original: info.originalRoute });
     // Redraw only when the vehicle moves on to another link (routeKey), not on every frame.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeKey, vehicleId]);
   const linkName = useCallback((id: string) => index?.links.get(id)?.name ?? null, [index]);
+  // Debug download (#129): the simulation's view of the selection plus its package data.
+  const selection = useMemo(() => debugSelection(vehicleId, target, index), [vehicleId, target, index]);
+  const simTime = sim.time;
+  const downloadDebug = useCallback(async () => {
+    if (!selection) return;
+    try {
+      const json = await requestDebug(selection.kind, selection.id, selection.lane);
+      const context = {
+        build: BUILD_ID,
+        baselineId: pkg?.baselineId ?? null,
+        scenario: openScenario ? { id: openScenario.id, name: openScenario.name } : null,
+        settings: simSettings,
+      };
+      downloadText(debugFileName(selection, simTime), JSON.stringify(debugReport(selection, json, context, index), null, 2));
+    } catch (error) {
+      window.alert(`No debug data: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, [selection, requestDebug, pkg, simSettings, simTime, index, openScenario]);
   const shownModel = useMemo(
     () => (vehicleId !== null && watched ? inspectVehicle(watched.info, linkName, watched.left) : model),
     [vehicleId, watched, linkName, model],
@@ -331,7 +354,7 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
             {editing && !drawing && index && (
               <EditorPanel index={index} target={target} session={editor.session} scope={editor.scope} onScope={editor.setScope} />
             )}
-            <InspectorPanel model={shownModel} onClose={closeInspector} />
+            <InspectorPanel model={shownModel} onClose={closeInspector} onDebug={sim.ready && selection ? () => void downloadDebug() : undefined} />
           </div>
         )}
       </div>

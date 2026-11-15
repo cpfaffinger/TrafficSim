@@ -683,13 +683,23 @@ impl Simulation {
             }
         }
         self.counters.rerouted += 1;
+        let time = self.time;
         let v = &mut self.vehicles[i];
         match best {
             Some((_, c, route)) => {
                 let mut links = vec![link];
                 links.extend_from_slice(&self.routes[route as usize]);
                 self.routes.push(links);
-                v.route = (self.routes.len() - 1) as u32;
+                let new = (self.routes.len() - 1) as u32;
+                v.nav_events.push(super::NavEvent {
+                    time,
+                    link,
+                    kind: "missedTurn",
+                    gain: 0.0,
+                    from_route: v.route,
+                    to_route: new,
+                });
+                v.route = new;
                 v.route_pos = 0;
                 v.next_conn = c;
             }

@@ -3,10 +3,12 @@ import type { InspectorModel } from '../network/inspect';
 export interface InspectorPanelProps {
   model: InspectorModel | null;
   onClose: () => void;
+  /** Downloads a debug snapshot of the selection as JSON (#129); absent without a running simulation. */
+  onDebug?: () => void;
 }
 
 /** Details of the picked lane, link, movement or junction (#37). */
-export function InspectorPanel({ model, onClose }: InspectorPanelProps) {
+export function InspectorPanel({ model, onClose, onDebug }: InspectorPanelProps) {
   // Nothing selected: the scene stays clear (#128); the hint is in the View section.
   if (!model) return null;
   const hasAssumed = model.sections.some((s) => s.fields.some((f) => f.assumed));
@@ -39,6 +41,11 @@ export function InspectorPanel({ model, onClose }: InspectorPanelProps) {
         </div>
       ))}
       {hasAssumed && <p className="muted small">* assumed value (default, not tagged in OpenStreetMap)</p>}
+      {onDebug && (
+        <button type="button" className="inspector-debug" onClick={onDebug}>
+          Download debug JSON
+        </button>
+      )}
     </section>
   );
 }

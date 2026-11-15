@@ -154,6 +154,33 @@ impl Default for ReRoutingConfig {
     }
 }
 
+/// Navigation devices (#129): a share of drivers follows a navi that re-plans on live travel times
+/// (the experienced times of `reRouting`) every `reRouting.interval` and proposes a faster route;
+/// each driver accepts with their own compliance (drawn uniformly from `compliance ± complianceSpread`).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct NavigationConfig {
+    /// Share of drivers with a navigation device [0, 1].
+    pub share: f64,
+    /// Mean probability that a driver follows a proposed new route [0, 1].
+    pub compliance: f64,
+    /// Half-width of the uniform spread of the compliance between drivers.
+    pub compliance_spread: f64,
+    /// A new route is proposed only if it saves at least this many seconds (and `reRouting.threshold`).
+    pub min_gain: f64,
+}
+
+impl Default for NavigationConfig {
+    fn default() -> Self {
+        Self {
+            share: 0.5,
+            compliance: 0.7,
+            compliance_spread: 0.2,
+            min_gain: 30.0,
+        }
+    }
+}
+
 /// Merging at on-ramps and lane drops (#81).
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -366,6 +393,7 @@ pub struct SimConfig {
     /// Vehicles are not inserted while this many are active (they queue at their entry).
     pub max_vehicles: u32,
     pub junction: JunctionConfig,
+    pub navigation: NavigationConfig,
     pub lane_change: LaneChangeConfig,
     /// Overrides and additions to the vehicle type catalogue (#50).
     pub vehicle_types: BTreeMap<String, VehicleTypePatch>,
@@ -414,6 +442,7 @@ impl Default for SimConfig {
             heterogeneity: 0.0,
             max_vehicles: 100_000,
             junction: JunctionConfig::default(),
+            navigation: NavigationConfig::default(),
             lane_change: LaneChangeConfig::default(),
             vehicle_types: BTreeMap::new(),
             driver_profiles: BTreeMap::new(),
@@ -468,6 +497,16 @@ impl SimConfig {
         }
         let fleet = self.fleet()?;
         self.validate_demand(&fleet)?;
+        let n = &self.navigation;
+        if ![n.share, n.compliance].iter().all(|v| (0.0..=1.0).contains(v))
+            || !(0.0..=0.5).contains(&n.compliance_spread)
+            || !(n.min_gain.is_finite() && n.min_gain >= 0.0)
+        {
+            return Err(
+                "navigation: share and compliance in [0, 1], complianceSpread in [0, 0.5], minGain >= 0"
+                    .into(),
+            );
+        }
         let j = &self.junction;
         let times = [
             j.critical_gap_minor,

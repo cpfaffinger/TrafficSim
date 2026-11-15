@@ -1988,6 +1988,106 @@ fn discretionary_lane_changes_look_through_short_links() {
     }
 }
 
+/// W → J1 → J2 → E: straight (`short`) or around (`up`, `down`); a held vehicle blocks `short`.
+fn navi_net() -> NetBuilder {
+    let mut b = NetBuilder::new();
+    b.node("W", -2000.0, 0.0, NodeControl::Boundary)
+        .node("J1", 0.0, 0.0, NodeControl::Priority)
+        .node("J2", 200.0, 0.0, NodeControl::Priority)
+        .node("K", 100.0, 150.0, NodeControl::Priority)
+        .node("E", 500.0, 0.0, NodeControl::Boundary)
+        .link("in", "W", "J1", 1, 13.9)
+        .link("short", "J1", "J2", 1, 13.9)
+        .link("up", "J1", "K", 1, 13.9)
+        .link("down", "K", "J2", 1, 13.9)
+        .link("out", "J2", "E", 1, 13.9)
+        .connect("a", "in", 0, "short", 0, Priority::Major)
+        .connect("b", "in", 0, "up", 0, Priority::Major)
+        .connect("c", "up", 0, "down", 0, Priority::Major)
+        .connect("d", "short", 0, "out", 0, Priority::Major)
+        .connect("e", "down", 0, "out", 0, Priority::Major);
+    b
+}
+
+/// #129: drivers with a navi avoid the jam that only commuters avoid without one.
+#[test]
+fn drivers_with_a_navi_avoid_a_congested_link() {
+    let config = SimConfig::from_json(
+        r#"{"defaultDemand": 600, "driverMix": {"average": 1}, "reRouting": {"interval": 15}, "navigation": {"share": 1, "compliance": 1, "complianceSpread": 0}}"#,
+    )
+    .unwrap();
+    let mut s = sim(&detour_network(), config);
+    s.place_vehicle("xy", 0, 5.0, 0.0, "xy", crawler()).unwrap();
+    s.run(6000);
+    assert!(s.stats().nav_accepted > 0, "{:?}", s.stats());
+}
+
+/// #129: a navigation device proposes a detour around a jam; the driver follows it with their
+/// compliance, otherwise the proposal is logged as ignored.
+#[test]
+fn navigation_proposes_detours_that_drivers_follow_or_ignore() {
+    for compliance in [1.0, 0.0] {
+        let mut config = quiet();
+        config.re_routing.interval = 5.0;
+        config.re_routing.smoothing = 1.0;
+        config.navigation.share = 1.0;
+        config.navigation.compliance = compliance;
+        config.navigation.compliance_spread = 0.0;
+        config.navigation.min_gain = 5.0;
+        let mut s = sim(&navi_net(), config);
+        let jam = s.place_vehicle("short", 0, 150.0, 0.0, "out", crawler()).unwrap();
+        let id = s.place_vehicle("in", 0, 10.0, 13.9, "out", car()).unwrap();
+        assert_eq!(vehicle_route(&s, id), ["in", "short", "out"]);
+        while s.time < 60.0 {
+            s.step();
+            if let Some(v) = s.vehicles.iter_mut().find(|v| v.id == jam) {
+                (v.pos, v.speed) = (150.0, 0.0);
+            }
+        }
+        let info = s.vehicle_info(id).unwrap();
+        assert!(info.navi);
+        let kinds: Vec<&str> = info.events.iter().map(|e| e.kind).collect();
+        if compliance > 0.5 {
+            assert_eq!(info.route, ["in", "up", "down", "out"], "{kinds:?}");
+            assert!(kinds.contains(&"accepted"));
+            assert_eq!(info.original_route, ["in", "short", "out"]);
+            assert!(s.stats().nav_accepted >= 1);
+        } else {
+            assert_eq!(info.route, ["in", "short", "out"]);
+            assert!(
+                kinds.contains(&"ignored") && !kinds.contains(&"accepted"),
+                "{kinds:?}"
+            );
+            assert!(info.events.iter().all(|e| e.gain >= 5.0));
+            assert!(s.stats().nav_ignored >= 1);
+        }
+        assert_eq!(info.trail, ["in"]);
+    }
+}
+
+fn vehicle_route(s: &Simulation, id: u32) -> Vec<String> {
+    s.vehicle_info(id).unwrap().route
+}
+
+/// #129: debug snapshots of a vehicle, a link, a lane and a junction.
+#[test]
+fn debug_snapshots_describe_vehicles_links_and_junctions() {
+    let mut s = sim(&navi_net(), quiet());
+    let id = s.place_vehicle("in", 0, 1990.0, 5.0, "out", car()).unwrap();
+    s.run(10);
+    let v = s.vehicle_debug(id).unwrap();
+    assert_eq!(v["kind"], "vehicle");
+    assert_eq!(v["state"]["params"]["length"], 4.5);
+    let link = s.link_debug("in", None).unwrap();
+    assert_eq!(link["lanes"].as_array().unwrap().len(), 1);
+    assert_eq!(link["lanes"][0]["connectors"].as_array().unwrap().len(), 2);
+    assert_eq!(s.link_debug("in", Some(0)).unwrap()["kind"], "lane");
+    let node = s.node_debug("J1").unwrap();
+    assert_eq!(node["connectors"].as_array().unwrap().len(), 2);
+    assert!(s.link_debug("zz", None).is_err());
+    assert!(s.vehicle_debug(id + 100).is_none());
+}
+
 /// #116: dense grids, deterministic per seed. Blocks of 28 m leave exit lanes of 12 m that cannot
 /// hold a merging car and the reserved space for a prioritised one: yielding merges must still
 /// enter them while they are empty (c598e2b: 72 arrivals). Blocks of 60 m: yielding merges never
@@ -2315,7 +2415,7 @@ fn detour_network() -> NetBuilder {
 /// Blocks `xy` with a crawler and counts the vehicles that took the detour.
 fn detour_run(driver_mix: &str, interval: f64) -> (Simulation, usize) {
     let config = SimConfig::from_json(&format!(
-        r#"{{"defaultDemand": 600, "driverMix": {driver_mix}, "reRouting": {{"interval": {interval}}}}}"#
+        r#"{{"defaultDemand": 600, "driverMix": {driver_mix}, "reRouting": {{"interval": {interval}}}, "navigation": {{"share": 0}}}}"#
     ))
     .unwrap();
     let mut s = sim(&detour_network(), config);

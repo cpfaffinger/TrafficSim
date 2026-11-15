@@ -59,6 +59,7 @@ impl Simulation {
         }
         let r = &self.config.re_routing;
         let (alpha, en_route) = (r.smoothing, r.en_route && r.enabled);
+        let navigation = r.enabled && self.config.navigation.share > 0.0;
         let tt = &mut self.travel_times;
         tt.next_update += r.interval;
         for v in &self.vehicles {
@@ -81,6 +82,9 @@ impl Simulation {
         self.dest_cache.retain(|k, _| k.1 & INFORMED == 0);
         if en_route {
             self.reroute_commuters();
+        }
+        if navigation {
+            self.navigate();
         }
     }
 
@@ -117,11 +121,84 @@ impl Simulation {
             if conn == NONE && to_end < horizon + link.no_lane_change_zone {
                 continue;
             }
+            let time = self.time;
             let v = &mut self.vehicles[i];
+            v.nav_events.push(super::NavEvent {
+                time,
+                link: cur,
+                kind: "commuter",
+                gain: 0.0,
+                from_route: v.route,
+                to_route: new,
+            });
             v.route = new;
             v.route_pos = 0;
             v.next_conn = conn;
             self.counters.commuter_reroutes += 1;
+        }
+    }
+
+    /// Navigation devices (#129) re-plan from the current link on live travel times; a clearly
+    /// faster route is proposed and the driver follows it with their compliance, else ignores it.
+    fn navigate(&mut self) {
+        let threshold = self.config.re_routing.threshold;
+        let min_gain = self.config.navigation.min_gain;
+        let horizon = self.config.lane_change.urgency_distance;
+        for i in 0..self.vehicles.len() {
+            let v = &self.vehicles[i];
+            if !v.navi
+                || self.is_informed(&v.params)
+                || !self.net.is_lane(v.seg)
+                || v.claimed != NONE
+                || v.lost
+            {
+                continue;
+            }
+            let route = &self.routes[v.route as usize];
+            let rp = v.route_pos as usize;
+            if rp + 1 >= route.len() {
+                continue;
+            }
+            let (cur, dest, fit, seg) = (route[rp], route[route.len() - 1], Fit::of(&v.params), v.seg);
+            let Some(new) = self.route_id(cur, dest, fit, true) else {
+                continue;
+            };
+            let old_cost = self
+                .informed
+                .route_cost(&self.routes[self.vehicles[i].route as usize][rp..]);
+            let new_route = &self.routes[new as usize];
+            let new_cost = self.informed.route_cost(new_route);
+            if new_route[..] == self.routes[self.vehicles[i].route as usize][rp..]
+                || new_cost >= old_cost * (1.0 - threshold)
+                || old_cost - new_cost < min_gain
+            {
+                continue;
+            }
+            let conn = self.net.choose_connector(seg, new_route[1], fit.class.mask());
+            let link = &self.net.links[cur as usize];
+            let to_end = self.net.seg_length[seg as usize] - self.vehicles[i].pos;
+            if conn == NONE && to_end < horizon + link.no_lane_change_zone {
+                continue;
+            }
+            let time = self.time;
+            let v = &mut self.vehicles[i];
+            let accepted = v.nav_rng.next_f64() < v.compliance;
+            v.nav_events.push(super::NavEvent {
+                time,
+                link: cur,
+                kind: if accepted { "accepted" } else { "ignored" },
+                gain: old_cost - new_cost,
+                from_route: v.route,
+                to_route: new,
+            });
+            if accepted {
+                v.route = new;
+                v.route_pos = 0;
+                v.next_conn = conn;
+                self.counters.nav_accepted += 1;
+            } else {
+                self.counters.nav_ignored += 1;
+            }
         }
     }
 }

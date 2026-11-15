@@ -284,6 +284,29 @@ impl NetworkSim {
         serde_json::to_string(&self.sim.vehicle_info(id)).unwrap_or_else(|_| "null".into())
     }
 
+    /// Debug snapshot (#129) of a vehicle (`kind` "vehicle", `id` its number), a link or lane
+    /// ("link"/"lane", `id` the link id, `lane` the index) or a junction ("node") as JSON.
+    #[wasm_bindgen(js_name = debugJson)]
+    pub fn debug_json(&self, kind: &str, id: &str, lane: i32) -> Result<String, JsError> {
+        let value = match kind {
+            "vehicle" => self
+                .sim
+                .vehicle_debug(
+                    id.parse()
+                        .map_err(|_| JsError::new("vehicle id must be a number"))?,
+                )
+                .unwrap_or(serde_json::Value::Null),
+            "link" => self.sim.link_debug(id, None).map_err(|e| JsError::new(&e))?,
+            "lane" => self
+                .sim
+                .link_debug(id, u32::try_from(lane).ok())
+                .map_err(|e| JsError::new(&e))?,
+            "node" => self.sim.node_debug(id).map_err(|e| JsError::new(&e))?,
+            _ => return Err(JsError::new("kind must be vehicle, link, lane or node")),
+        };
+        Ok(value.to_string())
+    }
+
     /// Vehicle type catalogue of this run (built-in types plus `vehicleTypes` overrides) as JSON.
     #[wasm_bindgen(js_name = vehicleTypesJson)]
     pub fn vehicle_types_json(&self) -> String {

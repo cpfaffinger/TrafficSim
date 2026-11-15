@@ -110,6 +110,9 @@ pub struct NetworkKpis {
     pub stranded: u64,
     /// Taken out after standing still inside a junction (`junction.stuckTimeout`, #126).
     pub removed_stuck: u64,
+    /// Navigation proposals followed and ignored (#129).
+    pub nav_accepted: u64,
+    pub nav_ignored: u64,
     pub unroutable: u64,
     pub rerouted: u64,
     pub commuter_reroutes: u64,
@@ -620,6 +623,8 @@ impl Simulation {
                 waiting_to_enter: stats.waiting_to_enter,
                 stranded: stats.stranded,
                 removed_stuck: stats.removed_stuck,
+                nav_accepted: stats.nav_accepted,
+                nav_ignored: stats.nav_ignored,
                 unroutable: stats.unroutable,
                 rerouted: stats.rerouted,
                 commuter_reroutes: stats.commuter_reroutes,

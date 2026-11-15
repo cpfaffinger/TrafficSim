@@ -21,6 +21,7 @@
 //! give bit-identical states (see [`Simulation::state_checksum`]).
 
 mod actuated;
+mod debug;
 mod demand;
 mod junction;
 pub use demand::DemandSource;
@@ -146,6 +147,16 @@ pub struct Vehicle {
     halted: bool,
     /// Seconds at a standstill without interruption (stuck timeout, #126).
     still: f64,
+    /// Navigation device (#129) and the probability the driver follows its proposals.
+    pub navi: bool,
+    pub compliance: f64,
+    /// Links driven so far, the current one last (#129).
+    pub trail: Vec<u32>,
+    /// Route at insertion, to show detours (#129).
+    pub first_route: u32,
+    /// Route proposals and changes (#129).
+    pub nav_events: Vec<NavEvent>,
+    nav_rng: Pcg32,
     /// End of the current distraction lapse (s); in the past when attentive.
     pub lapse_until: f64,
     /// Start of the next distraction lapse (s).
@@ -181,6 +192,8 @@ struct Counters {
     rerouted: u64,
     stranded: u64,
     removed_stuck: u64,
+    nav_accepted: u64,
+    nav_ignored: u64,
     unroutable: u64,
     lane_changes: u64,
     lane_change_aborts: u64,
@@ -188,6 +201,23 @@ struct Counters {
     lapses: u64,
     commuter_reroutes: u64,
     travel_time_sum: f64,
+}
+
+/// A navigation event of one vehicle (#129).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NavEvent {
+    pub time: f64,
+    /// Link the vehicle was on.
+    pub link: u32,
+    /// `accepted` / `ignored` navi proposal, `commuter` (familiar driver re-planned), `missedTurn`
+    /// (re-routed after a missed lane change).
+    pub kind: &'static str,
+    /// Seconds the new route saves by the estimate (0 for a missed turn).
+    pub gain: f64,
+    /// Route id before and the proposed or new route id.
+    pub from_route: u32,
+    pub to_route: u32,
 }
 
 /// One vehicle for the inspector (#125): type, dimensions, trip so far and its route.
@@ -223,6 +253,26 @@ pub struct VehicleInfo {
     pub route_pos: u32,
     /// Routes on experienced travel times (commuter).
     pub familiar: bool,
+    /// Navigation device and compliance (#129).
+    pub navi: bool,
+    pub compliance: f64,
+    /// Links driven so far, the current one last.
+    pub trail: Vec<String>,
+    /// Route at insertion (differs from `route` after detours).
+    pub original_route: Vec<String>,
+    pub events: Vec<VehicleEventInfo>,
+}
+
+/// A navigation event with link ids (#129).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VehicleEventInfo {
+    pub time: f64,
+    pub link: String,
+    pub kind: &'static str,
+    pub gain: f64,
+    /// The route proposed or taken from `link` on.
+    pub route: Vec<String>,
 }
 
 /// Aggregate run statistics (`stats_json`).
@@ -244,6 +294,9 @@ pub struct Stats {
     pub stranded: u64,
     /// Vehicles taken out after standing still inside a junction (`junction.stuckTimeout`, #126).
     pub removed_stuck: u64,
+    /// Navigation proposals followed and ignored by their drivers (#129).
+    pub nav_accepted: u64,
+    pub nav_ignored: u64,
     /// Generated vehicles dropped because no destination was reachable.
     pub unroutable: u64,
     pub lane_changes: u64,
@@ -559,6 +612,12 @@ impl Simulation {
 
     fn new_vehicle(&mut self, params: VehicleParams, lane: u32, pos: f64, speed: f64, route: u32) -> usize {
         let mut rng = Pcg32::new(self.seed, 0x5000_0000 + u64::from(self.next_id));
+        // Own stream: the navigation draws change no other random sequence (#129).
+        let mut nav_rng = Pcg32::new(self.seed, 0x6000_0000 + u64::from(self.next_id));
+        let nav = &self.config.navigation;
+        let navi = nav.share > 0.0 && nav_rng.next_f64() < nav.share;
+        let compliance =
+            (nav.compliance + nav.compliance_spread * (2.0 * nav_rng.next_f64() - 1.0)).clamp(0.0, 1.0);
         let next_lapse = if params.lapse_rate > 0.0 && self.config.perception.enabled {
             self.time + exponential(&mut rng, params.lapse_rate)
         } else {
@@ -602,6 +661,12 @@ impl Simulation {
             stops: 0,
             halted: speed < cells::STOP_SPEED,
             still: 0.0,
+            navi,
+            compliance,
+            trail: vec![self.net.lanes[lane as usize].link],
+            first_route: route,
+            nav_events: Vec::new(),
+            nav_rng,
             lapse_until: f64::NEG_INFINITY,
             next_lapse,
             lc_phase: (self.steps % u64::from(self.config.lane_change.interval)) as u32,
@@ -967,6 +1032,7 @@ impl Simulation {
                         // Leaving the lane completes a lane change in progress.
                         v.end_lane_change();
                         v.route_pos += 1;
+                        v.trail.push(info.to_link);
                         v.next_conn = match route.get(v.route_pos as usize + 1) {
                             Some(&next) => net.choose_connector(info.to_lane, next, v.params.class.mask()),
                             None => NONE,
@@ -1090,6 +1156,8 @@ impl Simulation {
             rerouted: c.rerouted,
             stranded: c.stranded,
             removed_stuck: c.removed_stuck,
+            nav_accepted: c.nav_accepted,
+            nav_ignored: c.nav_ignored,
             unroutable: c.unroutable,
             lane_changes: c.lane_changes,
             lane_change_aborts: c.lane_change_aborts,
@@ -1200,6 +1268,27 @@ impl Simulation {
             route: route.iter().map(|&l| link(l)).collect(),
             route_pos: v.route_pos,
             familiar: p.familiar,
+            navi: v.navi,
+            compliance: v.compliance,
+            trail: v.trail.iter().map(|&l| link(l)).collect(),
+            original_route: self.routes[v.first_route as usize]
+                .iter()
+                .map(|&l| link(l))
+                .collect(),
+            events: v
+                .nav_events
+                .iter()
+                .map(|e| VehicleEventInfo {
+                    time: e.time,
+                    link: link(e.link),
+                    kind: e.kind,
+                    gain: e.gain,
+                    route: self.routes[e.to_route as usize]
+                        .iter()
+                        .map(|&l| link(l))
+                        .collect(),
+                })
+                .collect(),
         })
     }
 

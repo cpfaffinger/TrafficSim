@@ -1,5 +1,5 @@
 import type { InspectorModel } from './inspect';
-import type { VehicleInfo } from '../sim/networkProtocol';
+import type { VehicleEvent, VehicleInfo } from '../sim/networkProtocol';
 
 const words = (s: string) => s.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
 const metres = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(2)} km` : `${m.toFixed(m < 10 ? 1 : 0)} m`);
@@ -12,6 +12,19 @@ export function duration(seconds: number): string {
   const m = Math.floor((s % 3600) / 60);
   const ss = String(s % 60).padStart(2, '0');
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
+
+const EVENT_LABEL: Record<VehicleEvent['kind'], string> = {
+  accepted: 'navi detour taken',
+  ignored: 'navi detour ignored',
+  commuter: 'commuter re-planned',
+  missedTurn: 'missed turn, re-routed',
+};
+
+/** Whether the route the vehicle drives now differs from the one it started with (#129). */
+export function tookDetour(info: VehicleInfo): boolean {
+  const planned = [...info.trail.slice(0, -1), ...info.route.slice(info.routePos)];
+  return planned.join() !== info.originalRoute.join();
 }
 
 /**
@@ -52,12 +65,33 @@ export function inspectVehicle(info: VehicleInfo, linkName: (id: string) => stri
       {
         title: 'Route',
         fields: [
-          { label: 'From', value: place(info.route[0]) },
+          { label: 'From', value: place(info.trail[0] ?? info.route[0]) },
           { label: info.onConnector ? 'Entering' : 'Now on', value: place(info.link) },
           { label: 'To', value: place(info.route[info.route.length - 1]) },
           { label: 'Progress', value: `link ${info.routePos + 1} of ${info.route.length} · ${remaining} to go` },
+          { label: 'Driven', value: `${info.trail.length} link${info.trail.length === 1 ? '' : 's'}` },
+          { label: 'Detour', value: tookDetour(info) ? 'yes, off its original route' : 'no, original route' },
+        ],
+      },
+      {
+        title: 'Navigation',
+        fields: [
+          {
+            label: 'Device',
+            value: info.navi ? `navi, follows ${Math.round(info.compliance * 100)} % of its proposals` : info.familiar ? 'none (knows the network)' : 'none',
+          },
+          {
+            label: 'Proposals',
+            value: `${count(info.events, 'accepted')} followed, ${count(info.events, 'ignored')} ignored`,
+          },
+          ...info.events.map((e, i) => ({
+            label: `${i + 1}. at ${duration(e.time)}`,
+            value: `${EVENT_LABEL[e.kind]} on ${place(e.link)}${e.gain > 0 ? ` (saves ~${Math.round(e.gain)} s)` : ''}`,
+          })),
         ],
       },
     ],
   };
 }
+
+const count = (events: readonly VehicleEvent[], kind: VehicleEvent['kind']) => events.filter((e) => e.kind === kind).length;

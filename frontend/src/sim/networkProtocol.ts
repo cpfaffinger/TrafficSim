@@ -18,7 +18,23 @@ export type ToNetworkWorker =
   | { type: 'results' }
   /** Frames carry this vehicle's `VehicleInfo` from now on (null stops it, #125). */
   | { type: 'watch'; vehicle: number | null }
+  /** Debug snapshot of a vehicle, link, lane or junction (#129), answered with `debug`. */
+  | { type: 'debug'; requestId: number; kind: DebugKind; id: string; lane: number }
   | { type: 'dispose' };
+
+export type DebugKind = 'vehicle' | 'link' | 'lane' | 'node';
+
+/** A navigation event of a vehicle (#129). */
+export interface VehicleEvent {
+  time: number;
+  link: string;
+  /** `accepted` / `ignored` navi proposal, `commuter` re-plan, `missedTurn`. */
+  kind: 'accepted' | 'ignored' | 'commuter' | 'missedTurn';
+  /** Estimated seconds saved by the proposed route. */
+  gain: number;
+  /** Route proposed or taken from `link` on. */
+  route: string[];
+}
 
 /** One vehicle as reported by sim-core `vehicleJson()` (#125). */
 export interface VehicleInfo {
@@ -43,6 +59,14 @@ export interface VehicleInfo {
   route: string[];
   routePos: number;
   familiar: boolean;
+  /** Navigation device and the probability its proposals are followed (#129). */
+  navi: boolean;
+  compliance: number;
+  /** Links driven so far, the current one last. */
+  trail: string[];
+  /** Route at insertion. */
+  originalRoute: string[];
+  events: VehicleEvent[];
 }
 
 /** Statistics reported by sim-core `statsJson()`. */
@@ -88,6 +112,8 @@ export type FromNetworkWorker =
   | { type: 'cells'; blob: ArrayBuffer }
   /** Run results: sim-core summary JSON and the lane-cell history. */
   | { type: 'results'; summaryJson: string; cells: ArrayBuffer; time: number }
+  /** Answer to a `debug` request: the snapshot as JSON text, or an error. */
+  | { type: 'debug'; requestId: number; json: string | null; error: string | null }
   /** A (new) shared snapshot buffer; frames then carry no snapshot copy (see snapshotBuffer.ts). */
   | { type: 'buffer'; buffer: SharedArrayBuffer }
   | { type: 'error'; message: string };

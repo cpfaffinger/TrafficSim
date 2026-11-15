@@ -712,3 +712,9 @@ dl.stats dd {
   flex: 1;
   font-variant-numeric: tabular-nums;
 }
+
+/* Debug download of the selection (#129). */
+.inspector-debug {
+  margin-top: 8px;
+  width: 100%;
+}

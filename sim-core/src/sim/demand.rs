@@ -128,6 +128,10 @@ fn cumulative(weights: impl Iterator<Item = f64>) -> Vec<f64> {
 }
 
 /// Index drawn with `u ∈ [0, 1)` from cumulative weights.
+/// Room (m) beyond a vehicle and its minimum gap below which an entry lane counts as too short
+/// to insert on without looking at the lane after it (#153).
+const SHORT_ENTRY_SPARE: f64 = 4.0;
+
 fn pick_cum(cum: &[f64], u: f64) -> usize {
     let total = cum.last().copied().unwrap_or(0.0);
     cum.partition_point(|&c| c <= u * total)
@@ -649,18 +653,22 @@ impl Simulation {
         };
         let pr = &p.params;
         // Lane with the largest free space at its start (ties: rightmost).
-        let mut best: Option<(u32, f64, f64)> = None;
+        let mut best: Option<(u32, f64, f64, bool)> = None;
         for lane in candidates {
-            let (gap, leader_speed) = match self.last_on(lane) {
+            let (gap, leader_speed, beyond) = match self.last_on(lane) {
                 Some((j, pos)) => {
                     let l = &self.vehicles[j as usize];
-                    (pos - l.params.length, l.speed)
+                    (pos - l.params.length, l.speed, false)
                 }
-                // An entry lane too short to hold the vehicle: the leader is beyond it.
-                None if self.net.seg_length[lane as usize] < p.params.length + p.params.minimum_gap => {
-                    self.gap_beyond(lane, &self.routes[p.route as usize], mask)
+                // An entry lane too short to hold a vehicle with room to spare: the leader is
+                // beyond it (#153: 3.4 m in Amsterdam, 9.3 m in Budapest).
+                None if self.net.seg_length[lane as usize]
+                    < p.params.length + p.params.minimum_gap + SHORT_ENTRY_SPARE =>
+                {
+                    let (gap, speed) = self.gap_beyond(lane, &self.routes[p.route as usize], mask);
+                    (gap, speed, true)
                 }
-                None => (f64::INFINITY, f64::INFINITY),
+                None => (f64::INFINITY, f64::INFINITY, false),
             };
             // Vehicles about to enter the lane from upstream need room behind the new vehicle.
             if let Some((pos, j)) = self.incoming_follower(lane) {
@@ -669,21 +677,31 @@ impl Simulation {
                     continue;
                 }
             }
-            if best.is_none_or(|(_, g, _)| gap > g) {
-                best = Some((lane, gap, leader_speed));
+            if best.is_none_or(|(_, g, _, _)| gap > g) {
+                best = Some((lane, gap, leader_speed, beyond));
             }
         }
-        let Some((lane, gap, leader_speed)) = best else {
+        let Some((lane, gap, leader_speed, beyond)) = best else {
             return false;
         };
-        // Insert at the leader's speed (capped by the desired speed) once the equilibrium gap
-        // for that speed is available.
-        let speed = pr
-            .desired_speed(self.net.seg_speed_limit[lane as usize])
-            .min(leader_speed);
-        if gap < (pr.minimum_gap + speed * pr.time_headway).max(pr.minimum_gap + 0.5) {
-            return false;
-        }
+        let desired = pr.desired_speed(self.net.seg_speed_limit[lane as usize]);
+        let speed = if beyond {
+            // Beyond a short entry lane: at most the speed from which it can still stop comfortably
+            // behind that vehicle (#153), so it never runs into a queue there.
+            if gap < pr.minimum_gap + 0.5 {
+                return false;
+            }
+            let stop = (2.0 * pr.comfortable_deceleration * (gap - pr.minimum_gap)).sqrt();
+            desired.min(leader_speed.max(stop))
+        } else {
+            // Insert at the leader's speed (capped by the desired speed) once the equilibrium gap
+            // for that speed is available.
+            let speed = desired.min(leader_speed);
+            if gap < (pr.minimum_gap + speed * pr.time_headway).max(pr.minimum_gap + 0.5) {
+                return false;
+            }
+            speed
+        };
         let i = self.new_vehicle(p.params, lane, 0.0, speed, p.route);
         let list = &mut self.seg_vehicles[lane as usize];
         if list.is_empty() {

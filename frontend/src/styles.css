@@ -156,6 +156,64 @@ body,
 }
 
 /* The one credit on the map (#128); all sources are on the sources page. */
+/* Start view (#140): OSM raster map while nothing is searched or shown. */
+.start-map {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #aad3df;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.start-map:active {
+  cursor: grabbing;
+}
+
+.start-map img {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  pointer-events: none;
+}
+
+.start-map-zoom {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.start-map-zoom button {
+  width: 32px;
+  height: 32px;
+  font-size: 18px;
+  line-height: 1;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.start-map-credit {
+  position: absolute;
+  left: 6px;
+  bottom: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  background: color-mix(in srgb, var(--panel) 75%, transparent);
+  color: var(--muted);
+}
+
+.start-map-credit a {
+  color: inherit;
+}
+
 .scene-credit {
   position: absolute;
   right: 6px;

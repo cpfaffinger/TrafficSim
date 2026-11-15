@@ -63,7 +63,8 @@ export function AboutDialog({ open, version, attributions, onClose }: AboutDialo
           </a>
           . Imported networks are derived databases and remain under the ODbL; images and other works produced from
           them must credit “© OpenStreetMap contributors”. The basemap is rendered from OpenFreeMap vector tiles
-          (OpenMapTiles schema, OpenStreetMap data).
+          (OpenMapTiles schema, OpenStreetMap data); the start map shows the OpenStreetMap standard tiles
+          (tile.openstreetmap.org).
         </p>
         <h3>Sources</h3>
         <p className="muted small">Data and services behind what is shown right now (map, elevation, search):</p>

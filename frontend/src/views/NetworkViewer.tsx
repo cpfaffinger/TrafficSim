@@ -7,6 +7,7 @@ import { SimulationPanel, type SimulationSettings } from '../components/Simulati
 import { DataBasisPanel, type ActivityAnalysis } from '../components/DataBasisPanel';
 import { DemandEditorHost } from '../demand/DemandEditorHost';
 import { ViewToolbar } from '../components/ViewToolbar';
+import { StartMap } from '../components/StartMap';
 import { SceneCredit } from '../components/SceneCredit';
 import { DrawRoadPanel } from '../editor/components/DrawRoadPanel';
 import { EditorPanel } from '../editor/components/EditorPanel';
@@ -61,6 +62,8 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
   const [simSettings, setSimSettings] = useState<SimulationSettings>({ demandScale: 100, truckShare: 0.08, seed: 1 });
   const [analysis, setAnalysis] = useState<ActivityAnalysis | null>(null);
   const [demandOpen, setDemandOpen] = useState(false);
+  // An area preview hides the start map (#140).
+  const [previewing, setPreviewing] = useState(false);
   const [sharedScenario, setSharedScenario] = useState<Scenario | null>(null);
   const readOnly = shareToken !== null;
   const scenarios = useMemo(() => scenarioClient ?? new ScenarioClient(), [scenarioClient]);
@@ -248,7 +251,10 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
   );
   const onSharedPackage = useCallback((p: NetworkPackage) => showPackage(p, false), [showPackage]);
 
-  const onArea = useCallback((area: BBox | Ring | null, closed?: boolean) => sceneRef.current?.showAreaPreview(area, closed ?? true), []);
+  const onArea = useCallback((area: BBox | Ring | null, closed?: boolean) => {
+    setPreviewing(!!area && area.length > 0);
+    sceneRef.current?.showAreaPreview(area, closed ?? true);
+  }, []);
   const onDraw = useCallback((handler: ((point: LonLat) => void) | null) => {
     sceneRef.current?.setClickHandler(
       handler
@@ -357,6 +363,7 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
       </aside>
       <div className="scene-wrap">
         <div className="scene" ref={sceneHost} />
+        {!pkg && !previewing && !readOnly && <StartMap />}
         {onSources && <SceneCredit onSources={onSources} />}
         {pkg && demandOpen && demandScenario && (
           <DemandEditorHost

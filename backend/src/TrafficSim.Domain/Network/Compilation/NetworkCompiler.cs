@@ -898,6 +898,7 @@ public static class NetworkCompiler
                     }
 
                     var forks = ForkMarkings(movements.Select(m => TurnLanesParser.Classify(m.Angle)).ToList());
+                    var forkLanes = ForkLanes(incoming, movements.Select(m => TurnLanesParser.Classify(m.Angle)).ToList());
                     var planned = new List<(Link Out, Turn Turn, List<(int From, int To)> Pairs)>();
                     var custom = false;
                     for (var i = 0; i < movements.Count; i++)
@@ -922,7 +923,7 @@ public static class NetworkCompiler
                         }
                         else
                         {
-                            pairs = CoverClasses(incoming, outgoing, (merge?.GetValueOrDefault(incoming) ?? MapLanes(incoming, outgoing, turn, forks[i], movements.Count)).ToList());
+                            pairs = CoverClasses(incoming, outgoing, (merge?.GetValueOrDefault(incoming) ?? MapLanes(incoming, outgoing, turn, forks[i], movements.Count, forkLanes?[i])).ToList());
                         }
 
                         planned.Add((outgoing, turn, pairs.ToList()));
@@ -942,6 +943,47 @@ public static class NetworkCompiler
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Source lanes per movement where a marked road forks into branches that all run nearly straight
+        /// (motorway exits, #134), or null: lanes ordered by the direction of their arrow (left … through or
+        /// unmarked … right) go to the branches in their order left to right, one arrow direction per branch
+        /// when the counts match; with two branches, the right one takes the lanes with right arrows.
+        /// </summary>
+        private static List<IReadOnlyList<int>>? ForkLanes(Link incoming, List<Turn> turns)
+        {
+            if (turns.Count < 2 || turns.Any(t => t != Turn.Through) || incoming.Lanes.All(l => l.Turns == TurnMarkings.None))
+            {
+                return null;
+            }
+
+            static int Score(TurnMarkings t) =>
+                (t & (TurnMarkings.SharpRight | TurnMarkings.Right)) != 0 ? 2
+                : (t & TurnMarkings.SlightRight) != 0 && (t & TurnMarkings.Through) == 0 ? 1
+                : (t & (TurnMarkings.SharpLeft | TurnMarkings.Left)) != 0 ? -2
+                : (t & TurnMarkings.SlightLeft) != 0 && (t & TurnMarkings.Through) == 0 ? -1
+                : 0;
+
+            var score = incoming.Lanes.Select(l => Score(l.Turns)).ToList();
+            var distinct = score.Distinct().Order().ToList();
+            // Movements are ordered left to right; their source lanes, by score group.
+            var groups = new List<IReadOnlyList<int>>();
+            if (distinct.Count == turns.Count)
+            {
+                groups.AddRange(distinct.Select(d => (IReadOnlyList<int>)Enumerable.Range(0, score.Count).Where(k => score[k] == d).ToList()));
+            }
+            else if (turns.Count == 2 && score.Any(s => s > 0) && score.Any(s => s <= 0))
+            {
+                groups.Add(Enumerable.Range(0, score.Count).Where(k => score[k] <= 0).ToList());
+                groups.Add(Enumerable.Range(0, score.Count).Where(k => score[k] > 0).ToList());
+            }
+            else
+            {
+                return null;
+            }
+
+            return groups;
         }
 
         /// <summary>
@@ -1020,15 +1062,15 @@ public static class NetworkCompiler
             }
         }
 
-        private IEnumerable<(int From, int To)> MapLanes(Link incoming, Link outgoing, Turn turn, Turn marking, int movementCount)
+        private IEnumerable<(int From, int To)> MapLanes(Link incoming, Link outgoing, Turn turn, Turn marking, int movementCount, IReadOnlyList<int>? forkSources = null)
         {
             var n = incoming.Lanes.Count;
             var m = outgoing.Lanes.Count;
-            IReadOnlyList<int> sources = [];
+            IReadOnlyList<int> sources = forkSources ?? [];
 
             // With a single way on, the arrows belong to a junction further ahead (the way is split before
             // it): every lane continues (#118).
-            if (movementCount > 1 && incoming.Lanes.Any(l => l.Turns != TurnMarkings.None))
+            if (sources.Count == 0 && movementCount > 1 && incoming.Lanes.Any(l => l.Turns != TurnMarkings.None))
             {
                 foreach (var compatible in TurnLanesParser.Compatible(marking))
                 {
@@ -1037,6 +1079,33 @@ public static class NetworkCompiler
                     {
                         break;
                     }
+                }
+
+                // Unmarked lanes between or next to the lanes of a straight movement belong to it (#134: A23,
+                // through|none|none|through|slight_right; the two unmarked lanes were attached afterwards and
+                // crossed the others), up to the next lane marked for something else.
+                if (sources.Count > 0 && turn == Turn.Through && sources.Any(k => (incoming.Lanes[k].Turns & TurnMarkings.Through) != 0))
+                {
+                    var set = sources.ToHashSet();
+                    for (var u = sources.Min(); u <= sources.Max(); u++)
+                    {
+                        if (incoming.Lanes[u].Turns == TurnMarkings.None)
+                        {
+                            set.Add(u);
+                        }
+                    }
+
+                    for (var u = sources.Min() - 1; u >= 0 && incoming.Lanes[u].Turns == TurnMarkings.None; u--)
+                    {
+                        set.Add(u);
+                    }
+
+                    for (var u = sources.Max() + 1; u < n && incoming.Lanes[u].Turns == TurnMarkings.None; u++)
+                    {
+                        set.Add(u);
+                    }
+
+                    sources = set.Order().ToList();
                 }
 
                 // No arrow fits: lanes without arrows take the movement, as on unmarked roads below.

@@ -504,6 +504,65 @@ public class NetworkCompilerTests
     }
 
     [Fact]
+    public void Unmarked_lanes_between_through_lanes_keep_their_order_at_a_motorway_exit()
+    {
+        // #134: A23 Vienna: five lanes "through|none|none|through|slight_right" fork into the four-lane
+        // motorway and an exit ramp.
+        var b = new OsmBuilder()
+            .Node(1, -300, 0).Node(2, 0, 0).Node(3, 300, 20).Node(4, 300, -60)
+            .Way(10, [1, 2], ("highway", "motorway"), ("oneway", "yes"), ("lanes", "5"), ("turn:lanes", "through|none|none|through|slight_right"))
+            .Way(11, [2, 3], ("highway", "motorway"), ("oneway", "yes"), ("lanes", "4"))
+            .Way(12, [2, 4], ("highway", "motorway_link"), ("oneway", "yes"), ("lanes", "1"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var approach = net.Links.Single(l => l.OsmWayId == 10);
+        var main = net.Links.Single(l => l.OsmWayId == 11);
+        var ramp = net.Links.Single(l => l.OsmWayId == 12);
+        var toMain = net.Connectors.Where(c => c.FromLink == approach.Id && c.ToLink == main.Id).Select(c => (c.FromLane, c.ToLane)).Order();
+        Assert.Equal([(1, 0), (2, 1), (3, 2), (4, 3)], toMain);
+        Assert.Equal([0], net.Connectors.Where(c => c.FromLink == approach.Id && c.ToLink == ramp.Id).Select(c => c.FromLane));
+    }
+
+    [Fact]
+    public void Lanes_of_a_three_way_motorway_fork_follow_their_arrows_in_order()
+    {
+        // #134: A23 Vienna, Knoten Prater: "none|none|through|slight_right|right" splits into the motorway
+        // (left), an exit (middle) and another exit (right).
+        var b = new OsmBuilder()
+            .Node(1, -300, 0).Node(2, 0, 0).Node(3, 300, 30).Node(4, 300, -10).Node(5, 300, -55)
+            .Way(10, [1, 2], ("highway", "motorway"), ("oneway", "yes"), ("lanes", "5"), ("turn:lanes", "none|none|through|slight_right|right"))
+            .Way(11, [2, 3], ("highway", "motorway"), ("oneway", "yes"), ("lanes", "3"))
+            .Way(12, [2, 4], ("highway", "motorway_link"), ("oneway", "yes"), ("lanes", "1"))
+            .Way(13, [2, 5], ("highway", "motorway_link"), ("oneway", "yes"), ("lanes", "1"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var approach = net.Links.Single(l => l.OsmWayId == 10);
+        int[] From(long way) => net.Connectors.Where(c => c.FromLink == approach.Id && c.ToLink == net.Links.Single(l => l.OsmWayId == way).Id)
+            .Select(c => c.FromLane).Distinct().Order().ToArray();
+        Assert.Equal([2, 3, 4], From(11));
+        Assert.Equal([1], From(12));
+        Assert.Equal([0], From(13));
+    }
+
+    [Fact]
+    public void The_through_lane_stays_on_the_left_branch_of_a_two_way_fork()
+    {
+        // #134: A23 Vienna: "slight_left|through|slight_right" splits into a two-lane ramp (left) and an exit.
+        var b = new OsmBuilder()
+            .Node(1, -300, 0).Node(2, 0, 0).Node(3, 300, 25).Node(4, 300, -40)
+            .Way(10, [1, 2], ("highway", "motorway_link"), ("oneway", "yes"), ("lanes", "3"), ("turn:lanes", "slight_left|through|slight_right"))
+            .Way(11, [2, 3], ("highway", "motorway_link"), ("oneway", "yes"), ("lanes", "2"))
+            .Way(12, [2, 4], ("highway", "motorway_link"), ("oneway", "yes"), ("lanes", "1"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var approach = net.Links.Single(l => l.OsmWayId == 10);
+        var left = net.Links.Single(l => l.OsmWayId == 11);
+        var pairs = net.Connectors.Where(c => c.FromLink == approach.Id && c.ToLink == left.Id).Select(c => (c.FromLane, c.ToLane)).Order();
+        Assert.Equal([(1, 0), (2, 1)], pairs);
+        Assert.Equal([0], net.Connectors.Where(c => c.FromLink == approach.Id && c.ToLink != left.Id).Select(c => c.FromLane));
+    }
+
+    [Fact]
     public void Dead_end_allows_turning_around()
     {
         var b = new OsmBuilder()

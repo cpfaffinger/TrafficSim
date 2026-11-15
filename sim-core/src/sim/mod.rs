@@ -420,13 +420,15 @@ pub(super) fn leads_on(net: &Network, route: &[u32], lane: u32, idx: usize, mask
 }
 
 /// The connector from `lane` to `route[idx]`: of several (one lane fanning out to two), the first
-/// whose target lane leads on along the route, else the first (#133: a vehicle entering a 1 m link
-/// between two junction nodes on a lane that only turns off was stranded there).
+/// whose target lane itself connects on along the route (#141: a lane widening into a turn lane and
+/// a through lane; through traffic took the turn lane and had to change lanes in front of a queue),
+/// else the first onto a lane long enough to change lanes, else the first (#133: a vehicle entering
+/// a 1 m link between two junction nodes on a lane that only turns off was stranded there).
 pub(super) fn choose_on_route(net: &Network, route: &[u32], lane: u32, idx: usize, mask: u8) -> u32 {
     let Some(&next) = route.get(idx) else {
         return NONE;
     };
-    let mut first = NONE;
+    let (mut first, mut room) = (NONE, NONE);
     for &c in net.lane_outgoing(lane) {
         let info = &net.connectors[c as usize];
         if info.to_link != next || info.class_mask & mask == 0 {
@@ -435,13 +437,14 @@ pub(super) fn choose_on_route(net: &Network, route: &[u32], lane: u32, idx: usiz
         if first == NONE {
             first = c;
         }
-        if net.seg_length[info.to_lane as usize] >= LANE_CHOICE_ROOM
-            || leads_on(net, route, info.to_lane, idx + 1, mask, 3)
-        {
+        if leads_on(net, route, info.to_lane, idx + 1, mask, 3) {
             return c;
         }
+        if room == NONE && net.seg_length[info.to_lane as usize] >= LANE_CHOICE_ROOM {
+            room = c;
+        }
     }
-    first
+    if room != NONE { room } else { first }
 }
 
 /// Destination choice cache key: entry link, class + informed, destination set, [`Router::fit_key`].

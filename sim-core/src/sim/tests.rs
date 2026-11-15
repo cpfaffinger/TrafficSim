@@ -2028,6 +2028,40 @@ fn mandatory_lane_changes_look_through_short_links() {
     assert!(changed);
 }
 
+/// #141: Villach, Steinwenderstrasse: a single lane widens into a right-turn lane (into streets
+/// without a way out) and a through lane. Through traffic took the turn lane, had to change lanes in
+/// front of the signal queue and was lost when it could not. It enters the through lane.
+#[test]
+fn at_a_lane_widening_vehicles_enter_the_lane_that_leads_on() {
+    let mut b = NetBuilder::new();
+    let v = 13.9;
+    b.node("W", -300.0, 0.0, NodeControl::Boundary)
+        .node("K", -60.0, 0.0, NodeControl::Priority)
+        .node("J", 0.0, 0.0, NodeControl::Priority)
+        .node("E", 300.0, 0.0, NodeControl::Boundary)
+        .node("D", 0.0, -150.0, NodeControl::Boundary)
+        .link("in", "W", "K", 1, v)
+        .link("wide", "K", "J", 2, v)
+        .link("out", "J", "E", 1, v)
+        .link("right", "J", "D", 1, v)
+        .connect("w0", "in", 0, "wide", 0, Priority::Major)
+        .connect("w1", "in", 0, "wide", 1, Priority::Major)
+        .connect("a", "wide", 1, "out", 0, Priority::Major)
+        .connect("b", "wide", 0, "right", 0, Priority::Major);
+    let mut s = sim(&b, quiet());
+    let id = s.place_vehicle("in", 0, 100.0, 13.0, "out", car()).unwrap();
+    let mut entered = None;
+    while let Some(v) = vehicle(&s, id) {
+        if entered.is_none() && s.network().is_lane(v.seg) && link_of(&s, v) == "wide" {
+            entered = Some(s.network().lanes[v.seg as usize].index);
+        }
+        s.step();
+        assert!(s.time < 120.0);
+    }
+    assert_eq!(entered, Some(1));
+    assert_eq!(s.stats().lane_changes, 0);
+}
+
 /// W → J1 → J2 → E: straight (`short`) or around (`up`, `down`); a held vehicle blocks `short`.
 fn navi_net() -> NetBuilder {
     let mut b = NetBuilder::new();

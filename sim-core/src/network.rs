@@ -675,6 +675,32 @@ impl Network {
             .collect()
     }
 
+    /// Whether `link` leads, through any lanes and connectors, to an exit at a boundary node other
+    /// than the one it starts at (#148: a road crossing a corner of the area enters and leaves it
+    /// without joining the network inside).
+    pub fn reaches_another_exit(&self, link: u32) -> bool {
+        let origin = self.links[link as usize].from;
+        let mut seen = vec![false; self.links.len()];
+        let mut stack = vec![link];
+        seen[link as usize] = true;
+        while let Some(l) = stack.pop() {
+            let info = &self.links[l as usize];
+            if info.to != origin && self.nodes[info.to as usize].control == NodeControl::Boundary {
+                return true;
+            }
+            for lane in info.first_lane..info.first_lane + info.lane_count {
+                for &c in self.lane_outgoing(lane) {
+                    let next = self.connectors[c as usize].to_link;
+                    if !seen[next as usize] {
+                        seen[next as usize] = true;
+                        stack.push(next);
+                    }
+                }
+            }
+        }
+        false
+    }
+
     /// Links whose end node is a network boundary (vehicle sinks).
     pub fn exit_links(&self) -> Vec<u32> {
         (0..self.links.len() as u32)

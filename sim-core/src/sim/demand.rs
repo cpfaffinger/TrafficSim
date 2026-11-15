@@ -245,7 +245,8 @@ impl Demand {
                     // Volume per lane of each entry link's road class; the curve of the busiest.
                     let mut best: Option<(f64, &str)> = None;
                     let mut vph = 0.0;
-                    for &l in &links {
+                    // Entries without a way to another exit generate nothing (#148).
+                    for &l in links.iter().filter(|&&l| net.reaches_another_exit(l)) {
                         let info = &net.links[l as usize];
                         let p = class_profiles.get(info.road_class.key());
                         let v = p.volume_per_lane * f64::from(info.lane_count);

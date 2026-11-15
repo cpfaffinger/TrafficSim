@@ -2114,6 +2114,36 @@ fn a_bus_chained_into_a_roundabout_with_short_ring_links_enters() {
     assert_eq!(s.stats().arrived, 1);
 }
 
+/// #148: Bad Ischl: a road crossing a corner of the imported area enters and leaves it without
+/// joining the network inside; trips generated there had nowhere to go (counted as unroutable).
+/// Road-class demand skips such entries; the rest of the network is unaffected.
+#[test]
+fn entries_without_a_way_to_another_exit_get_no_road_class_demand() {
+    let mut b = NetBuilder::new();
+    let v = 13.9;
+    b.node("W", -300.0, 0.0, NodeControl::Boundary)
+        .node("J", 0.0, 0.0, NodeControl::Priority)
+        .node("E", 300.0, 0.0, NodeControl::Boundary)
+        .node("B", 0.0, 300.0, NodeControl::Boundary)
+        .node("X", 0.0, 200.0, NodeControl::Priority)
+        .link("we", "W", "J", 1, v)
+        .link("je", "J", "E", 1, v)
+        .link("stub_in", "B", "X", 1, v)
+        .link("stub_out", "X", "B", 1, v)
+        .connect("a", "we", 0, "je", 0, Priority::Major)
+        .connect("u", "stub_in", 0, "stub_out", 0, Priority::Major);
+    let config = SimConfig {
+        default_demand: None,
+        ..SimConfig::default()
+    };
+    let mut s = sim(&b, config);
+    for _ in 0..6000 {
+        s.step();
+    }
+    assert!(s.stats().spawned > 10, "{:?}", s.stats());
+    assert_eq!(s.stats().unroutable, 0, "{:?}", s.stats());
+}
+
 /// W → J1 → J2 → E: straight (`short`) or around (`up`, `down`); a held vehicle blocks `short`.
 fn navi_net() -> NetBuilder {
     let mut b = NetBuilder::new();

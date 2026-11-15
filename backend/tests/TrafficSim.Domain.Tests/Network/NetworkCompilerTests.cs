@@ -149,6 +149,27 @@ public class NetworkCompilerTests
     }
 
     [Fact]
+    public void A_junction_fed_only_by_signals_a_few_metres_away_is_part_of_the_signalised_junction()
+    {
+        // #149: Barcelona, Placa del Cinc d'Oros: every approach of the inner node comes straight from a
+        // signalised node 1-3 m away; as a priority junction one green stream waited for the other forever.
+        var b = new OsmBuilder()
+            .Node(1, -200, 0).Node(2, 0, 0, ("highway", "traffic_signals")).Node(3, 3, 0).Node(4, 200, 0)
+            .Node(5, 0, -200)
+            .Node(6, 3, 200).Node(7, 3, 3, ("highway", "traffic_signals")).Node(8, 3, -200)
+            .Node(9, 200, 3)
+            .Way(10, [1, 2, 3, 4], ("highway", "primary"), ("oneway", "yes"))
+            .Way(11, [5, 2], ("highway", "residential"), ("oneway", "yes"))
+            .Way(12, [6, 7, 3, 8], ("highway", "secondary"), ("oneway", "yes"))
+            .Way(13, [9, 7], ("highway", "residential"), ("oneway", "yes"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var inner = net.Nodes.Single(n => n.OsmId == 3);
+        Assert.Equal(NodeControl.Signal, inner.Control);
+        Assert.All(net.Connectors.Where(c => c.NodeId == inner.Id), c => Assert.Equal(ConnectorPriority.Signal, c.Priority));
+    }
+
+    [Fact]
     public void Signal_nodes_of_one_junction_run_a_coordinated_plan()
     {
         // #117: a side road crossing a dual carriageway (carriageways 16 m apart): OSM has a

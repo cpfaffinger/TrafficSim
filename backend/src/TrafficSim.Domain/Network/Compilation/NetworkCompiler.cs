@@ -99,6 +99,7 @@ public static class NetworkCompiler
             BuildLinks();
             CaptureSignsAndSignals();
             DecideControls();
+            SignaliseInnerNodes();
             BuildGeometry();
             BuildConnectors();
             ShiftBranches();
@@ -650,6 +651,40 @@ public static class NetworkCompiler
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Junction nodes inside a signalised junction (#149): a junction whose every approach comes from a signal
+        /// node through links shorter than <see cref="CompilerOptions.SignalChainMetres"/> (directly, or through
+        /// further such inner nodes) is part of that junction and follows its phases, instead of making one green
+        /// stream give way to another. A junction with an approach of its own (#126: a ramp joining between two
+        /// signals) keeps its priority rules.
+        /// </summary>
+        private void SignaliseInnerNodes()
+        {
+            bool Fed(Link link, int depth, HashSet<string> path)
+            {
+                var from = _byNodeId[link.From];
+                if (from.Node!.Control == NodeControl.Signal)
+                {
+                    return link.Length < options.SignalChainMetres;
+                }
+
+                return depth > 0
+                    && link.Length < options.SignalChainMetres
+                    && from.Node.Control is NodeControl.Priority or NodeControl.RightBeforeLeft or NodeControl.None
+                    && from.Incoming.Count > 0
+                    && path.Add(from.Node.Id)
+                    && from.Incoming.All(l => Fed(l, depth - 1, path));
+            }
+
+            foreach (var g in _nodes.Values.Where(g => g.Node!.Control is NodeControl.Priority or NodeControl.RightBeforeLeft && g.Pieces.Count >= 3 && !SignalsSuppressed(g)))
+            {
+                if (g.Incoming.Count > 0 && g.Incoming.All(l => Fed(l, 3, [g.Node!.Id])))
+                {
+                    g.Node!.Control = NodeControl.Signal;
+                }
+            }
         }
 
         /// <summary>Direction a signal faces along its way: true = forward, false = backward, null = both or unknown.</summary>

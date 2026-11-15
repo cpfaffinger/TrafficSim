@@ -136,7 +136,8 @@ public class TerrainTests
 
         var bridge = net.Links.Single(l => l.OsmWayId == 21);
         var mid = Polyline.PointAt(bridge.Geometry, Polyline.PlanarLength(bridge.Geometry) / 2);
-        Assert.InRange(mid.Z, 5.5, 6.5); // ground interpolated between the abutments (0 m) + layer 1
+        // Level with its abutments (0 m): no road passes beneath, so it is not raised (#157).
+        Assert.InRange(mid.Z, -0.5, 0.5);
         Assert.All(bridge.Geometry, p => Assert.True(p.Z > -0.01, $"deck dips to {p.Z}"));
         // The approach roads follow the plateau.
         Assert.All(net.Links.Single(l => l.OsmWayId == 20).Geometry, p => Assert.InRange(p.Z, -3, 0.01));

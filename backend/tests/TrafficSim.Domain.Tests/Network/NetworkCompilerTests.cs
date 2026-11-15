@@ -690,6 +690,27 @@ public class NetworkCompilerTests
     }
 
     [Fact]
+    public void An_on_ramp_with_a_very_short_last_piece_joins_without_a_kink()
+    {
+        // #158: S33 at Herzogenburg: the ramp's last piece before the merge is 2.2 m long; shifted to the
+        // right edge within it, the lane jumped sideways. The shift starts on the ramp piece before.
+        var b = new OsmBuilder()
+            .Node(1, -300, 0).Node(2, 0, 0).Node(3, 300, 0)
+            .Node(5, -300, -8).Node(6, -3, -0.3)
+            .Way(10, [1, 2], ("highway", "motorway"), ("oneway", "yes"), ("lanes", "2"))
+            .Way(12, [5, 6], ("highway", "motorway_link"), ("oneway", "yes"), ("lanes", "1"))
+            .Way(13, [6, 2], ("highway", "motorway_link"), ("oneway", "yes"), ("lanes", "1"))
+            .Way(11, [2, 3], ("highway", "motorway"), ("oneway", "yes"), ("lanes", "2"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var last = net.Links.Single(l => l.OsmWayId == 13).Lanes[0].Geometry;
+        var before = net.Links.Single(l => l.OsmWayId == 12).Lanes[0].Geometry;
+        // No sideways jump within the short piece, and the pieces still meet.
+        Assert.InRange(Math.Abs(last[0].Y - last[^1].Y), 0, 0.6);
+        Assert.InRange((before[^1] - last[0]).PlanarLength, 0, 0.6);
+    }
+
+    [Fact]
     public void Lanes_of_a_three_way_motorway_fork_follow_their_arrows_in_order()
     {
         // #134: A23 Vienna, Knoten Prater: "none|none|through|slight_right|right" splits into the motorway
@@ -776,6 +797,31 @@ public class NetworkCompilerTests
         var net = NetworkCompiler.Compile(b.Build(), b.Area(300));
 
         Assert.NotEqual(NodeControl.Boundary, net.Nodes.Single(n => n.OsmId == 2).Control);
+    }
+
+    [Theory]
+    [InlineData(null, false)] // nothing below in the imported network: flat
+    [InlineData("0", true)] // a road at ground level below: raised
+    [InlineData("-1", false)] // the road below is a tunnel: the bridge stays flat
+    public void Bridges_are_raised_only_over_roads_at_ground_level(string? belowLayer, bool raised)
+    {
+        // #157: A1 at St. Poelten with motorways only: every bridge rose 6 m over nothing and back.
+        var b = new OsmBuilder()
+            .Node(1, -200, 0).Node(2, -40, 0).Node(3, 40, 0).Node(4, 200, 0)
+            .Way(10, [1, 2], ("highway", "motorway"), ("oneway", "yes"))
+            .Way(11, [2, 3], ("highway", "motorway"), ("oneway", "yes"), ("bridge", "yes"), ("layer", "1"))
+            .Way(12, [3, 4], ("highway", "motorway"), ("oneway", "yes"));
+        if (belowLayer is { } layer)
+        {
+            b.Node(5, 0, -150).Node(6, 0, 150)
+                .Way(20, [5, 6], ("highway", "residential"), ("layer", layer), ("tunnel", layer == "-1" ? "yes" : "no"));
+        }
+
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var bridge = net.Links.Single(l => l.OsmWayId == 11);
+        Assert.Equal(raised, bridge.Geometry.Max(p => p.Z) > 3);
+        Assert.Equal(Structure.Bridge, bridge.Structure);
     }
 
     [Fact]

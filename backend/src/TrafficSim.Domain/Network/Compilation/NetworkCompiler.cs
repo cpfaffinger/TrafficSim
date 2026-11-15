@@ -96,6 +96,7 @@ public static class NetworkCompiler
             MarkCuts(allRoads.Where(w => !Selected(w)));
             MarkClippedEnds(roadWays);
             PruneStubs();
+            GroundFreeBridges();
             AssignNodeIds();
             BuildLinks();
             CaptureSignsAndSignals();
@@ -316,6 +317,44 @@ public static class NetworkCompiler
         /// edge, the ways going on were clipped to nothing and the main road ended in a dead end): the node is
         /// part of further road ways, or lies inside its way. Such a dead end is a cut, a boundary.
         /// </summary>
+        /// <summary>Layers of bridge pieces with no road at ground level beneath them (#157).</summary>
+        private readonly Dictionary<Piece, int> _groundedLayer = [];
+
+        /// <summary>The layer a piece is built at: its OSM layer, or 0 for a bridge grounded by #157.</summary>
+        private int LayerOf(Piece piece) =>
+            _groundedLayer.TryGetValue(piece, out var layer) ? layer : GradeSeparationRule.Parse(piece.Way.Tags).Layer;
+
+        /// <summary>
+        /// Bridges are raised only over roads at ground level (#157: A1 at St. Poelten imported with motorways
+        /// only rose 6 m over nothing and back at every bridge): a raised piece that crosses no piece at a lower
+        /// layer of at least 0 stays at ground level. A road below mapped as a tunnel separates itself.
+        /// </summary>
+        private void GroundFreeBridges()
+        {
+            var layers = _pieces.ToDictionary(p => p, p => GradeSeparationRule.Parse(p.Way.Tags).Layer);
+            static (double MinX, double MinY, double MaxX, double MaxY) Box(IReadOnlyList<Vec3> points) =>
+                (points.Min(p => p.X), points.Min(p => p.Y), points.Max(p => p.X), points.Max(p => p.Y));
+            var boxes = _pieces.ToDictionary(p => p, p => Box(p.Points));
+            foreach (var bridge in _pieces.Where(p => layers[p] > 0))
+            {
+                var a = boxes[bridge];
+                var over = _pieces.Any(q =>
+                {
+                    if (layers[q] >= layers[bridge] || layers[q] < 0)
+                    {
+                        return false;
+                    }
+
+                    var c = boxes[q];
+                    return c.MinX <= a.MaxX && c.MaxX >= a.MinX && c.MinY <= a.MaxY && c.MaxY >= a.MinY && Polyline.Crosses(bridge.Points, q.Points);
+                });
+                if (!over)
+                {
+                    _groundedLayer[bridge] = 0;
+                }
+            }
+        }
+
         private void MarkClippedEnds(List<OsmWay> roads)
         {
             var ways = new Dictionary<long, int>();
@@ -525,7 +564,8 @@ public static class NetworkCompiler
                 Turns = TurnLanesParser.ParseLane(turns?[i]),
             }).ToList();
 
-            var (layer, structure) = GradeSeparationRule.Parse(tags);
+            var (_, structure) = GradeSeparationRule.Parse(tags);
+            var layer = LayerOf(piece);
             var link = new Link
             {
                 Id = id,
@@ -788,7 +828,7 @@ public static class NetworkCompiler
             // Node levels and elevations (grade separation, ADR-0016).
             foreach (var g in _nodes.Values)
             {
-                var level = GradeSeparationRule.NodeLevel(g.Pieces.Select(p => GradeSeparationRule.Parse(p.Way.Tags).Layer));
+                var level = GradeSeparationRule.NodeLevel(g.Pieces.Select(LayerOf));
                 g.Position = g.Position.WithZ(GradeSeparationRule.Elevation(level) + ElevationRule.Ground(options.Terrain, g.Position));
                 g.Node!.Position = g.Position;
                 var junction = (g.Node.Control is not (NodeControl.None or NodeControl.Boundary or NodeControl.LevelCrossing) && g.Pieces.Count >= 3)
@@ -873,7 +913,10 @@ public static class NetworkCompiler
                 }
 
                 var taper = Math.Min(BranchTaperMetres, 0.45 * Polyline.PlanarLength(link.Geometry));
-                link.Geometry = Polyline.ShiftEnds(link.Geometry, start, end, taper);
+                // A piece carrying the shift through (#158) moves as a whole.
+                link.Geometry = Math.Abs(start - end) < 1e-9
+                    ? Polyline.Offset(link.Geometry, start)
+                    : Polyline.ShiftEnds(link.Geometry, start, end, taper);
                 LayLanes(link);
                 moved.Add(link.Id);
             }
@@ -933,8 +976,38 @@ public static class NetworkCompiler
                 }
             }
 
+            // A branch too short to ease its shift in carries it whole, and the piece before it (merge) or
+            // after it (fork) eases it in instead (#158: a 2.2 m last ramp piece jumped sideways).
+            foreach (var ((link, atStart), shift) in shifts.ToList())
+            {
+                var current = link;
+                for (var hop = 0; hop < 4 && current.Length < ShortBranchMetres; hop++)
+                {
+                    // The far end is a branch of its own fork or merge: leave its shift alone.
+                    if (shifts.TryGetValue((current, !atStart), out var own) && Math.Abs(own - shift) > 1e-9)
+                    {
+                        break;
+                    }
+
+                    shifts[(current, !atStart)] = shift;
+                    var joint = _byNodeId[atStart ? current.To : current.From];
+                    var neighbours = atStart ? joint.Outgoing : joint.Incoming;
+                    var others = atStart ? joint.Incoming : joint.Outgoing;
+                    if (neighbours.Count != 1 || others.Count != 1 || neighbours[0].OppositeLinkId is not null || shifts.ContainsKey((neighbours[0], atStart)))
+                    {
+                        break;
+                    }
+
+                    current = neighbours[0];
+                    shifts[(current, atStart)] = shift;
+                }
+            }
+
             return shifts;
         }
+
+        /// <summary>Branches shorter than this carry their shift whole onto the piece before or after.</summary>
+        private const double ShortBranchMetres = 20;
 
         private void LimitTightRoundabouts()
         {

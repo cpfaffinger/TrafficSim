@@ -605,8 +605,20 @@ dl.stats dd {
     max-height: 45%;
   }
 
+  /* One row down to ~360 px wide, so the scene keeps its height (#121). */
   .app-header {
     flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 10px;
+  }
+
+  .app-header h1 {
+    font-size: 16px;
+  }
+
+  .mode-tabs button {
+    padding: 4px 8px;
+    font-size: 13px;
   }
 }
 

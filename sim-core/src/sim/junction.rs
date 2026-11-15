@@ -712,6 +712,42 @@ impl Simulation {
     /// circulating traffic needs, which would lock up a congested ring). Off the ring, an empty
     /// exit lane always has room, however short it is (#116: OSM splits roads at every node, so
     /// lanes of a few metres are common, and a merge into one would otherwise wait forever).
+    /// Length and occupied space (vehicle length + 2 m each) of the exit lane of `c`. While that
+    /// is shorter than `needed`, the lanes that follow on vehicle `i`'s route count too: two
+    /// roundabout arms a metre apart leave a ring link no vehicle fits on (#120).
+    fn exit_room(&self, c: u32, i: usize, needed: f64) -> (f64, f64) {
+        let net = &self.net;
+        let v = &self.vehicles[i];
+        let route = &self.routes[v.route as usize];
+        let occupied = |seg: u32| -> f64 {
+            self.seg_vehicles[seg as usize]
+                .iter()
+                .map(|&j| self.vehicles[j as usize].params.length + 2.0)
+                .sum()
+        };
+        let mut lane = net.connectors[c as usize].to_lane;
+        let (mut len, mut occ) = (net.seg_length[lane as usize], occupied(lane));
+        // `c` leads onto the route link after the current one (see `chain_after`).
+        let first = v.route_pos as usize + 2;
+        for idx in first..first + 4 {
+            if len >= needed {
+                break;
+            }
+            let Some(&link) = route.get(idx) else {
+                break;
+            };
+            let next = net.choose_connector(lane, link, v.params.class.mask());
+            if next == NONE {
+                break;
+            }
+            let seg = net.connector_segment(next);
+            lane = net.connectors[next as usize].to_lane;
+            len += net.seg_length[seg as usize] + net.seg_length[lane as usize];
+            occ += occupied(seg) + occupied(lane);
+        }
+        (len, occ)
+    }
+
     pub(super) fn exit_space_ok(&self, c: u32, i: usize) -> bool {
         let net = &self.net;
         let info = &net.connectors[c as usize];
@@ -742,11 +778,9 @@ impl Simulation {
         // A yielding merge never fills its exit lane completely, so the prioritised stream can
         // always move on (no gridlock on a congested roundabout or in a dense grid).
         if yielding_merge {
-            let occupied: f64 = self.seg_vehicles[info.to_lane as usize]
-                .iter()
-                .map(|&j| self.vehicles[j as usize].params.length + 2.0)
-                .sum();
-            if (occupied > 0.0 || ring) && occupied + needed > net.seg_length[info.to_lane as usize] {
+            // Only ring links look further: elsewhere an empty short lane is enough (#116).
+            let (len, occupied) = self.exit_room(c, i, if ring { needed } else { 0.0 });
+            if (occupied > 0.0 || ring) && occupied + needed > len {
                 return false;
             }
         }

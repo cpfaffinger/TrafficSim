@@ -1354,6 +1354,51 @@ fn roundabout_entries_never_fill_the_ring_link() {
     assert!(!s.exit_space_ok(e0, i));
 }
 
+/// #120: Krems, Bertschingerstrasse: two roundabout arms a metre apart leave a 1 m ring link.
+/// The entry must count the ring link after it, or it never gets in.
+#[test]
+fn roundabout_entry_onto_a_one_metre_ring_link() {
+    let mut b = NetBuilder::new();
+    let v = 8.0;
+    b.node("R1", 0.0, 0.0, NodeControl::Roundabout)
+        .node("R2", 17.0, 0.0, NodeControl::Roundabout)
+        .node("W", -300.0, 0.0, NodeControl::Boundary)
+        .node("E", 317.0, 0.0, NodeControl::Boundary)
+        .node("S", 0.0, -300.0, NodeControl::Boundary)
+        .link("w", "W", "R1", 1, v)
+        .link("r", "R1", "R2", 1, v)
+        .link("e", "R2", "E", 1, v)
+        .link("s", "S", "R1", 1, v)
+        .connect("ring_in", "w", 0, "r", 0, Priority::RoundaboutRing)
+        .connect("entry", "s", 0, "r", 0, Priority::RoundaboutEntry)
+        .connect("ring_on", "r", 0, "e", 0, Priority::RoundaboutRing)
+        .conflict("entry", "ring_in");
+    let mut s = sim(&b, quiet());
+    s.set_event_logging(true);
+    let ring = s
+        .network()
+        .link_lane(s.network().link_index("r").unwrap(), 0)
+        .unwrap();
+    assert!(s.network().seg_length[ring as usize] < 2.0);
+    let entry = s.place_vehicle("s", 0, 291.5, 0.0, "e", car()).unwrap();
+    let c = s.network().connector_index("entry").unwrap();
+    let i = prepare(&mut s, entry);
+    assert!(s.exit_space_ok(c, i), "the ring beyond the 1 m link is empty");
+    run_checked(&mut s, 300);
+    assert!(
+        s.entry_log()
+            .iter()
+            .any(|e| e.vehicle == entry && e.connector == c),
+        "the entry got in"
+    );
+    // A car standing on the 1 m link itself still blocks the entry.
+    let mut s = sim(&b, quiet());
+    s.place_vehicle("r", 0, 1.0, 0.0, "e", crawler()).unwrap();
+    let entry = s.place_vehicle("s", 0, 291.5, 0.0, "e", car()).unwrap();
+    let i = prepare(&mut s, entry);
+    assert!(!s.exit_space_ok(c, i));
+}
+
 // ---------------------------------------------------------------- #46 MOBIL lane changes
 
 fn overtaking(allow_left: bool) -> Simulation {
@@ -1947,7 +1992,7 @@ fn golden_runs() {
             "roundabout",
             sim(&roundabout(), with_demand(500.0)),
             3000,
-            0xa1e3_9a64_4d8d_6b05,
+            0x15fb_8f5a_252d_ce8b,
         ),
         (
             "driver-profiles",

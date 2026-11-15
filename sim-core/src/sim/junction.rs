@@ -151,9 +151,15 @@ impl Simulation {
             let mut chain = [NONE; CHAIN];
             if decision != Decision::Stop {
                 let impatient = self.vehicles[i].wait > 2.0 * max_wait;
+                // An unsignalised junction in the chain gets the deadlock breaker of its own stop
+                // line (#163): a vehicle that cannot wait there would otherwise wait at the first
+                // line for a gap in a stream that never has one (Berlin, Am Friedrichshain).
+                let waited = self.vehicles[i].wait > max_wait;
                 let (next, n) = self.chain_after(i, c, d);
                 for (k, &(c2, d2)) in next[..n].iter().enumerate() {
-                    if self.decide_with(i, c2, d2, forced, true) == Decision::Stop {
+                    let forced2 =
+                        forced || (waited && self.net.connectors[c2 as usize].priority != Priority::Signal);
+                    if self.decide_with(i, c2, d2, forced2, true) == Decision::Stop {
                         let info2 = &self.net.connectors[c2 as usize];
                         let red = info2.priority == Priority::Signal
                             && self.signal_state[info2.signal_group as usize] != SignalState::Green;

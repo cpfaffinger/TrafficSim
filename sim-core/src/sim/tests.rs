@@ -1965,6 +1965,61 @@ fn opposite_chains_through_a_junction_pair_do_not_deadlock() {
     }
 }
 
+/// #163: Berlin, Am Friedrichshain: right behind a signal, a 2 m link leads to an unsignalised
+/// junction whose minor movement crosses a stream with gaps just under the critical gap. The
+/// vehicle may not wait on the short link, so it waited at the signal for a gap that never came;
+/// after `maxWait` it gets the deadlock breaker of the minor stop line and goes when the junction
+/// is clear.
+#[test]
+fn a_chained_minor_movement_does_not_starve_behind_a_signal() {
+    let mut b = NetBuilder::new();
+    let v = 13.889;
+    b.trim = 4.0;
+    b.node("S1", 0.0, 0.0, NodeControl::Signal)
+        .node("J", 10.0, 0.0, NodeControl::Priority)
+        .node("W", -300.0, 0.0, NodeControl::Boundary)
+        .node("E", 310.0, 0.0, NodeControl::Boundary)
+        .node("N", 10.0, 300.0, NodeControl::Boundary)
+        .node("S", 10.0, -300.0, NodeControl::Boundary)
+        .link("wa", "W", "S1", 1, v)
+        .link("ab", "S1", "J", 1, v)
+        .link("jn", "J", "N", 1, v)
+        .link("ej", "E", "J", 1, v)
+        .link("js", "J", "S", 1, v)
+        .connect("sig", "wa", 0, "ab", 0, Priority::Signal)
+        .connect("minor", "ab", 0, "jn", 0, Priority::Minor)
+        .connect("major", "ej", 0, "js", 0, Priority::Major)
+        .conflict("minor", "major")
+        .signal("S1", 60.0, &[("g", 0.0, 60.0, 3.0)]);
+    b.connector_mut("sig").signal_group = Some("g".into());
+    let mut s = sim(&b, quiet());
+    let net = s.network().clone();
+    let (minor, major) = (
+        net.connector_index("minor").unwrap(),
+        net.connector_index("major").unwrap(),
+    );
+    assert!(net.conflict_zone(minor, major).is_some());
+    let len = net.seg_length[net.link_lane(net.link_index("wa").unwrap(), 0).unwrap() as usize];
+    let id = s.place_vehicle("wa", 0, len - 3.0, 0.0, "jn", car()).unwrap();
+    // A major vehicle every 3.5 s: never the 4 s critical gap.
+    let ej = net.seg_length[net.link_lane(net.link_index("ej").unwrap(), 0).unwrap() as usize];
+    let mut pos = ej - 10.0;
+    while pos > 0.0 {
+        s.place_vehicle("ej", 0, pos, v, "js", car()).unwrap();
+        pos -= 3.5 * v;
+    }
+    let mut next = (pos + 3.5 * v) / v;
+    while vehicle(&s, id).is_some_and(|v| link_of(&s, v) != "jn") {
+        if s.time >= next {
+            s.place_vehicle("ej", 0, 0.0, v, "js", car()).unwrap();
+            next += 3.5;
+        }
+        s.step();
+        assert!(s.time < 150.0, "still waiting at the signal");
+    }
+    assert!(vehicle(&s, id).is_some());
+}
+
 /// #126: B3 in Krems: two chained signals that are never green together. The vehicle gives up on
 /// the chain after twice `maxWait` and waits at the second stop line instead of forever at the first.
 #[test]

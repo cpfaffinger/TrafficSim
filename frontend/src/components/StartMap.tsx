@@ -11,6 +11,7 @@ const MAX_ZOOM = 18;
 const TILE_URL = 'https://tile.openstreetmap.org';
 
 interface View {
+  /** Fractional while pinching (#160); tiles come from the nearest whole level, scaled. */
   zoom: number;
   /** Centre in world pixels at `zoom`. */
   x: number;
@@ -39,12 +40,26 @@ export interface StartMapProps {
 /** Clicks that moved less than this (pixels) are picks, not drags. */
 const CLICK_SLOP = 5;
 
+interface Gesture {
+  /** Last position of each finger or mouse button down on the map. */
+  points: Map<number, { x: number; y: number }>;
+  /** Pixels moved since the first pointer went down. */
+  moved: number;
+  /** Whether a second pointer joined (a pinch is never a pick). */
+  multi: boolean;
+}
+
+function spread(points: Map<number, { x: number; y: number }>): { x: number; y: number; d: number } {
+  const [a = { x: 0, y: 0 }, b = a] = [...points.values()];
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) };
+}
+
 /** Pannable, zoomable OpenStreetMap raster map shown under the panels while no network or area is shown. */
 export function StartMap({ ring = null, onPick = null }: StartMapProps = {}) {
   const host = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>(initialView);
   const [size, setSize] = useState({ w: 1024, h: 768 });
-  const drag = useRef<{ id: number; x: number; y: number; moved: number } | null>(null);
+  const gesture = useRef<Gesture | null>(null);
   const wheel = useRef(0);
 
   useEffect(() => {
@@ -78,33 +93,61 @@ export function StartMap({ ring = null, onPick = null }: StartMapProps = {}) {
   }, []);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
-    drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: 0 };
+    const g = gesture.current ?? { points: new Map(), moved: 0, multi: false };
+    g.points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (g.points.size > 1) g.multi = true;
+    gesture.current = g;
     e.currentTarget.setPointerCapture?.(e.pointerId);
   }, []);
+  // One pointer pans; two pinch-zoom around their midpoint and pan with it (#160).
   const onPointerMove = useCallback((e: React.PointerEvent) => {
-    const d = drag.current;
-    if (!d || d.id !== e.pointerId) return;
-    const dx = e.clientX - d.x;
-    const dy = e.clientY - d.y;
-    drag.current = { ...d, x: e.clientX, y: e.clientY, moved: d.moved + Math.abs(dx) + Math.abs(dy) };
-    setView((v) => ({ ...v, x: v.x - dx, y: v.y - dy }));
+    const g = gesture.current;
+    const last = g?.points.get(e.pointerId);
+    if (!g || !last) return;
+    const before = g.points.size === 2 ? spread(g.points) : null;
+    g.points.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    g.moved += Math.abs(e.clientX - last.x) + Math.abs(e.clientY - last.y);
+    if (g.points.size === 1) {
+      const dx = e.clientX - last.x;
+      const dy = e.clientY - last.y;
+      setView((v) => ({ ...v, x: v.x - dx, y: v.y - dy }));
+      return;
+    }
+    if (!before || before.d < 1) return;
+    const after = spread(g.points);
+    const r = e.currentTarget.getBoundingClientRect();
+    const px = after.x - r.left - r.width / 2;
+    const py = after.y - r.top - r.height / 2;
+    const delta = Math.log2(after.d / before.d);
+    setView((v) => zoomAt({ ...v, x: v.x - (after.x - before.x), y: v.y - (after.y - before.y) }, delta, px, py));
+  }, []);
+  const release = useCallback((e: React.PointerEvent) => {
+    const g = gesture.current;
+    if (!g) return null;
+    const wasPinch = g.points.size === 2;
+    const at = wasPinch ? spread(g.points) : null;
+    g.points.delete(e.pointerId);
+    if (at) {
+      // Settle on the nearest whole level so the tiles are sharp.
+      const r = e.currentTarget.getBoundingClientRect();
+      setView((v) => zoomAt(v, Math.round(v.zoom) - v.zoom, at.x - r.left - r.width / 2, at.y - r.top - r.height / 2));
+    }
+    if (g.points.size === 0) gesture.current = null;
+    return g;
   }, []);
   const onPointerUp = useCallback(
     (e: React.PointerEvent) => {
-      const d = drag.current;
-      drag.current = null;
-      if (!onPick || !d || d.moved >= CLICK_SLOP) return;
+      const g = release(e);
+      if (!onPick || !g || g.points.size > 0 || g.multi || g.moved >= CLICK_SLOP) return;
       const r = e.currentTarget.getBoundingClientRect();
       const wx = view.x - size.w / 2 + (e.clientX - r.left);
       const wy = view.y - size.h / 2 + (e.clientY - r.top);
       const [lon, lat] = tileToLonLat(wx / TILE, wy / TILE, view.zoom);
       onPick([lon, lat]);
     },
-    [onPick, view, size],
+    [onPick, view, size, release],
   );
-  const onPointerCancel = useCallback(() => {
-    drag.current = null;
-  }, []);
+  const onPointerCancel = useCallback((e: React.PointerEvent) => release(e), [release]);
   const onDoubleClick = useCallback(
     (e: React.MouseEvent) => {
       if (onPick) return; // double clicks add corners while drawing
@@ -114,7 +157,9 @@ export function StartMap({ ring = null, onPick = null }: StartMapProps = {}) {
     [onPick],
   );
 
-  const n = 2 ** view.zoom;
+  const tz = Math.round(view.zoom);
+  const n = 2 ** tz;
+  const tile = TILE * 2 ** (view.zoom - tz);
   const toScreen = ([lon, lat]: LonLat): [number, number] => {
     const [tx, ty] = lonLatToTile(lon, lat, view.zoom);
     return [tx * TILE - (view.x - size.w / 2), ty * TILE - (view.y - size.h / 2)];
@@ -123,11 +168,11 @@ export function StartMap({ ring = null, onPick = null }: StartMapProps = {}) {
   const left = view.x - size.w / 2;
   const top = view.y - size.h / 2;
   const tiles: { key: string; src: string; x: number; y: number }[] = [];
-  for (let ty = Math.floor(top / TILE); ty <= Math.floor((top + size.h) / TILE); ty++) {
+  for (let ty = Math.floor(top / tile); ty <= Math.floor((top + size.h) / tile); ty++) {
     if (ty < 0 || ty >= n) continue;
-    for (let tx = Math.floor(left / TILE); tx <= Math.floor((left + size.w) / TILE); tx++) {
+    for (let tx = Math.floor(left / tile); tx <= Math.floor((left + size.w) / tile); tx++) {
       const wx = ((tx % n) + n) % n;
-      tiles.push({ key: `${view.zoom}/${tx}/${ty}`, src: `${TILE_URL}/${view.zoom}/${wx}/${ty}.png`, x: tx * TILE - left, y: ty * TILE - top });
+      tiles.push({ key: `${tz}/${tx}/${ty}`, src: `${TILE_URL}/${tz}/${wx}/${ty}.png`, x: tx * tile - left, y: ty * tile - top });
     }
   }
 
@@ -138,8 +183,8 @@ export function StartMap({ ring = null, onPick = null }: StartMapProps = {}) {
       role="application"
       aria-label={
         onPick
-          ? 'Map: click to add corners of the import area, drag to pan, wheel to zoom.'
-          : 'Map of Europe. Drag to pan, wheel or double-click to zoom. Search a place or draw an area to import its road network.'
+          ? 'Map: click to add corners of the import area, drag to pan, wheel or pinch to zoom.'
+          : 'Map of Europe. Drag to pan, wheel, pinch or double-click to zoom. Search a place or draw an area to import its road network.'
       }
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -149,7 +194,7 @@ export function StartMap({ ring = null, onPick = null }: StartMapProps = {}) {
     >
       {tiles.map((t) => (
         // CORS mode: the app is cross-origin isolated (COEP require-corp); OSM tiles allow any origin.
-        <img key={t.key} src={t.src} alt="" crossOrigin="anonymous" draggable={false} style={{ left: t.x, top: t.y }} />
+        <img key={t.key} src={t.src} alt="" crossOrigin="anonymous" draggable={false} style={{ left: t.x, top: t.y, width: tile, height: tile }} />
       ))}
       {outline.length > 0 && (
         <svg className="start-map-outline" aria-label="Import outline">

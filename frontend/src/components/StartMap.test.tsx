@@ -42,6 +42,22 @@ describe('StartMap', () => {
     expect(onPick).toHaveBeenCalledTimes(1);
   });
 
+  it('pinch-zooms with two fingers and settles on a whole level, without adding corners (#160)', () => {
+    const onPick = vi.fn();
+    render(<StartMap ring={[]} onPick={onPick} />);
+    const map = document.querySelector('.start-map')!;
+    fireEvent.pointerDown(map, { pointerId: 1, clientX: 462, clientY: 384 });
+    fireEvent.pointerDown(map, { pointerId: 2, clientX: 562, clientY: 384 });
+    // Spread from 100 to 380 pixels: about 1.9 levels in.
+    fireEvent.pointerMove(map, { pointerId: 1, clientX: 322, clientY: 384 });
+    fireEvent.pointerMove(map, { pointerId: 2, clientX: 702, clientY: 384 });
+    fireEvent.pointerUp(map, { pointerId: 2, clientX: 702, clientY: 384 });
+    fireEvent.pointerUp(map, { pointerId: 1, clientX: 322, clientY: 384 });
+    expect(sources().length).toBeGreaterThan(0);
+    expect(sources().every((s) => s?.includes('/9/'))).toBe(true);
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
   it('draws the outline, closed from three corners', () => {
     const { rerender } = render(
       <StartMap

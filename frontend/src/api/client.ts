@@ -95,6 +95,11 @@ export class ApiClient {
     return this.getJson<unknown>(`/api/v1/networks/${encodeURIComponent(baselineId)}/package`, signal);
   }
 
+  /** Raw package of the synthetic demo town (#145). */
+  async getDemoPackage(signal?: AbortSignal): Promise<unknown> {
+    return this.getJson<unknown>('/api/v1/demo/package', signal);
+  }
+
   /** One import with its scenario data basis (#115). */
   async getNetwork(id: string, signal?: AbortSignal): Promise<NetworkSummary & { analysis?: unknown }> {
     return this.getJson(`/api/v1/networks/${encodeURIComponent(id)}`, signal);

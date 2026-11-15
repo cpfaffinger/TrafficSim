@@ -8,6 +8,8 @@ import { DataBasisPanel, type ActivityAnalysis } from '../components/DataBasisPa
 import { DemandEditorHost } from '../demand/DemandEditorHost';
 import { ViewToolbar } from '../components/ViewToolbar';
 import { StartMap } from '../components/StartMap';
+import { DemoIntro } from '../components/DemoIntro';
+import { parseNetworkPackage } from '../network/parse';
 import { SceneCameraPad } from '../components/SceneCameraPad';
 import { SceneCredit } from '../components/SceneCredit';
 import { DrawRoadPanel } from '../editor/components/DrawRoadPanel';
@@ -42,12 +44,14 @@ export interface NetworkViewerProps {
   scenarioClient?: ScenarioClient;
   /** Opens the sources and licences page (#128). */
   onSources?: () => void;
+  /** Shows the synthetic demo town (#145) instead of the import tools. */
+  demo?: boolean;
 }
 
 const language = () => (typeof navigator !== 'undefined' ? navigator.language.slice(0, 2) : undefined);
 
 /** Network viewer and editor: import panel, 3D scene, inspector, scenarios and edit tools (glue only; logic lives in lib/, network/, editor/). */
-export function NetworkViewer({ api, onAttributions, shareToken = null, scenarioClient, onSources }: NetworkViewerProps) {
+export function NetworkViewer({ api, onAttributions, shareToken = null, scenarioClient, onSources, demo = false }: NetworkViewerProps) {
   const sceneHost = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<NetworkScene | null>(null);
   const [pkg, setPkg] = useState<NetworkPackage | null>(null);
@@ -58,7 +62,9 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
   const [basemap, setBasemap] = useState<{ status: BasemapStatus; attribution: string | null }>({ status: 'idle', attribution: null });
   const [geocoderAttribution, setGeocoderAttribution] = useState<string | null>(null);
   const [showTunnels, setShowTunnels] = useState(true);
-  const [showBasemap, setShowBasemap] = useState(true);
+  // The demo town is not a real place: no basemap under it by default.
+  const [showBasemap, setShowBasemap] = useState(!demo);
+  const [demoError, setDemoError] = useState<string | null>(null);
   const [showTerrain, setShowTerrain] = useState(true);
   const [simSettings, setSimSettings] = useState<SimulationSettings>({ demandScale: 100, truckShare: 0.08, seed: 1 });
   const [analysis, setAnalysis] = useState<ActivityAnalysis | null>(null);
@@ -123,7 +129,20 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
     setTarget(next);
   }, []);
 
-  const editor = useNetworkEditor({ sceneRef, index, client: scenarios, enabled: !readOnly && index !== null, showPackage });
+  // Demo town (#145): loaded once from the backend, shown like an import.
+  useEffect(() => {
+    if (!demo || !api.getDemoPackage) return;
+    const controller = new AbortController();
+    api
+      .getDemoPackage(controller.signal)
+      .then((raw) => showPackage(parseNetworkPackage(raw), false))
+      .catch((e: unknown) => {
+        if (!controller.signal.aborted) setDemoError(e instanceof Error ? e.message : 'The demo town could not be loaded.');
+      });
+    return () => controller.abort();
+  }, [demo, api, showPackage]);
+
+  const editor = useNetworkEditor({ sceneRef, index, client: scenarios, enabled: !readOnly && !demo && index !== null, showPackage });
   const openScenario = editor.session.scenario;
   const heat = useHeatmap(sceneRef, pkg);
   // Browser run results for saving (#73): the worker answers a `results` request once.
@@ -297,6 +316,8 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
       <aside className="panel">
         {readOnly ? (
           <SharedScenarioPanel api={scenarios} token={shareToken} onPackage={onSharedPackage} onShowDemand={showSharedDemand} />
+        ) : demo ? (
+          <DemoIntro error={demoError} />
         ) : (
           <ImportPanel
             api={api}
@@ -380,7 +401,7 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
       </aside>
       <div className="scene-wrap">
         <div className="scene" ref={sceneHost} />
-        {!pkg && !previewing && !readOnly && <StartMap ring={startRing} onPick={startRing ? drawHandler : null} />}
+        {!pkg && !previewing && !readOnly && !demo && <StartMap ring={startRing} onPick={startRing ? drawHandler : null} />}
         {(pkg || previewing) && <SceneCameraPad scene={() => sceneRef.current} />}
         {onSources && <SceneCredit onSources={onSources} />}
         {pkg && demandOpen && demandScenario && (

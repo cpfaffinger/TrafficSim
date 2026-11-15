@@ -21,6 +21,8 @@ export interface ViewerApi {
   renameNetwork?(id: string, name: string, signal?: AbortSignal): Promise<unknown>;
   deleteNetwork?(id: string, signal?: AbortSignal): Promise<void>;
   getNetwork?(id: string, signal?: AbortSignal): Promise<NetworkSummary & { analysis?: unknown }>;
+  /** The synthetic demo town (#145). */
+  getDemoPackage?(signal?: AbortSignal): Promise<unknown>;
 }
 
 export interface ImportPanelProps {

@@ -28,6 +28,20 @@ public class ApiTests : IClassFixture<TrafficSimApiFactory>
     }
 
     [Fact]
+    public async Task Demo_package_is_served_without_an_import()
+    {
+        // #145: the synthetic demo town.
+        using var client = _factory.CreateClient();
+
+        var response = await client.GetAsync(new Uri("/api/v1/demo/package", UriKind.Relative), Ct);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var json = await response.Content.ReadAsStringAsync(Ct);
+        Assert.Contains("\"Hauptstra", json, StringComparison.Ordinal);
+        Assert.Contains("\"crossings\"", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Readiness_endpoint_returns_json_report()
     {
         using var client = _factory.CreateClient();

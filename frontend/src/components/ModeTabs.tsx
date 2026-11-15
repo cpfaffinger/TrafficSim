@@ -1,10 +1,10 @@
 import type { KeyboardEvent } from 'react';
 
-export type AppMode = 'network' | 'ring';
+export type AppMode = 'network' | 'demo';
 
 const MODES: { id: AppMode; label: string }[] = [
   { id: 'network', label: 'Network viewer' },
-  { id: 'ring', label: 'Ring road demo' },
+  { id: 'demo', label: 'Demo town' },
 ];
 
 export interface ModeTabsProps {

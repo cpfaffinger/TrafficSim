@@ -75,10 +75,10 @@ describe('ModeTabs', () => {
     const onChange = vi.fn();
     render(<ModeTabs mode="network" onChange={onChange} />);
     expect(screen.getByRole('tab', { name: 'Network viewer' }).getAttribute('aria-selected')).toBe('true');
-    fireEvent.click(screen.getByRole('tab', { name: 'Ring road demo' }));
-    expect(onChange).toHaveBeenLastCalledWith('ring');
+    fireEvent.click(screen.getByRole('tab', { name: 'Demo town' }));
+    expect(onChange).toHaveBeenLastCalledWith('demo');
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Network viewer' }), { key: 'ArrowLeft' });
-    expect(onChange).toHaveBeenLastCalledWith('ring');
+    expect(onChange).toHaveBeenLastCalledWith('demo');
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Network viewer' }), { key: 'Enter' });
     expect(onChange).toHaveBeenCalledTimes(2);
   });

@@ -4,7 +4,6 @@ import { AboutDialog } from './components/AboutDialog';
 import { ModeTabs, type AppMode } from './components/ModeTabs';
 import { mergeAttributions } from './lib/attribution';
 import { NetworkViewer } from './views/NetworkViewer';
-import { RingDemo } from './views/RingDemo';
 import { shareTokenFrom } from './scenarios/shareUrl';
 
 import { UpdateBanner } from './components/UpdateBanner';
@@ -66,8 +65,8 @@ export function App() {
   }, [api]);
 
   const attributions = useMemo(
-    () => mergeAttributions(mode === 'network' ? viewerAttributions : [], metaAttributions),
-    [mode, viewerAttributions, metaAttributions],
+    () => mergeAttributions(viewerAttributions, metaAttributions),
+    [viewerAttributions, metaAttributions],
   );
   const closeAbout = useCallback(() => setAboutOpen(false), []);
 
@@ -84,9 +83,9 @@ export function App() {
       {outdated && <UpdateBanner onReload={() => window.location.reload()} />}
       <main className="app-main" id={`panel-${mode}`} role="tabpanel" aria-labelledby={`tab-${mode}`}>
         {mode === 'network' ? (
-          <NetworkViewer api={api} onAttributions={setViewerAttributions} shareToken={shareToken} onSources={() => setAboutOpen(true)} />
+          <NetworkViewer key="network" api={api} onAttributions={setViewerAttributions} shareToken={shareToken} onSources={() => setAboutOpen(true)} />
         ) : (
-          <RingDemo status={status} version={version} />
+          <NetworkViewer key="demo" demo api={api} onAttributions={setViewerAttributions} onSources={() => setAboutOpen(true)} />
         )}
       </main>
       <AboutDialog open={aboutOpen} version={version} attributions={attributions} onClose={closeAbout} />

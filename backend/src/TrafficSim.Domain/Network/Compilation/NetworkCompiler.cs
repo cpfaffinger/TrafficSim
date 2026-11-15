@@ -622,6 +622,7 @@ public static class NetworkCompiler
                     : 0;
             }
 
+            var trims = EndTrims();
             foreach (var link in _links)
             {
                 var from = _byNodeId[link.From];
@@ -636,8 +637,8 @@ public static class NetworkCompiler
                     options.Terrain,
                     ElevationRule.FollowsTerrain(link.Structure, link.Layer));
                 var length = Polyline.PlanarLength(full);
-                var rs = from.TrimRadius;
-                var re = to.TrimRadius;
+                var rs = trims.GetValueOrDefault((link, true), from.TrimRadius);
+                var re = trims.GetValueOrDefault((link, false), to.TrimRadius);
                 if (rs + re > length - 1)
                 {
                     var scale = Math.Max(0, (length - 1) / Math.Max(rs + re, 1e-9));
@@ -664,6 +665,86 @@ public static class NetworkCompiler
                     link.Assumed.Add("noLaneChangeZone");
                 }
             }
+        }
+
+        /// <summary>
+        /// How far each road end is cut back at a junction (#123): at least the node's radius, and for
+        /// every other road leaving at an acute angle, far enough that this road starts outside the
+        /// other's footprint and beyond its corner. Otherwise a road branching off at 45° starts inside
+        /// a wide approach, and turning into it means going back.
+        /// </summary>
+        private Dictionary<(Link Link, bool AtStart), double> EndTrims()
+        {
+            const double minAngle = 15 * Math.PI / 180; // nearly parallel: the same arm (carriageways)
+            const double maxTrim = 25;
+            const double margin = 0.5;
+            var trims = new Dictionary<(Link, bool), double>();
+            foreach (var g in _nodes.Values.Where(n => n.TrimRadius > 0))
+            {
+                // Directions pointing away from the node, with the road's width left and right of them.
+                var ends = g.Outgoing.Select(l => (Link: l, AtStart: true, Dir: Polyline.Direction(l.Geometry, atEnd: false).PlanarNormalized()))
+                    .Concat(g.Incoming.Select(l => (Link: l, AtStart: false, Dir: (Polyline.Direction(l.Geometry, atEnd: true) * -1).PlanarNormalized())))
+                    .Select(e => (e.Link, e.AtStart, e.Dir, Extent: ArmExtent(e.Link, e.AtStart)))
+                    .ToList();
+                var pairs = new List<(int Self, int Other, double Cos, double Sin, double OtherWidth, double SelfWidth)>();
+                for (var i = 0; i < ends.Count; i++)
+                {
+                    for (var j = 0; j < ends.Count; j++)
+                    {
+                        var (a, b) = (ends[i], ends[j]);
+                        if (i == j || b.Link.Id == a.Link.OppositeLinkId)
+                        {
+                            continue;
+                        }
+
+                        var cos = Math.Clamp((a.Dir.X * b.Dir.X) + (a.Dir.Y * b.Dir.Y), -1, 1);
+                        var angle = Math.Acos(cos);
+                        if (angle is < minAngle or >= Math.PI / 2)
+                        {
+                            continue;
+                        }
+
+                        // Is `a` to the left of `b`? Then b's left side faces a, and a's right side faces b.
+                        var aLeftOfB = (b.Dir.X * a.Dir.Y) - (b.Dir.Y * a.Dir.X) > 0;
+                        pairs.Add((i, j, cos, Math.Sin(angle), aLeftOfB ? b.Extent.Left : b.Extent.Right, aLeftOfB ? a.Extent.Right : a.Extent.Left));
+                    }
+                }
+
+                // Pass 1: this road's near edge leaves the other road's strip.
+                var trim = ends.Select(_ => g.TrimRadius).ToArray();
+                foreach (var (self, _, cos, sin, otherWidth, selfWidth) in pairs)
+                {
+                    trim[self] = Math.Max(trim[self], (otherWidth + margin + (selfWidth * cos)) / sin);
+                }
+
+                // Pass 2: ... and starts beyond the other road's corner (its cut-back end at its near edge).
+                var first = trim.ToArray();
+                foreach (var (self, other, cos, sin, otherWidth, _) in pairs)
+                {
+                    trim[self] = Math.Max(trim[self], (first[other] * cos) + (otherWidth * sin) + margin);
+                }
+
+                for (var i = 0; i < ends.Count; i++)
+                {
+                    trims[(ends[i].Link, ends[i].AtStart)] = Math.Min(trim[i], maxTrim);
+                }
+            }
+
+            return trims;
+        }
+
+        /// <summary>
+        /// Width of a road arm left and right of the direction pointing away from the node: its lanes
+        /// lie right of the travel direction, from the gap to the centre line (or centred when one-way).
+        /// </summary>
+        private (double Left, double Right) ArmExtent(Link link, bool outgoing)
+        {
+            double LeftEdge(Link l) => _bothWaysGap[l] >= 0 ? _bothWaysGap[l] : -l.TotalWidth / 2;
+            var travelRight = LeftEdge(link) + link.TotalWidth;
+            var travelLeft = link.OppositeLinkId is { } o && _linkById[o] is var opposite
+                ? LeftEdge(opposite) + opposite.TotalWidth
+                : -LeftEdge(link);
+            return outgoing ? (travelLeft, travelRight) : (travelRight, travelLeft);
         }
 
         private double RoadHalfWidth(Link link)
@@ -701,6 +782,14 @@ public static class NetworkCompiler
                         .Select(o => (Out: o, Angle: Polyline.SignedAngle(Polyline.Direction(incoming.Geometry, atEnd: true), Polyline.Direction(o.Geometry, atEnd: false))))
                         .OrderByDescending(m => m.Angle)
                         .ToList();
+                    // #123: no turning back where the road goes on (e.g. a two-way road splitting into
+                    // carriageways), unless an arrow allows it.
+                    if (movements.Any(m => TurnLanesParser.Classify(m.Angle) != Turn.Reverse)
+                        && !incoming.Lanes.Any(l => (l.Turns & TurnMarkings.Reverse) != 0))
+                    {
+                        movements = movements.Where(m => TurnLanesParser.Classify(m.Angle) != Turn.Reverse).ToList();
+                    }
+
                     var forks = ForkMarkings(movements.Select(m => TurnLanesParser.Classify(m.Angle)).ToList());
                     var planned = new List<(Link Out, Turn Turn, List<(int From, int To)> Pairs)>();
                     var custom = false;

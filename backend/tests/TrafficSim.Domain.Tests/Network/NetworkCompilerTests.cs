@@ -353,6 +353,43 @@ public class NetworkCompilerTests
     }
 
     [Fact]
+    public void Turns_into_a_road_branching_off_at_an_acute_angle_go_forward()
+    {
+        // #123: Krems, Wiener Strasse: a 3-lane approach and a ramp leaving ~48 degrees from it.
+        var b = new OsmBuilder()
+            .Node(1, 200, 100).Node(2, 0, 0, ("highway", "traffic_signals")).Node(3, 50, 190).Node(4, -200, 0).Node(5, 0, -200)
+            .Way(10, [1, 2], ("highway", "primary"), ("oneway", "yes"), ("lanes", "3"))
+            .Way(11, [2, 3], ("highway", "primary_link"), ("oneway", "yes"), ("lanes", "1"))
+            .Way(12, [2, 4], ("highway", "primary"), ("oneway", "yes"), ("lanes", "1"))
+            .Way(13, [5, 2], ("highway", "primary"), ("oneway", "yes"), ("lanes", "1"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var approach = net.Links.Single(l => l.OsmWayId == 10);
+        var ramp = net.Links.Single(l => l.OsmWayId == 11);
+        var turn = net.Connectors.Single(c => c.FromLink == approach.Id && c.ToLink == ramp.Id && c.FromLane == 0);
+        var start = turn.Geometry[0];
+        var end = turn.Geometry[^1];
+        var dir = new Vec3(50, 190).PlanarNormalized();
+        Assert.True(((end.X - start.X) * dir.X) + ((end.Y - start.Y) * dir.Y) > 0, $"turn heads back: {start} -> {end}");
+    }
+
+    [Fact]
+    public void No_turning_back_where_the_road_goes_on()
+    {
+        // #123: B3 in Krems; a two-way road splitting into two one-way carriageways.
+        var b = new OsmBuilder()
+            .Node(1, -200, 0).Node(2, 0, 0).Node(3, 200, 8).Node(4, 200, -8).Node(5, 0, -200)
+            .Way(10, [1, 2], ("highway", "trunk"))
+            .Way(11, [2, 3], ("highway", "trunk"), ("oneway", "yes"))
+            .Way(12, [4, 2], ("highway", "trunk"), ("oneway", "yes"))
+            .Way(13, [5, 2], ("highway", "residential"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var junction = net.Nodes.Single(n => n.OsmId == 2);
+        Assert.DoesNotContain(net.Connectors, c => c.NodeId == junction.Id && c.Turn == Turn.Reverse);
+    }
+
+    [Fact]
     public void Dead_end_allows_turning_around()
     {
         var b = new OsmBuilder()

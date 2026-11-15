@@ -11,6 +11,7 @@ import {
   intersectGround,
   isClick,
   normaliseAngle,
+  orbitStep,
   panByGroundDelta,
   panRelative,
   rotate,
@@ -150,5 +151,20 @@ describe('limitsFor (#122)', () => {
     expect(halfWidth).toBeGreaterThanOrEqual(3300);
     expect(limits.bounds).toEqual([-6600, -4900, 6600, 4900]);
     expect(limitsFor([0, 0, 200, 200]).bounds).toEqual([-1500, -1500, 1700, 1700]);
+  });
+});
+
+describe('orbitStep (#144)', () => {
+  const from = { target: [0, 0] as [number, number], distance: 500, yaw: 0.1, pitch: 1.2 };
+  it('eases yaw and pitch, keeps the current target and distance, and turns the short way', () => {
+    const to = { ...from, yaw: 2 * Math.PI - 0.1, pitch: 0.6 };
+    const current = { ...from, target: [10, 20] as [number, number], distance: 300 };
+    const end = orbitStep(from, to, current, 1);
+    expect(end.target).toEqual([10, 20]);
+    expect(end.distance).toBe(300);
+    expect(end.pitch).toBeCloseTo(0.6);
+    expect(end.yaw).toBeCloseTo(-0.1); // through north, not all the way round
+    const mid = orbitStep(from, to, current, 0.5);
+    expect(mid.pitch).toBeCloseTo(0.9);
   });
 });

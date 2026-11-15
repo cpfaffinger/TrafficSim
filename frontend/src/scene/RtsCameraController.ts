@@ -7,6 +7,8 @@ import {
   isClick,
   panByGroundDelta,
   panRelative,
+  clampState,
+  orbitStep,
   rotate,
   wheelZoomFactor,
   zoomTowards,
@@ -17,6 +19,7 @@ import {
 
 const ROTATE_SPEED = 0.005;
 const KEY_ROTATE_SPEED = 1.6; // rad/s
+const ORBIT_SECONDS = 0.35; // camera button transitions (#144)
 const KEY_ZOOM_SPEED = 1.8; // e-folds per second
 
 /**
@@ -35,6 +38,7 @@ export class RtsCameraController {
   private last = { x: 0, y: 0 };
   private down: { x: number; y: number } | null = null;
   private pinch: { distance: number; angle: number; mid: { x: number; y: number } } | null = null;
+  private anim: { from: RtsCameraState; to: RtsCameraState; t: number } | null = null;
   private readonly raycaster = new THREE.Raycaster();
   private readonly ndc = new THREE.Vector2();
 
@@ -57,12 +61,37 @@ export class RtsCameraController {
   }
 
   setState(state: RtsCameraState): void {
+    this.anim = null;
     this.state = state;
     this.apply();
   }
 
+  /** Turns (yaw) and tilts (pitch) the view smoothly by the given angles in radians (#144). */
+  orbitBy(dYaw: number, dPitch: number): void {
+    const base = this.anim?.to ?? this.state;
+    this.animateTo(rotate(base, dYaw, dPitch, this.limits));
+  }
+
+  /** Tilts the view smoothly to `pitch` (radians above the horizon) and optionally turns it to `yaw`. */
+  orbitTo(pitch: number, yaw?: number): void {
+    const base = this.anim?.to ?? this.state;
+    this.animateTo(clampState({ ...base, pitch, yaw: yaw ?? base.yaw }, this.limits));
+  }
+
+  private animateTo(to: RtsCameraState): void {
+    this.anim = { from: this.state, to, t: 0 };
+  }
+
   /** Advances keyboard movement; returns true if the camera moved. */
   update(dt: number): boolean {
+    if (this.anim) {
+      const a = this.anim;
+      a.t = Math.min(1, a.t + dt / ORBIT_SECONDS);
+      this.state = orbitStep(a.from, a.to, this.state, a.t);
+      if (a.t >= 1) this.anim = null;
+      this.apply();
+      return true;
+    }
     if (this.keys.size === 0) return false;
     const k = (...codes: string[]) => (codes.some((c) => this.keys.has(c)) ? 1 : 0);
     const forward = k('KeyW', 'ArrowUp') - k('KeyS', 'ArrowDown');
@@ -114,6 +143,7 @@ export class RtsCameraController {
   }
 
   private onPointerDown = (e: PointerEvent): void => {
+    this.anim = null; // direct control ends a button transition
     this.element.focus({ preventScroll: true });
     this.element.setPointerCapture?.(e.pointerId);
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -191,6 +221,7 @@ export class RtsCameraController {
   };
 
   private onWheel = (e: WheelEvent): void => {
+    this.anim = null; // direct control ends a button transition
     e.preventDefault();
     const delta = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
     this.state = zoomTowards(this.state, wheelZoomFactor(delta), this.groundAt(e.clientX, e.clientY), this.limits);

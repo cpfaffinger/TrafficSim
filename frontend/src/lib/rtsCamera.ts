@@ -77,6 +77,19 @@ export function panRelative(s: RtsCameraState, forward: number, right: number, d
   );
 }
 
+/**
+ * Camera state `k` (0…1, eased) of the way from `from` to `to` in yaw and pitch (#144: camera
+ * buttons); the yaw turns the short way round. Target and distance are taken from `current`, so
+ * panning and zooming during the transition are kept.
+ */
+export function orbitStep(from: RtsCameraState, to: RtsCameraState, current: RtsCameraState, k: number): RtsCameraState {
+  const e = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2;
+  let dYaw = (to.yaw - from.yaw) % (2 * Math.PI);
+  if (dYaw > Math.PI) dYaw -= 2 * Math.PI;
+  if (dYaw < -Math.PI) dYaw += 2 * Math.PI;
+  return { ...current, yaw: from.yaw + dYaw * e, pitch: from.pitch + (to.pitch - from.pitch) * e };
+}
+
 export function rotate(s: RtsCameraState, dYaw: number, dPitch: number, limits = DEFAULT_LIMITS): RtsCameraState {
   return clampState({ ...s, yaw: s.yaw + dYaw, pitch: s.pitch + dPitch }, limits);
 }

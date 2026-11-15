@@ -818,3 +818,31 @@ dl.stats dd {
   stroke: var(--accent);
   stroke-width: 2;
 }
+
+/* Camera buttons on the 3D view (#144). */
+.camera-pad {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 2;
+}
+
+.camera-pad button {
+  width: 34px;
+  height: 34px;
+  font-size: 16px;
+  line-height: 1;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.camera-pad button.camera-pad-mode {
+  font-size: 12px;
+  font-weight: 600;
+}

@@ -8,6 +8,7 @@ import { DataBasisPanel, type ActivityAnalysis } from '../components/DataBasisPa
 import { DemandEditorHost } from '../demand/DemandEditorHost';
 import { ViewToolbar } from '../components/ViewToolbar';
 import { StartMap } from '../components/StartMap';
+import { SceneCameraPad } from '../components/SceneCameraPad';
 import { SceneCredit } from '../components/SceneCredit';
 import { DrawRoadPanel } from '../editor/components/DrawRoadPanel';
 import { EditorPanel } from '../editor/components/EditorPanel';
@@ -380,6 +381,7 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
       <div className="scene-wrap">
         <div className="scene" ref={sceneHost} />
         {!pkg && !previewing && !readOnly && <StartMap ring={startRing} onPick={startRing ? drawHandler : null} />}
+        {(pkg || previewing) && <SceneCameraPad scene={() => sceneRef.current} />}
         {onSources && <SceneCredit onSources={onSources} />}
         {pkg && demandOpen && demandScenario && (
           <DemandEditorHost

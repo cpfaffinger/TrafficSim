@@ -85,6 +85,9 @@ interface Pickable {
  * marking and structure meshes, picking with highlight, RTS camera. Rebuilt per package; all GPU
  * resources of the previous package are disposed.
  */
+/** Tilt of the 3D view button (#144): 50° above the horizon. */
+const VIEW_3D_PITCH = (50 * Math.PI) / 180;
+
 export class NetworkScene {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
@@ -447,6 +450,24 @@ export class NetworkScene {
 
   /** Requests a redraw after overlays changed. */
   invalidate(): void {
+    this.dirty = true;
+  }
+
+  /** Turns and tilts the view by the given angles in radians (camera buttons, #144). */
+  orbitBy(dYaw: number, dPitch: number): void {
+    this.controls.orbitBy(dYaw, dPitch);
+    this.dirty = true;
+  }
+
+  /** Top-down 2D view or a tilted 3D view; `north` also turns north up (#144). */
+  setViewMode(mode: '2d' | '3d', north = false): void {
+    this.controls.orbitTo(mode === '2d' ? this.controls.limits.maxPitch : VIEW_3D_PITCH, north ? 0 : undefined);
+    this.dirty = true;
+  }
+
+  /** Turns the view north up, keeping the tilt. */
+  northUp(): void {
+    this.controls.orbitTo(this.controls.state.pitch, 0);
     this.dirty = true;
   }
 

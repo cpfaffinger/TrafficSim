@@ -620,7 +620,7 @@ impl Simulation {
     pub(super) fn reroute(&mut self, i: usize) {
         let v = &self.vehicles[i];
         let lane = v.seg;
-        let class = v.params.class;
+        let (class, fit) = (v.params.class, crate::routing::Fit::of(&v.params));
         let informed = self.is_informed(&v.params);
         let mask = class.mask();
         let link = self.net.lanes[lane as usize].link;
@@ -641,7 +641,7 @@ impl Simulation {
                 let seg = self.net.connector_segment(c) as usize;
                 let conn_time = self.net.seg_length[seg] / self.net.seg_speed_limit[seg];
                 for &target in &targets {
-                    let Some(route) = self.route_id(to, target, class, informed) else {
+                    let Some(route) = self.route_id(to, target, fit, informed) else {
                         continue;
                     };
                     let cost = conn_time

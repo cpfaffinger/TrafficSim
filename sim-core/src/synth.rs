@@ -137,6 +137,7 @@ impl NetBuilder {
                 })
                 .collect(),
             no_lane_change_zone: 0.0,
+            limits: None,
         });
         self
     }
@@ -155,6 +156,18 @@ impl NetBuilder {
             .iter_mut()
             .find(|c| c.id == id)
             .expect("unknown connector")
+    }
+
+    /// Vehicle dimension limits of a link (#125).
+    pub fn limits(&mut self, link: &str, limits: crate::package::Limits) -> &mut Self {
+        let l = self
+            .package
+            .links
+            .iter_mut()
+            .find(|l| l.id == link)
+            .expect("unknown link");
+        l.limits = Some(limits);
+        self
     }
 
     /// Connector from `from:from_lane` to `to:to_lane` at the node between them, shaped as a

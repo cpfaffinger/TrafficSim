@@ -4,6 +4,9 @@ import type { NetworkPackage } from '../network/types';
 import { busColor, NETWORK_SNAPSHOT_STRIDE, VEHICLE_CLASSES, VEHICLE_DIMENSIONS, vehicleColor } from '../sim/networkProtocol';
 import { aspectColor, signalMarkers, type SignalMarker } from '../sim/signalMarkers';
 
+/** Colour of the selected vehicle (#125). */
+const SELECTED: [number, number, number] = [0.15, 0.55, 1];
+
 /**
  * Live simulation overlay (#47): one InstancedMesh for all vehicles (unit box scaled per instance)
  * and one for signal heads. Capacity grows on demand; nothing is allocated per frame otherwise.
@@ -15,6 +18,9 @@ export class SimulationLayer {
   private markers: SignalMarker[] = [];
   /** Enlargement of vehicles when the camera is far away (#80). */
   vehicleScale = 1;
+  /** Vehicle drawn highlighted (#125). */
+  selected: number | null = null;
+  private last: Float32Array | null = null;
   private readonly matrix = new THREE.Matrix4();
   private readonly position = new THREE.Vector3();
   private readonly quaternion = new THREE.Quaternion();
@@ -45,6 +51,7 @@ export class SimulationLayer {
 
   updateVehicles(snapshot: Float32Array): void {
     const count = snapshot.length / NETWORK_SNAPSHOT_STRIDE;
+    this.last = snapshot;
     if (count > this.capacity) {
       this.group.remove(this.vehicles);
       this.vehicles.dispose();
@@ -64,11 +71,22 @@ export class SimulationLayer {
       this.matrix.compose(this.position, this.quaternion, this.scale);
       this.vehicles.setMatrixAt(i, this.matrix);
       const flags = Math.round(snapshot[o + 7]!);
-      this.vehicles.setColorAt(i, this.color.setRGB(...(cls === 'bus' ? busColor(flags) : vehicleColor({ speed: snapshot[o + 4]!, flags }))));
+      const rgb: [number, number, number] =
+        Math.round(snapshot[o + 8]!) === this.selected ? SELECTED : cls === 'bus' ? busColor(flags) : vehicleColor({ speed: snapshot[o + 4]!, flags });
+      this.vehicles.setColorAt(i, this.color.setRGB(...rgb));
     }
     this.vehicles.count = count;
     this.vehicles.instanceMatrix.needsUpdate = true;
     if (this.vehicles.instanceColor) this.vehicles.instanceColor.needsUpdate = true;
+  }
+
+  /** Id of the vehicle nearest along the ray, or null (#125). */
+  vehicleAt(raycaster: THREE.Raycaster): number | null {
+    if (!this.last || this.vehicles.count === 0) return null;
+    const hit = raycaster.intersectObject(this.vehicles, false)[0];
+    if (hit?.instanceId === undefined) return null;
+    const id = this.last[hit.instanceId * NETWORK_SNAPSHOT_STRIDE + 8];
+    return id === undefined ? null : Math.round(id);
   }
 
   updateSignals(aspects: Uint8Array): void {
@@ -79,6 +97,7 @@ export class SimulationLayer {
 
   clear(): void {
     this.vehicles.count = 0;
+    this.last = null;
     this.disposeSignals();
   }
 

@@ -10,7 +10,33 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 
 use crate::network::Network;
-use crate::vehicle::VehicleClass;
+use crate::vehicle::{VehicleClass, VehicleParams};
+
+/// What a route needs from the links it uses (#125): the vehicle class may use them and its
+/// dimensions are within their limits.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Fit {
+    pub class: VehicleClass,
+    /// `[length m, width m, height m, weight t]`.
+    pub dims: [f64; 4],
+}
+
+impl Fit {
+    /// Only the class (dimensions that fit everywhere).
+    pub fn class(class: VehicleClass) -> Self {
+        Self {
+            class,
+            dims: [0.0; 4],
+        }
+    }
+
+    pub fn of(p: &VehicleParams) -> Self {
+        Self {
+            class: p.class,
+            dims: [p.length, p.width, p.height, p.weight],
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Edge {
@@ -24,6 +50,9 @@ pub struct Router {
     free_flow: Vec<f64>,
     link_time: Vec<f64>,
     link_mask: Vec<u8>,
+    link_limits: Vec<[f64; 4]>,
+    /// Distinct finite limits per dimension, ascending (see [`Router::fit_key`]).
+    thresholds: [Vec<f64>; 4],
     through: Vec<bool>,
     edge_range: Vec<(u32, u32)>,
     edges: Vec<Edge>,
@@ -77,10 +106,18 @@ impl Router {
             edges.extend(list);
             edge_range.push((start, edges.len() as u32));
         }
+        let mut thresholds: [Vec<f64>; 4] = Default::default();
+        for (d, t) in thresholds.iter_mut().enumerate() {
+            t.extend(net.links.iter().map(|l| l.limits[d]).filter(|v| v.is_finite()));
+            t.sort_by(f64::total_cmp);
+            t.dedup();
+        }
         Self {
             link_time: free_flow.clone(),
             free_flow,
             link_mask: net.links.iter().map(|l| l.class_mask).collect(),
+            link_limits: net.links.iter().map(|l| l.limits).collect(),
+            thresholds,
             through: net.links.iter().map(|l| l.through_traffic).collect(),
             edge_range,
             edges,
@@ -116,9 +153,33 @@ impl Router {
         }
     }
 
+    /// Cache key of a fit: vehicles with equal keys may use exactly the same links. Counts per
+    /// dimension how many of the network's distinct limits the vehicle exceeds, so without limits
+    /// every vehicle of a class shares its routes.
+    pub fn fit_key(&self, fit: &Fit) -> u64 {
+        self.thresholds.iter().zip(fit.dims).fold(0u64, |key, (t, d)| {
+            (key << 16) | t.iter().filter(|&&limit| d > limit).count().min(0xffff) as u64
+        })
+    }
+
+    /// Whether a vehicle of these dimensions is within the limits of `link`.
+    pub fn fits(&self, link: u32, fit: &Fit) -> bool {
+        self.link_limits[link as usize]
+            .iter()
+            .zip(fit.dims)
+            .all(|(&limit, d)| d <= limit)
+    }
+
     /// Fastest route from `from` to `to` (both inclusive) for `class`, or `None`.
     pub fn route(&self, from: u32, to: u32, class: VehicleClass) -> Option<Vec<u32>> {
-        let mask = class.mask();
+        self.route_for(from, to, &Fit::class(class))
+    }
+
+    /// Fastest route for a vehicle: only links its class may use and whose limits it is within
+    /// (#125). The origin and destination link are exempt, the vehicle is already there or must
+    /// get there.
+    pub fn route_for(&self, from: u32, to: u32, fit: &Fit) -> Option<Vec<u32>> {
+        let mask = fit.class.mask();
         if self.link_mask[from as usize] & mask == 0 || self.link_mask[to as usize] & mask == 0 {
             return None;
         }
@@ -152,7 +213,10 @@ impl Router {
             }
             let (a, b) = self.edge_range[link as usize];
             for e in &self.edges[a as usize..b as usize] {
-                if e.mask & mask == 0 || self.link_mask[e.to as usize] & mask == 0 {
+                if e.mask & mask == 0
+                    || self.link_mask[e.to as usize] & mask == 0
+                    || (e.to != to && !self.fits(e.to, fit))
+                {
                     continue;
                 }
                 // A no-through link is fine as the destination itself, whatever the phase.
@@ -206,6 +270,79 @@ mod tests {
 
     fn ids(net: &Network, route: &[u32]) -> Vec<String> {
         route.iter().map(|&l| net.links[l as usize].id.clone()).collect()
+    }
+
+    /// W → J1 → J2 → E straight (`short`, 200 m) or via K (`up`, `down`, ~450 m).
+    fn two_ways(short_limits: Option<crate::package::Limits>) -> Network {
+        let mut b = NetBuilder::new();
+        b.node("W", -300.0, 0.0, NodeControl::Boundary)
+            .node("J1", 0.0, 0.0, NodeControl::Priority)
+            .node("J2", 200.0, 0.0, NodeControl::Priority)
+            .node("K", 100.0, 200.0, NodeControl::Priority)
+            .node("E", 500.0, 0.0, NodeControl::Boundary)
+            .link("in", "W", "J1", 1, 13.9)
+            .link("short", "J1", "J2", 1, 13.9)
+            .link("up", "J1", "K", 1, 13.9)
+            .link("down", "K", "J2", 1, 13.9)
+            .link("out", "J2", "E", 1, 13.9)
+            .connect("a", "in", 0, "short", 0, Priority::Major)
+            .connect("b", "in", 0, "up", 0, Priority::Major)
+            .connect("c", "up", 0, "down", 0, Priority::Major)
+            .connect("d", "short", 0, "out", 0, Priority::Major)
+            .connect("e", "down", 0, "out", 0, Priority::Major);
+        if let Some(l) = short_limits {
+            b.limits("short", l);
+        }
+        b.network()
+    }
+
+    #[test]
+    fn routes_avoid_links_a_vehicle_exceeds() {
+        let net = two_ways(Some(crate::package::Limits {
+            max_length: Some(12.0),
+            max_weight: Some(7.5),
+            ..Default::default()
+        }));
+        let r = Router::new(&net);
+        let (from, to) = (net.link_index("in").unwrap(), net.link_index("out").unwrap());
+        let car = Fit::of(&VehicleParams::for_class(VehicleClass::Car));
+        let rigid = Fit::of(&VehicleParams::for_class(VehicleClass::Truck));
+        let articulated = Fit::of(&crate::vehicle::VehicleType::articulated_truck().params());
+        assert_eq!(
+            ids(&net, &r.route_for(from, to, &car).unwrap()),
+            ["in", "short", "out"]
+        );
+        // 12 m fits the length limit, but 18 t exceed 7.5 t.
+        assert_eq!(
+            ids(&net, &r.route_for(from, to, &rigid).unwrap()),
+            ["in", "up", "down", "out"]
+        );
+        assert_eq!(
+            ids(&net, &r.route_for(from, to, &articulated).unwrap()),
+            ["in", "up", "down", "out"]
+        );
+        // The destination itself is exempt: the vehicle has to get there.
+        let short = net.link_index("short").unwrap();
+        assert_eq!(
+            ids(&net, &r.route_for(from, short, &articulated).unwrap()),
+            ["in", "short"]
+        );
+        // Vehicles that exceed the same limits share a cache key; a car exceeds none.
+        assert_eq!(r.fit_key(&car), 0);
+        assert_ne!(r.fit_key(&rigid), r.fit_key(&articulated));
+    }
+
+    #[test]
+    fn without_limits_every_vehicle_shares_the_route_key() {
+        let net = two_ways(None);
+        let r = Router::new(&net);
+        let articulated = Fit::of(&crate::vehicle::VehicleType::articulated_truck().params());
+        assert_eq!(r.fit_key(&articulated), 0);
+        let (from, to) = (net.link_index("in").unwrap(), net.link_index("out").unwrap());
+        assert_eq!(
+            ids(&net, &r.route_for(from, to, &articulated).unwrap()),
+            ["in", "short", "out"]
+        );
     }
 
     #[test]

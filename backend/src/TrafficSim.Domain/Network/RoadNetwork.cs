@@ -123,7 +123,16 @@ public sealed class Link
 
     public ISet<string> Assumed { get; init; } = new SortedSet<string>(StringComparer.Ordinal);
 
+    /// <summary>Vehicle dimension limits (#125); null when unrestricted. Routing avoids links a vehicle exceeds.</summary>
+    public VehicleLimits? Limits { get; set; }
+
     public double TotalWidth => Lanes.Sum(l => l.Width);
+}
+
+/// <summary>Largest vehicle allowed on a link (#125): metres and tonnes, null = no limit.</summary>
+public sealed record VehicleLimits(double? MaxLength = null, double? MaxWidth = null, double? MaxHeight = null, double? MaxWeight = null)
+{
+    public bool IsEmpty => MaxLength is null && MaxWidth is null && MaxHeight is null && MaxWeight is null;
 }
 
 /// <summary>A lane-to-lane movement through a node.</summary>

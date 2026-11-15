@@ -3,7 +3,7 @@
 import init, { builtinRoadClassProfilesJson, NetworkSim } from '../generated/sim-core/trafficsim_sim_core.js';
 import { scaleDemand } from './demandScale';
 import { stepsFor } from './protocol';
-import { NETWORK_SNAPSHOT_STRIDE, type FromNetworkWorker, type SimStats, type ToNetworkWorker } from './networkProtocol';
+import { NETWORK_SNAPSHOT_STRIDE, type FromNetworkWorker, type SimStats, type ToNetworkWorker, type VehicleInfo } from './networkProtocol';
 import { sharedMemoryAvailable, SnapshotBuffer } from './snapshotBuffer';
 
 const TICK_MS = 33;
@@ -21,6 +21,8 @@ let shared: SnapshotBuffer | null = null;
 let sentBuckets = 0;
 /** The package has pedestrian crossings (ADR-0020): frames carry the pedestrian snapshot. */
 let hasCrossings = false;
+/** Vehicle whose state frames carry (#125). */
+let watched: number | null = null;
 
 function postCells(): void {
   if (!sim) return;
@@ -45,6 +47,7 @@ function postFrame(forceStats = false): void {
   const stats = withStats ? (JSON.parse(sim.statsJson()) as SimStats) : null;
   const vehicles = snapshot.length / NETWORK_SNAPSHOT_STRIDE;
   const pedestrians = hasCrossings ? sim.pedestrianSnapshot() : undefined;
+  const vehicle = watched === null ? undefined : (JSON.parse(sim.vehicleJson(watched)) as VehicleInfo | null);
   const extra: Transferable[] = pedestrians ? [pedestrians.buffer as ArrayBuffer] : [];
   if (useShared) {
     if (!shared || !shared.fits(snapshot)) {
@@ -52,10 +55,10 @@ function postFrame(forceStats = false): void {
       post({ type: 'buffer', buffer: shared.buffer as SharedArrayBuffer });
     }
     shared.publish(snapshot);
-    post({ type: 'frame', time: sim.time, timeOfDay: sim.timeOfDay, snapshot: null, vehicles, signals, stats, pedestrians }, [signals.buffer, ...extra]);
+    post({ type: 'frame', time: sim.time, timeOfDay: sim.timeOfDay, snapshot: null, vehicles, signals, stats, pedestrians, vehicle }, [signals.buffer, ...extra]);
     return;
   }
-  post({ type: 'frame', time: sim.time, timeOfDay: sim.timeOfDay, snapshot, vehicles, signals, stats, pedestrians }, [snapshot.buffer, signals.buffer, ...extra]);
+  post({ type: 'frame', time: sim.time, timeOfDay: sim.timeOfDay, snapshot, vehicles, signals, stats, pedestrians, vehicle }, [snapshot.buffer, signals.buffer, ...extra]);
 }
 
 function tick(): void {
@@ -91,6 +94,7 @@ self.onmessage = async (event: MessageEvent<ToNetworkWorker>) => {
         sim = new NetworkSim(packageJson, JSON.stringify(resolved), BigInt(Math.max(0, Math.floor(seed))));
         sentBuckets = 0;
         carry = 0;
+        watched = null;
         const groups = JSON.parse(sim.signalGroupIdsJson()) as string[];
         const pkg = JSON.parse(packageJson) as { nodes: { id: string; control: string }[]; links: { from: string }[]; crossings?: unknown[] };
         hasCrossings = (pkg.crossings?.length ?? 0) > 0;
@@ -120,6 +124,10 @@ self.onmessage = async (event: MessageEvent<ToNetworkWorker>) => {
         post({ type: 'results', summaryJson: sim.summaryJson(), cells: cells.buffer as ArrayBuffer, time: sim.time }, [cells.buffer as ArrayBuffer]);
         break;
       }
+      case 'watch':
+        watched = message.vehicle;
+        postFrame(true);
+        break;
       case 'dispose':
         sim?.free();
         sim = null;

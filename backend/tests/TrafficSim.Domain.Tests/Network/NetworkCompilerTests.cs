@@ -58,6 +58,35 @@ public class NetworkCompilerTests
     }
 
     [Fact]
+    public void Signal_nodes_linked_through_a_node_without_signals_are_coordinated()
+    {
+        // #126: B3 in Krems: signal -> 1 m -> priority node (a ramp joins) -> 1 m -> signal. A vehicle
+        // must not wait for two signals that are never green together.
+        var b = new OsmBuilder()
+            .Node(1, -200, -8).Node(21, 0, -8, ("highway", "traffic_signals")).Node(3, 200, -8)
+            .Node(6, 200, 8).Node(22, 0, 8, ("highway", "traffic_signals")).Node(8, -200, 8)
+            .Node(30, 0, 0).Node(31, 200, 0)
+            .Node(4, 0, 200).Node(5, 0, -200)
+            .Way(10, [1, 21, 3], ("highway", "primary"), ("oneway", "yes"), ("lanes", "2"))
+            .Way(11, [6, 22, 8], ("highway", "primary"), ("oneway", "yes"), ("lanes", "2"))
+            .Way(12, [5, 21, 30, 22, 4], ("highway", "secondary"), ("oneway", "yes"))
+            .Way(13, [31, 30], ("highway", "service"), ("oneway", "yes"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+        var south = net.Nodes.Single(n => n.OsmId == 21).Id;
+        var middle = net.Nodes.Single(n => n.OsmId == 30);
+        Assert.NotEqual(NodeControl.Signal, middle.Control);
+
+        var toMiddle = net.Links.Single(l => l.OsmWayId == 12 && l.From == south);
+        var entry = net.Connectors.First(c => c.NodeId == south && c.ToLink == toMiddle.Id);
+        var intoNorth = net.Links.Single(l => l.OsmWayId == 12 && l.From == middle.Id);
+        Assert.True(intoNorth.Length < 10, $"{intoNorth.Length}");
+        foreach (var exit in net.Connectors.Where(c => c.FromLink == intoNorth.Id))
+        {
+            Assert.Subset(GreenSeconds(net, exit.SignalGroup!), GreenSeconds(net, entry.SignalGroup!));
+        }
+    }
+
+    [Fact]
     public void Signal_nodes_of_one_junction_run_a_coordinated_plan()
     {
         // #117: a side road crossing a dual carriageway (carriageways 16 m apart): OSM has a
@@ -266,6 +295,28 @@ public class NetworkCompilerTests
         // entering vehicles conflict with ring traffic continuing past the entry
         var entry = atEntry.First(c => c.Priority == ConnectorPriority.RoundaboutEntry);
         Assert.NotEmpty(entry.Conflicts);
+    }
+
+    [Theory]
+    [InlineData(8, 12.0)] // ~45 m ring: too tight for articulated trucks (#125)
+    [InlineData(20, null)] // ~113 m ring
+    public void Tight_roundabout_rings_get_an_assumed_length_limit(double radius, double? maxLength)
+    {
+        var b = new OsmBuilder()
+            .Node(1, radius, 0).Node(2, 0, radius).Node(3, -radius, 0).Node(4, 0, -radius)
+            .Node(11, 150, 0).Node(13, -150, 0)
+            .Way(100, [1, 2, 3, 4, 1], ("highway", "secondary"), ("junction", "roundabout"))
+            .Way(101, [11, 1], ("highway", "secondary"), ("maxweight", "7.5"))
+            .Way(103, [13, 3], ("highway", "secondary"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        Assert.All(net.Links.Where(l => l.Roundabout), l =>
+        {
+            Assert.Equal(maxLength, l.Limits?.MaxLength);
+            Assert.Equal(maxLength is not null, l.Assumed.Contains("maxLength"));
+        });
+        Assert.All(net.Links.Where(l => l.OsmWayId == 101), l => Assert.Equal(7.5, l.Limits?.MaxWeight));
+        Assert.All(net.Links.Where(l => l.OsmWayId == 103), l => Assert.Null(l.Limits));
     }
 
     [Fact]

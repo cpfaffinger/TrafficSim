@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { SimulationSettings } from '../components/SimulationPanel';
 import type { NetworkPackage } from '../network/types';
 import type { NetworkScene } from '../scene/NetworkScene';
-import { buildConfig, NETWORK_SNAPSHOT_STRIDE, type SimStats } from '../sim/networkProtocol';
+import { buildConfig, NETWORK_SNAPSHOT_STRIDE, type SimStats, type VehicleInfo } from '../sim/networkProtocol';
 import { NetworkSimClient } from '../sim/networkSimClient';
 import { SnapshotBuffer } from '../sim/snapshotBuffer';
 
@@ -29,6 +29,8 @@ export function useNetworkSimulation(
   const [vehicles, setVehicles] = useState(0);
   const [stats, setStats] = useState<SimStats | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Watched vehicle (#125): its latest state; `left` once it reached its destination. */
+  const [vehicle, setVehicle] = useState<{ info: VehicleInfo; left: boolean } | null>(null);
   const [generation, setGeneration] = useState(0);
   const speedRef = useRef(speed);
   speedRef.current = speed;
@@ -41,6 +43,7 @@ export function useNetworkSimulation(
     setRunning(false);
     setStats(null);
     setError(null);
+    setVehicle(null);
     sceneRef.current?.clearSimulation();
     let shared: SnapshotBuffer | null = null;
     const unsubscribe = client.subscribe((message) => {
@@ -60,6 +63,10 @@ export function useNetworkSimulation(
           setTimeOfDay(message.timeOfDay);
           setVehicles(message.vehicles);
           if (message.stats) setStats(message.stats);
+          if (message.vehicle !== undefined) {
+            const info = message.vehicle;
+            setVehicle((v) => (info ? { info, left: false } : v ? { info: v.info, left: true } : null));
+          }
           break;
         }
         case 'cells':
@@ -106,6 +113,10 @@ export function useNetworkSimulation(
   }, []);
 
   const requestResults = useCallback(() => clientRef.current?.requestResults(), []);
+  const watchVehicle = useCallback((id: number | null) => {
+    if (id === null) setVehicle(null);
+    clientRef.current?.watchVehicle(id);
+  }, []);
 
-  return { ready, running, speed, time, timeOfDay, vehicles, stats, error, play, pause, restart, setSpeed, requestResults, generation };
+  return { ready, running, speed, time, timeOfDay, vehicles, stats, error, play, pause, restart, setSpeed, requestResults, generation, vehicle, watchVehicle };
 }

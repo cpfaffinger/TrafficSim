@@ -32,4 +32,10 @@ public sealed class CompilerOptions
 
     /// <summary>Terrain under the network (ADR-0018); null keeps the network flat apart from grade separation.</summary>
     public TerrainGrid? Terrain { get; init; }
+
+    /// <summary>Roundabouts with a shorter ring centre line are too tight for articulated trucks (#125).</summary>
+    public double TightRoundaboutMetres { get; init; } = 70;
+
+    /// <summary>Assumed length limit (m) on the ring of a tight roundabout: rigid trucks and buses fit.</summary>
+    public double TightRoundaboutMaxLength { get; init; } = 12;
 }

@@ -228,6 +228,36 @@ fn demand_can_be_changed_at_runtime() {
     assert_eq!(s.stats().spawned + s.stats().waiting_to_enter, before);
 }
 
+/// #125: trip totals of the vehicle inspector.
+#[test]
+fn vehicle_info_reports_the_trip_so_far() {
+    let mut b = NetBuilder::new();
+    b.node("W", -300.0, 0.0, NodeControl::Boundary)
+        .node("J", 0.0, 0.0, NodeControl::Signal)
+        .node("E", 300.0, 0.0, NodeControl::Boundary)
+        .link("in", "W", "J", 1, 13.9)
+        .link("out", "J", "E", 1, 13.9)
+        .connect("go", "in", 0, "out", 0, Priority::Signal)
+        .signal("J", 60.0, &[("g", 40.0, 60.0, 3.0)]);
+    b.connector_mut("go").signal_group = Some("g".into());
+    let mut s = sim(&b, quiet());
+    let id = s.place_vehicle("in", 0, 100.0, 13.9, "out", car()).unwrap();
+    assert!(s.vehicle_info(id + 1).is_none());
+    s.run(400);
+    let info = s.vehicle_info(id).expect("still on the network");
+    assert_eq!(info.vehicle_type, "car");
+    assert_eq!(info.route, ["in", "out"]);
+    assert!((info.travel_time - s.time()).abs() < 1e-9);
+    assert!(info.distance > 0.0);
+    assert!(info.stops >= 1, "{info:?}");
+    assert!(
+        info.stopped_time > 0.0 && info.lost_time >= info.stopped_time * 0.99,
+        "{info:?}"
+    );
+    let json = serde_json::to_value(&info).unwrap();
+    assert!(json.get("lostTime").is_some() && json.get("routePos").is_some());
+}
+
 #[test]
 fn place_vehicle_validates_its_arguments() {
     let mut s = Simulation::new(fixture_network(), quiet(), 1).unwrap();
@@ -1841,6 +1871,33 @@ fn chained_junctions_are_entered_only_when_all_can_be_passed() {
         }
         s.step();
         assert!(s.time < 60.0);
+    }
+}
+
+/// #126: B3 in Krems: two chained signals that are never green together. The vehicle gives up on
+/// the chain after twice `maxWait` and waits at the second stop line instead of forever at the first.
+#[test]
+fn chained_signals_never_green_together_do_not_hold_a_vehicle_forever() {
+    let mut b = NetBuilder::new();
+    let v = 13.889;
+    b.node("J1", 0.0, 0.0, NodeControl::Signal)
+        .node("J2", 18.0, 0.0, NodeControl::Signal)
+        .node("W", -300.0, 0.0, NodeControl::Boundary)
+        .node("E", 318.0, 0.0, NodeControl::Boundary)
+        .link("we", "W", "J1", 1, v)
+        .link("mid", "J1", "J2", 1, v)
+        .link("je", "J2", "E", 1, v)
+        .connect("c1", "we", 0, "mid", 0, Priority::Signal)
+        .connect("c2", "mid", 0, "je", 0, Priority::Signal)
+        .signal("J1", 90.0, &[("g1", 0.0, 40.0, 3.0)])
+        .signal("J2", 90.0, &[("g2", 45.0, 85.0, 3.0)]);
+    b.connector_mut("c1").signal_group = Some("g1".into());
+    b.connector_mut("c2").signal_group = Some("g2".into());
+    let mut s = sim(&b, quiet());
+    let id = s.place_vehicle("we", 0, 250.0, 0.0, "je", car()).unwrap();
+    while vehicle(&s, id).is_some_and(|v| link_of(&s, v) != "je") {
+        s.step();
+        assert!(s.time < 300.0, "still waiting for both signals at t = {}", s.time);
     }
 }
 

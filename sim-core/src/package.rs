@@ -145,6 +145,32 @@ pub struct Link {
     pub boundaries: Vec<Boundary>,
     #[serde(default)]
     pub no_lane_change_zone: f64,
+    /// Vehicle dimension limits (#125), absent when unrestricted.
+    #[serde(default)]
+    pub limits: Option<Limits>,
+}
+
+/// Largest vehicle allowed on a link (#125): metres and tonnes; absent = no limit.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Limits {
+    pub max_length: Option<f64>,
+    pub max_width: Option<f64>,
+    pub max_height: Option<f64>,
+    pub max_weight: Option<f64>,
+}
+
+impl Limits {
+    /// `[length, width, height, weight]`, `INFINITY` where unrestricted.
+    pub fn as_array(&self) -> [f64; 4] {
+        let v = |x: Option<f64>| x.filter(|x| x.is_finite() && *x > 0.0).unwrap_or(f64::INFINITY);
+        [
+            v(self.max_length),
+            v(self.max_width),
+            v(self.max_height),
+            v(self.max_weight),
+        ]
+    }
 }
 
 fn default_road_class() -> RoadClass {
@@ -314,6 +340,17 @@ pub struct Crossing {
 
 fn default_crossing_depth() -> f64 {
     3.0
+}
+
+#[cfg(test)]
+mod limit_tests {
+    use super::*;
+
+    #[test]
+    fn parses_link_limits() {
+        let l: Limits = serde_json::from_str(r#"{"maxLength": 12, "maxWeight": 7.5}"#).unwrap();
+        assert_eq!(l.as_array(), [12.0, f64::INFINITY, f64::INFINITY, 7.5]);
+    }
 }
 
 #[cfg(test)]

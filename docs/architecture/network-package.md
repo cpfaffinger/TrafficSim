@@ -92,7 +92,8 @@ geometry; a one-way way produces one.
 | `boundaries` | Boundary[] | One per pair of adjacent lanes (`lanes.length - 1` entries). |
 | `leftEdge` | enum | Marking left of the leftmost lane: `centre_dashed`, `centre_solid`, `double_solid` (two-way roads), `edge` (one-way). |
 | `noLaneChangeZone` | number | Metres before the link end in which lane changes are forbidden (solid approach, default 30 before signals). |
-| `assumed` | string[] | Attributes filled from defaults, e.g. `lanes`, `speedLimit`, `width`. |
+| `assumed` | string[] | Attributes filled from defaults, e.g. `lanes`, `speedLimit`, `width`, `maxLength`. |
+| `limits` | `{maxLength?, maxWidth?, maxHeight?, maxWeight?}` | Largest vehicle allowed (m, t) from OSM `maxlength`, `maxwidth`, `maxheight`, `maxweight` (directional and `:physical` variants, the stricter wins). Rings of roundabouts shorter than 70 m get an assumed `maxLength` of 12 m (too tight for articulated trucks). Routing keeps larger vehicles off the link (#125). Optional, absent when unrestricted. |
 | `endSign` | enum | Sign governing the approach at `to`: `none`, `stop`, `give_way`, `priority_road` (explicit OSM signs, signed priority roads, roundabout entries, all-way stops). Optional, default `none`. |
 | `osmNodes` | `{id, x, y}[]` | OSM nodes along the link in travel direction (untrimmed positions; `id` null for clip points at the area border). Lets editors address any segment. Optional. |
 | `osmForward` | boolean | True when the link runs in the OSM way's node order; false for the reverse direction of a two-way way (selects `:forward`/`:backward` tags in edits). Optional, default true. |

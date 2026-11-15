@@ -45,7 +45,7 @@ use crate::driver::Fleet;
 use crate::metrics::{Metrics, cells};
 use crate::network::{NONE, Network};
 use crate::rng::Pcg32;
-use crate::routing::Router;
+use crate::routing::{Fit, Router};
 use crate::signals::SignalState;
 use crate::vehicle::{VehicleClass, VehicleParams};
 
@@ -138,6 +138,12 @@ pub struct Vehicle {
     /// (junction movement metrics, #58).
     pub link_wait: f64,
     pub link_delay: f64,
+    /// Trip totals (#125): seconds lost against the speed limit, seconds at a standstill and
+    /// number of stops; `halted` while standing in the current stop.
+    pub lost_time: f64,
+    pub stopped_time: f64,
+    pub stops: u32,
+    halted: bool,
     /// End of the current distraction lapse (s); in the past when attentive.
     pub lapse_until: f64,
     /// Start of the next distraction lapse (s).
@@ -179,6 +185,41 @@ struct Counters {
     lapses: u64,
     commuter_reroutes: u64,
     travel_time_sum: f64,
+}
+
+/// One vehicle for the inspector (#125): type, dimensions, trip so far and its route.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VehicleInfo {
+    pub id: u32,
+    pub vehicle_type: String,
+    pub class: VehicleClass,
+    pub length: f64,
+    pub width: f64,
+    pub height: f64,
+    pub weight: f64,
+    /// Insertion time (s).
+    pub depart: f64,
+    pub travel_time: f64,
+    /// Metres since insertion.
+    pub distance: f64,
+    pub speed: f64,
+    pub speed_limit: f64,
+    /// Seconds lost against the speed limit.
+    pub lost_time: f64,
+    pub stopped_time: f64,
+    pub stops: u32,
+    /// Seconds waiting at the current stop line.
+    pub waiting: f64,
+    /// Current link (the link being entered while on a connector).
+    pub link: String,
+    pub on_connector: bool,
+    /// Link ids from origin to destination.
+    pub route: Vec<String>,
+    /// Index of `link` in `route`.
+    pub route_pos: u32,
+    /// Routes on experienced travel times (commuter).
+    pub familiar: bool,
 }
 
 /// Aggregate run statistics (`stats_json`).
@@ -266,9 +307,10 @@ pub struct Simulation {
     signal_state: Vec<SignalState>,
     demand: demand::Demand,
     routes: Vec<Vec<u32>>,
-    route_cache: BTreeMap<(u32, u32, u8), u32>,
+    /// Routes by (from, to, class + informed, [`Router::fit_key`]).
+    route_cache: BTreeMap<(u32, u32, u8, u64), u32>,
     /// Reachable destinations per (entry link, class, destination set): (route, cumulative weight).
-    dest_cache: BTreeMap<(u32, u8, u32), Vec<(u32, f64)>>,
+    dest_cache: BTreeMap<DestKey, Vec<(u32, f64)>>,
     counters: Counters,
     fleet: Fleet,
     seed: u64,
@@ -298,6 +340,9 @@ fn ballistic(speed: f64, acc: f64, dt: f64) -> (f64, f64) {
 }
 
 use perception::exponential;
+
+/// Destination choice cache key: entry link, class + informed, destination set, [`Router::fit_key`].
+type DestKey = (u32, u8, u32, u64);
 
 /// Route cache flag of routes for familiar drivers (bit above the class id).
 const INFORMED: u8 = 0x80;
@@ -473,13 +518,18 @@ impl Simulation {
         p.familiar && self.config.re_routing.enabled
     }
 
-    /// Cached route id from `from` to `to` for `class`.
-    fn route_id(&mut self, from: u32, to: u32, class: VehicleClass, informed: bool) -> Option<u32> {
-        let key = (from, to, cache_class(class, informed));
+    /// Cached route id from `from` to `to` for a vehicle that needs `fit`.
+    fn route_id(&mut self, from: u32, to: u32, fit: Fit, informed: bool) -> Option<u32> {
+        let key = (
+            from,
+            to,
+            cache_class(fit.class, informed),
+            self.router.fit_key(&fit),
+        );
         if let Some(&id) = self.route_cache.get(&key) {
             return (id != NONE).then_some(id);
         }
-        let id = match self.router_for(informed).route(from, to, class) {
+        let id = match self.router_for(informed).route_for(from, to, &fit) {
             Some(route) => {
                 self.routes.push(route);
                 (self.routes.len() - 1) as u32
@@ -542,6 +592,10 @@ impl Simulation {
             link_enter: self.time - pos / self.net.seg_speed_limit[lane as usize],
             link_wait: 0.0,
             link_delay: 0.0,
+            lost_time: 0.0,
+            stopped_time: 0.0,
+            stops: 0,
+            halted: speed < cells::STOP_SPEED,
             lapse_until: f64::NEG_INFINITY,
             next_lapse,
             lc_phase: (self.steps % u64::from(self.config.lane_change.interval)) as u32,
@@ -577,7 +631,7 @@ impl Simulation {
             .ok_or_else(|| format!("unknown link '{dest_link_id}'"))?;
         let lane = self.net.link_lane(link, lane_index).ok_or("unknown lane")?;
         let route = self
-            .route_id(link, dest, params.class, false)
+            .route_id(link, dest, Fit::of(&params), false)
             .ok_or("destination not reachable")?;
         let i = self.new_vehicle(params, lane, pos, speed, route);
         self.counters.spawned += 1;
@@ -946,8 +1000,19 @@ impl Simulation {
                     v.lat_offset - lateral * v.lat_offset.signum()
                 };
             }
+            let lost = dt * (1.0 - v.speed / net.seg_speed_limit[v.seg as usize]).max(0.0);
+            v.lost_time += lost;
+            if v.speed < cells::STOP_SPEED {
+                v.stopped_time += dt;
+                if !v.halted {
+                    v.halted = true;
+                    v.stops += 1;
+                }
+            } else if v.speed > 2.0 * cells::STOP_SPEED {
+                v.halted = false;
+            }
             if v.seg < lane_count {
-                v.link_delay += dt * (1.0 - v.speed / net.seg_speed_limit[v.seg as usize]).max(0.0);
+                v.link_delay += lost;
                 if v.speed < cells::STOP_SPEED {
                     v.link_wait += dt;
                 }
@@ -1091,6 +1156,38 @@ impl Simulation {
                 v.id as f32,
             ]);
         }
+    }
+
+    /// State and trip so far of one vehicle (#125, for the vehicle inspector), `None` once it left.
+    pub fn vehicle_info(&self, id: u32) -> Option<VehicleInfo> {
+        let v = self.vehicles.iter().find(|v| v.id == id)?;
+        let net = &self.net;
+        let route = &self.routes[v.route as usize];
+        let link = |l: u32| net.links[l as usize].id.clone();
+        let p = &v.params;
+        Some(VehicleInfo {
+            id,
+            vehicle_type: self.fleet.catalogue.name(p.vehicle_type).to_string(),
+            class: p.class,
+            length: p.length,
+            width: p.width,
+            height: p.height,
+            weight: p.weight,
+            depart: v.depart,
+            travel_time: self.time - v.depart,
+            distance: v.odo,
+            speed: v.speed,
+            speed_limit: net.seg_speed_limit[v.seg as usize],
+            lost_time: v.lost_time,
+            stopped_time: v.stopped_time,
+            stops: v.stops,
+            waiting: v.wait,
+            link: link(net.segment_link(v.seg)),
+            on_connector: !net.is_lane(v.seg),
+            route: route.iter().map(|&l| link(l)).collect(),
+            route_pos: v.route_pos,
+            familiar: p.familiar,
+        })
     }
 
     pub fn snapshot(&self) -> Vec<f32> {

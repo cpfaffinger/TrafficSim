@@ -16,7 +16,34 @@ export type ToNetworkWorker =
   | { type: 'demand'; node: string; vehiclesPerHour: number }
   /** Requests the run results (summary + all retained lane-cell buckets) for saving (#61, #73). */
   | { type: 'results' }
+  /** Frames carry this vehicle's `VehicleInfo` from now on (null stops it, #125). */
+  | { type: 'watch'; vehicle: number | null }
   | { type: 'dispose' };
+
+/** One vehicle as reported by sim-core `vehicleJson()` (#125). */
+export interface VehicleInfo {
+  id: number;
+  vehicleType: string;
+  class: string;
+  length: number;
+  width: number;
+  height: number;
+  weight: number;
+  depart: number;
+  travelTime: number;
+  distance: number;
+  speed: number;
+  speedLimit: number;
+  lostTime: number;
+  stoppedTime: number;
+  stops: number;
+  waiting: number;
+  link: string;
+  onConnector: boolean;
+  route: string[];
+  routePos: number;
+  familiar: boolean;
+}
 
 /** Statistics reported by sim-core `statsJson()`. */
 export interface SimStats {
@@ -50,6 +77,8 @@ export interface NetworkFrame {
   stats: SimStats | null;
   /** Pedestrians at crossings (`pedestrianSnapshot()`, 5 floats each, ADR-0020); absent without crossings. */
   pedestrians?: Float32Array;
+  /** The watched vehicle (#125): its state, or null once it left; absent when none is watched. */
+  vehicle?: VehicleInfo | null;
 }
 
 export type FromNetworkWorker =

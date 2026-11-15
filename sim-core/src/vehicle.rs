@@ -68,6 +68,11 @@ pub struct VehicleType {
     pub class: VehicleClass,
     pub length: f64,
     pub width: f64,
+    /// Height (m) and gross weight (t): routing avoids links whose limits they exceed (#125).
+    #[serde(default = "default_height")]
+    pub height: f64,
+    #[serde(default = "default_weight")]
+    pub weight: f64,
     /// Technical top speed (m/s).
     pub max_speed: f64,
     /// IDM maximum acceleration `a` (m/s²).
@@ -97,6 +102,8 @@ pub struct VehicleTypePatch {
     pub class: Option<VehicleClass>,
     pub length: Option<f64>,
     pub width: Option<f64>,
+    pub height: Option<f64>,
+    pub weight: Option<f64>,
     pub max_speed: Option<f64>,
     pub max_acceleration: Option<f64>,
     pub comfortable_deceleration: Option<f64>,
@@ -109,6 +116,14 @@ pub struct VehicleTypePatch {
     pub specific_power: Option<f64>,
 }
 
+fn default_height() -> f64 {
+    1.5
+}
+
+fn default_weight() -> f64 {
+    1.5
+}
+
 impl VehicleType {
     /// Built-in type with the same name as a class (`car`, `van`, `truck`, `bus`, `motorcycle`).
     pub fn for_class(class: VehicleClass) -> Self {
@@ -116,6 +131,8 @@ impl VehicleType {
             class,
             length: 4.5,
             width: 1.8,
+            height: 1.5,
+            weight: 1.5,
             max_speed: 50.0,
             max_acceleration: 1.5,
             comfortable_deceleration: 2.0,
@@ -133,6 +150,8 @@ impl VehicleType {
             politeness: 0.4,
             safe_deceleration: 3.0,
             gap_acceptance: 1.2,
+            height: 3.8,
+            weight: 18.0,
             // Rigid truck or bus, about 220 kW for 18 t.
             specific_power: 10.0,
             ..car
@@ -142,6 +161,8 @@ impl VehicleType {
             VehicleClass::Van => Self {
                 length: 5.5,
                 width: 2.0,
+                height: 2.6,
+                weight: 3.5,
                 max_speed: 44.0,
                 max_acceleration: 1.2,
                 specific_power: 35.0,
@@ -157,6 +178,7 @@ impl VehicleType {
             },
             VehicleClass::Bus => Self {
                 length: 12.0,
+                height: 3.2,
                 max_speed: 28.0,
                 time_headway: 1.5,
                 max_acceleration: 0.8,
@@ -165,6 +187,8 @@ impl VehicleType {
             VehicleClass::Motorcycle => Self {
                 length: 2.2,
                 width: 0.8,
+                height: 1.3,
+                weight: 0.3,
                 max_speed: 55.0,
                 max_acceleration: 2.5,
                 minimum_gap: 1.5,
@@ -179,6 +203,8 @@ impl VehicleType {
     pub fn articulated_truck() -> Self {
         Self {
             length: 16.5,
+            height: 4.0,
+            weight: 40.0,
             time_headway: 1.8,
             max_acceleration: 0.5,
             gap_acceptance: 1.3,
@@ -199,6 +225,8 @@ impl VehicleType {
         }
         set(&mut self.length, p.length);
         set(&mut self.width, p.width);
+        set(&mut self.height, p.height);
+        set(&mut self.weight, p.weight);
         set(&mut self.max_speed, p.max_speed);
         set(&mut self.max_acceleration, p.max_acceleration);
         set(&mut self.comfortable_deceleration, p.comfortable_deceleration);
@@ -215,6 +243,8 @@ impl VehicleType {
         let positive = [
             self.length,
             self.width,
+            self.height,
+            self.weight,
             self.max_speed,
             self.max_acceleration,
             self.comfortable_deceleration,
@@ -240,6 +270,8 @@ impl VehicleType {
             class: self.class,
             length: self.length,
             width: self.width,
+            height: self.height,
+            weight: self.weight,
             max_speed: self.max_speed,
             speed_factor: 1.0,
             time_headway: self.time_headway,
@@ -355,6 +387,9 @@ pub struct VehicleParams {
     pub length: f64,
     /// Vehicle width (m).
     pub width: f64,
+    /// Vehicle height (m) and gross weight (t), for link limits (#125).
+    pub height: f64,
+    pub weight: f64,
     /// Technical top speed (m/s).
     pub max_speed: f64,
     /// Desired speed as a factor of the posted speed limit (IDM `v0 = factor × limit`).

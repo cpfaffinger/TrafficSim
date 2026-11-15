@@ -13,6 +13,7 @@ import { EditorToolbar } from '../editor/components/EditorToolbar';
 import { carrySelection } from '../editor/selection';
 import { mergeAttributions } from '../lib/attribution';
 import { inspect, PackageIndex } from '../network/inspect';
+import { inspectVehicle } from '../network/vehicleInspect';
 import type { PickTarget } from '../network/meshData';
 import type { BBox, NetworkPackage } from '../network/types';
 import { NetworkScene, type BasemapStatus } from '../scene/NetworkScene';
@@ -44,6 +45,8 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
   const sceneRef = useRef<NetworkScene | null>(null);
   const [pkg, setPkg] = useState<NetworkPackage | null>(null);
   const [target, setTarget] = useState<PickTarget | null>(null);
+  /** Clicked vehicle (#125): its state, route and trip in the inspector. */
+  const [vehicleId, setVehicleId] = useState<number | null>(null);
   const [basemap, setBasemap] = useState<{ status: BasemapStatus; attribution: string | null }>({ status: 'idle', attribution: null });
   const [geocoderAttribution, setGeocoderAttribution] = useState<string | null>(null);
   const [showTunnels, setShowTunnels] = useState(true);
@@ -59,7 +62,14 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
   useEffect(() => {
     if (!sceneHost.current) return;
     const scene = new NetworkScene(sceneHost.current, {
-      onPick: setTarget,
+      onPick: (t) => {
+        setTarget(t);
+        setVehicleId(null);
+      },
+      onPickVehicle: (id) => {
+        setTarget(null);
+        setVehicleId(id);
+      },
       onBasemap: (status, attribution) => setBasemap((b) => ({ status, attribution: attribution ?? (status === 'ready' ? b.attribution : null) })),
     });
     sceneRef.current = scene;
@@ -106,7 +116,34 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
     pendingResults.current = null;
   }, []);
   const sim = useNetworkSimulation(pkg, simSettings, sceneRef, openScenario?.demand ?? undefined, heat.onCells, onResults);
-  const { requestResults } = sim;
+  const { requestResults, watchVehicle } = sim;
+
+  // Vehicle inspector (#125): the worker reports the watched vehicle with every stats frame. A new
+  // run (restart, other package or settings) has other vehicles: the selection ends.
+  const run = `${sim.generation}:${pkg?.baselineId ?? ''}:${simSettings.seed}:${simSettings.demandScale}:${simSettings.truckShare}`;
+  const [selectedRun, setSelectedRun] = useState(run);
+  if (selectedRun !== run) {
+    setSelectedRun(run);
+    setVehicleId(null);
+  }
+  useEffect(() => {
+    watchVehicle(vehicleId);
+    sceneRef.current?.selectVehicle(vehicleId);
+    if (vehicleId === null) sceneRef.current?.showRoute(null);
+  }, [vehicleId, watchVehicle]);
+  const watched = sim.vehicle;
+  const routeKey = watched ? `${watched.info.id}:${watched.info.routePos}:${watched.info.route.length}:${watched.left}` : '';
+  useEffect(() => {
+    if (!watched || vehicleId === null) return;
+    sceneRef.current?.showRoute(watched.left ? null : watched.info.route, watched.info.routePos);
+    // Redraw only when the vehicle moves on to another link (routeKey), not on every frame.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeKey, vehicleId]);
+  const linkName = useCallback((id: string) => index?.links.get(id)?.name ?? null, [index]);
+  const shownModel = useMemo(
+    () => (vehicleId !== null && watched ? inspectVehicle(watched.info, linkName, watched.left) : model),
+    [vehicleId, watched, linkName, model],
+  );
   const collectResults = useCallback(
     () =>
       new Promise<SimResults>((resolve, reject) => {
@@ -178,6 +215,7 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
 
   const closeInspector = useCallback(() => {
     setTarget(null);
+    setVehicleId(null);
     sceneRef.current?.select(null);
   }, []);
 
@@ -292,7 +330,7 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
             {editing && !drawing && index && (
               <EditorPanel index={index} target={target} session={editor.session} scope={editor.scope} onScope={editor.setScope} />
             )}
-            <InspectorPanel model={model} onClose={closeInspector} />
+            <InspectorPanel model={shownModel} onClose={closeInspector} />
           </div>
         )}
       </div>

@@ -12,6 +12,7 @@
 use super::{INFORMED, Simulation};
 use crate::config::SimConfig;
 use crate::network::{NONE, Network};
+use crate::routing::Fit;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct TravelTimes {
@@ -97,8 +98,8 @@ impl Simulation {
             if rp + 1 >= route.len() {
                 continue;
             }
-            let (cur, dest, class, seg) = (route[rp], route[route.len() - 1], v.params.class, v.seg);
-            let Some(new) = self.route_id(cur, dest, class, true) else {
+            let (cur, dest, fit, seg) = (route[rp], route[route.len() - 1], Fit::of(&v.params), v.seg);
+            let Some(new) = self.route_id(cur, dest, fit, true) else {
                 continue;
             };
             let old_cost = self
@@ -109,7 +110,7 @@ impl Simulation {
             if !faster || new_route[..] == self.routes[self.vehicles[i].route as usize][rp..] {
                 continue;
             }
-            let conn = self.net.choose_connector(seg, new_route[1], class.mask());
+            let conn = self.net.choose_connector(seg, new_route[1], fit.class.mask());
             let link = &self.net.links[cur as usize];
             let to_end = self.net.seg_length[seg as usize] - self.vehicles[i].pos;
             // A new turn that needs lane changes is only taken with enough room to change.

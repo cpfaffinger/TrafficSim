@@ -98,7 +98,8 @@ public static class NetworkPackageWriter
         l.OsmBeforeTo,
         l.OsmForward,
         Snake(l.EndSign),
-        l.OsmNodes.Select(n => new PackageOsmNode(n.Id, R(n.Position.X), R(n.Position.Y))).ToList());
+        l.OsmNodes.Select(n => new PackageOsmNode(n.Id, R(n.Position.X), R(n.Position.Y))).ToList(),
+        l.Limits is { } x ? new PackageLimits(x.MaxLength, x.MaxWidth, x.MaxHeight, x.MaxWeight) : null);
 
     private static List<double[]> Points(IReadOnlyList<Vec3> points) => points.Select(p => new[] { R(p.X), R(p.Y), R(p.Z) }).ToList();
 

@@ -49,6 +49,11 @@ export class NetworkSimClient {
     this.worker.postMessage({ type: 'demand', node, vehiclesPerHour });
   }
 
+  /** Frames carry this vehicle's state from now on (null stops it, #125). */
+  watchVehicle(vehicle: number | null): void {
+    this.worker.postMessage({ type: 'watch', vehicle });
+  }
+
   requestResults(): void {
     this.worker.postMessage({ type: 'results' });
   }

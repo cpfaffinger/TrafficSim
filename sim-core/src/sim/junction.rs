@@ -144,9 +144,11 @@ impl Simulation {
             let forced = !signalised && self.vehicles[i].wait > max_wait;
             let mut decision = self.decide(i, c, d, forced);
             // Chained junctions (#117): enter only if the vehicle may also pass the junctions
-            // right behind, whose stop lines it could not wait at clear of this one.
+            // right behind, whose stop lines it could not wait at clear of this one. A vehicle that
+            // waited twice `maxWait` gives up on the chain and waits on the short lane instead, so
+            // signals that are never green together cannot hold it forever (#126).
             let mut chain = [NONE; CHAIN];
-            if decision != Decision::Stop {
+            if decision != Decision::Stop && self.vehicles[i].wait <= 2.0 * max_wait {
                 let (next, n) = self.chain_after(i, c, d);
                 for (k, &(c2, d2)) in next[..n].iter().enumerate() {
                     if self.decide_with(i, c2, d2, forced, true) == Decision::Stop {

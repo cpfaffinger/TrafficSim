@@ -17,7 +17,7 @@ export interface InspectorSection {
 
 export interface InspectorModel {
   title: string;
-  kind: PickTarget['kind'];
+  kind: PickTarget['kind'] | 'vehicle';
   sections: InspectorSection[];
 }
 
@@ -105,6 +105,7 @@ function linkSections(index: PackageIndex, link: Link): InspectorSection[] {
       { label: 'Speed limit', value: kmh(link.speedLimit), assumed: assumed.has('speedLimit') },
       { label: 'Length', value: metres(link.length) },
       { label: 'Through traffic', value: link.throughTraffic ? 'yes' : 'no (destination only)' },
+      ...limitFields(link, assumed),
     ],
   };
   const markings: InspectorSection = {
@@ -184,4 +185,17 @@ function nodeSections(index: PackageIndex, n: NetworkNode): InspectorSection[] {
     });
   }
   return sections;
+}
+
+/** Vehicle dimension limits of a link (#125); routing keeps larger vehicles off it. */
+function limitFields(link: Link, assumed: ReadonlySet<string>): InspectorField[] {
+  const l = link.limits;
+  if (!l) return [];
+  const rows: [string, number | undefined, string, string][] = [
+    ['Max length', l.maxLength, 'm', 'maxLength'],
+    ['Max width', l.maxWidth, 'm', 'maxWidth'],
+    ['Max height', l.maxHeight, 'm', 'maxHeight'],
+    ['Max weight', l.maxWeight, 't', 'maxWeight'],
+  ];
+  return rows.filter(([, v]) => v !== undefined).map(([label, v, unit, key]) => ({ label, value: `${v} ${unit}`, assumed: assumed.has(key) }));
 }

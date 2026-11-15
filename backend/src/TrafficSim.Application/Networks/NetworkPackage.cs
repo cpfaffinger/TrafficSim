@@ -46,7 +46,15 @@ public sealed record PackageLink(
     long? OsmBeforeTo = null,
     bool OsmForward = true,
     string EndSign = "none",
-    IReadOnlyList<PackageOsmNode>? OsmNodes = null);
+    IReadOnlyList<PackageOsmNode>? OsmNodes = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] PackageLimits? Limits = null);
+
+/// <summary>Vehicle dimension limits of a link (#125): metres and tonnes; absent = no limit.</summary>
+public sealed record PackageLimits(
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? MaxLength = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? MaxWidth = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? MaxHeight = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] double? MaxWeight = null);
 
 public sealed record PackageOsmNode(long? Id, double X, double Y);
 

@@ -278,6 +278,12 @@ impl NetworkSim {
         self.sim.reset_metrics();
     }
 
+    /// One vehicle's type, dimensions, trip so far and route as JSON (#125); `null` once it left.
+    #[wasm_bindgen(js_name = vehicleJson)]
+    pub fn vehicle_json(&self, id: u32) -> String {
+        serde_json::to_string(&self.sim.vehicle_info(id)).unwrap_or_else(|_| "null".into())
+    }
+
     /// Vehicle type catalogue of this run (built-in types plus `vehicleTypes` overrides) as JSON.
     #[wasm_bindgen(js_name = vehicleTypesJson)]
     pub fn vehicle_types_json(&self) -> String {

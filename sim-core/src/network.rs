@@ -72,6 +72,8 @@ pub struct LinkInfo {
     pub no_lane_change_zone: f64,
     /// Union of the lanes' class masks.
     pub class_mask: u8,
+    /// Largest vehicle allowed: `[length m, width m, height m, weight t]`, `INFINITY` = no limit (#125).
+    pub limits: [f64; 4],
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -330,6 +332,7 @@ impl Network {
                     0.0
                 },
                 class_mask: link_mask,
+                limits: link.limits.map_or([f64::INFINITY; 4], |l| l.as_array()),
             });
         }
         for geometry in lane_geometries {

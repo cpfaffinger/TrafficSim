@@ -439,6 +439,7 @@ public static class NetworkCompiler
                 Boundaries = LaneChangeRule.Boundaries(change, Tags.GetDirectional(tags, "change", direction), n),
                 LeftEdge = LaneChangeRule.LeftEdge(tags, layout.OneWay, direction, layout.Forward, layout.Backward),
                 Assumed = assumed,
+                Limits = VehicleLimitParser.ForWay(tags, direction),
             };
             _links.Add(link);
             _linkById[id] = link;
@@ -622,6 +623,7 @@ public static class NetworkCompiler
                     : 0;
             }
 
+            LimitTightRoundabouts();
             var trims = EndTrims();
             foreach (var link in _links)
             {
@@ -663,6 +665,41 @@ public static class NetworkCompiler
                 {
                     link.NoLaneChangeZone = Math.Min(options.SolidApproachMetres, link.Length * 0.5);
                     link.Assumed.Add("noLaneChangeZone");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Rings of small roundabouts (centre line under <see cref="CompilerOptions.TightRoundaboutMetres"/>,
+        /// about 22 m across) are too tight for articulated trucks (RVS 03.05.14: at least ~26 m outer
+        /// diameter): they get an assumed length limit unless the way has one (#125). Runs on the
+        /// untrimmed geometry.
+        /// </summary>
+        private void LimitTightRoundabouts()
+        {
+            var ring = _links.Where(l => l.Roundabout).ToList();
+            var parent = ring.SelectMany(l => new[] { l.From, l.To }).Distinct().ToDictionary(n => n, n => n);
+            string Find(string n) => parent[n] == n ? n : parent[n] = Find(parent[n]);
+            foreach (var l in ring)
+            {
+                parent[Find(l.From)] = Find(l.To);
+            }
+
+            foreach (var group in ring.GroupBy(l => Find(l.From)))
+            {
+                // A two-way ring piece counts once.
+                var circumference = group
+                    .Where(l => l.OppositeLinkId is null || string.CompareOrdinal(l.Id, l.OppositeLinkId) < 0)
+                    .Sum(l => Polyline.PlanarLength(l.Geometry));
+                if (circumference >= options.TightRoundaboutMetres)
+                {
+                    continue;
+                }
+
+                foreach (var l in group.Where(l => l.Limits?.MaxLength is null))
+                {
+                    l.Limits = (l.Limits ?? new VehicleLimits()) with { MaxLength = options.TightRoundaboutMaxLength };
+                    l.Assumed.Add("maxLength");
                 }
             }
         }
@@ -1188,14 +1225,35 @@ public static class NetworkCompiler
             // Movements out of short links inside a junction follow the movements into them (#117): one phase, or
             // a group that is always green when the link is fed in both phases.
             const int always = -1;
+            // Feeders are found back through further short links and nodes without signals (#126: B3 Krems,
+            // signal → 1 m → priority node → 1 m → signal).
+            List<int> FeederGroups(Link link, string root, int depth)
+            {
+                var result = new List<int>();
+                foreach (var c in _connectors.Where(c => c.ToLink == link.Id))
+                {
+                    var from = _linkById[c.FromLink];
+                    if (cluster.TryGetValue(link.From, out var r) && r == root && groupOfLink.TryGetValue(from.Id, out var group))
+                    {
+                        result.Add(group);
+                    }
+                    else if (depth > 0 && !cluster.ContainsKey(link.From) && from.Length < options.SignalChainMetres)
+                    {
+                        result.AddRange(FeederGroups(from, root, depth - 1));
+                    }
+                }
+
+                return result.Distinct().ToList();
+            }
+
             for (var pass = 0; pass < 3; pass++)
             {
                 foreach (var (g, _, _, groupOf) in plans)
                 {
-                    foreach (var link in g.Incoming.Where(l => groupOf.ContainsKey(l.Id) && internalLink(l) && l.Length < options.SignalChainMetres))
+                    var root = cluster[g.Node!.Id];
+                    foreach (var link in g.Incoming.Where(l => groupOf.ContainsKey(l.Id) && l.Length < options.SignalChainMetres))
                     {
-                        var feeders = _connectors.Where(c => c.ToLink == link.Id && groupOfLink.ContainsKey(c.FromLink))
-                            .Select(c => groupOfLink[c.FromLink]).Distinct().ToList();
+                        var feeders = FeederGroups(link, root, 3);
                         if (feeders.Count > 0)
                         {
                             groupOf[link.Id] = groupOfLink[link.Id] = feeders.Count == 1 ? feeders[0] : always;
@@ -1223,21 +1281,50 @@ public static class NetworkCompiler
             }
         }
 
-        /// <summary>Signal node id → id of the first node of its cluster (nodes linked by roads up to <see cref="CompilerOptions.SignalClusterMetres"/>).</summary>
+        /// <summary>
+        /// Signal node id → id of the first node of its cluster: nodes linked by roads up to
+        /// <see cref="CompilerOptions.SignalClusterMetres"/>, also through nodes without signals in between
+        /// (#126), as long as the whole connection stays that short.
+        /// </summary>
         private Dictionary<string, string> SignalClusters(List<GraphNode> signalNodes)
         {
             var parent = signalNodes.ToDictionary(n => n.Node!.Id, n => n.Node!.Id, StringComparer.Ordinal);
             string Find(string id) => parent[id] == id ? id : parent[id] = Find(parent[id]);
+            void Union(string x, string y)
+            {
+                var (a, b) = (Find(x), Find(y));
+                if (a != b)
+                {
+                    // The smaller id is the root, so the cluster's reference node does not depend on link order.
+                    (a, b) = string.CompareOrdinal(a, b) < 0 ? (a, b) : (b, a);
+                    parent[b] = a;
+                }
+            }
+
             foreach (var g in signalNodes)
             {
-                foreach (var link in g.Outgoing.Where(l => l.Length <= options.SignalClusterMetres && parent.ContainsKey(l.To)))
+                var start = g.Node!.Id;
+                var queue = new Queue<(GraphNode Node, double Distance)>([(g, 0)]);
+                var seen = new HashSet<string>(StringComparer.Ordinal) { start };
+                while (queue.Count > 0)
                 {
-                    var (a, b) = (Find(link.From), Find(link.To));
-                    if (a != b)
+                    var (node, distance) = queue.Dequeue();
+                    foreach (var link in node.Outgoing.Where(l => distance + l.Length <= options.SignalClusterMetres))
                     {
-                        // The smaller id is the root, so the cluster's reference node does not depend on link order.
-                        (a, b) = string.CompareOrdinal(a, b) < 0 ? (a, b) : (b, a);
-                        parent[b] = a;
+                        if (!seen.Add(link.To))
+                        {
+                            continue;
+                        }
+
+                        var next = _byNodeId[link.To];
+                        if (parent.ContainsKey(link.To))
+                        {
+                            Union(start, link.To);
+                        }
+                        else if (next.Node!.Control != NodeControl.Boundary)
+                        {
+                            queue.Enqueue((next, distance + link.Length));
+                        }
                     }
                 }
             }

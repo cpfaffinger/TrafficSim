@@ -8,7 +8,8 @@ import { expandBbox } from '../lib/area';
 import { frameRect, limitsFor } from '../lib/rtsCamera';
 import { nextPick, uniqueOwners, type PreviousPick } from '../lib/picking';
 import { fromScene, LocalTangentPlane, toScene } from '../network/geo';
-import type { MeshData, PickTarget } from '../network/meshData';
+import { MeshData, type PickTarget } from '../network/meshData';
+import { offsetPolyline } from '../network/polyline';
 import { buildNetworkMeshes, type NetworkMeshes } from '../network/networkMeshes';
 import type { BBox, GeoOrigin, NetworkPackage, TerrainGrid } from '../network/types';
 import { drapeOnTerrain, subdivide } from '../network/terrain';
@@ -44,7 +45,14 @@ const COLORS = {
   tunnel: 0x4f7cac,
   highlight: 0xff8a00,
   area: 0x3e63dd,
+  route: 0x2a8cff,
 };
+
+/** Flat ribbon along a polyline (package ENU), `lift` metres above it, for overlays such as a vehicle's route. */
+function addRibbon(data: MeshData, line: [number, number, number][], width: number, lift: number): void {
+  const raise = (p: readonly number[]): [number, number, number] => [p[0]!, p[1]!, p[2]! + lift];
+  data.strip(offsetPolyline(line, width / 2).map(raise), offsetPolyline(line, -width / 2).map(raise));
+}
 
 const GROUND_COLORS = { landuse: COLORS.landuse, park: COLORS.park, water: COLORS.water } as const;
 
@@ -52,6 +60,8 @@ export type BasemapStatus = 'idle' | 'loading' | 'ready' | 'unavailable';
 
 export interface NetworkSceneCallbacks {
   onPick?: (target: PickTarget | null) => void;
+  /** A vehicle was clicked (#125); takes precedence over roads. */
+  onPickVehicle?: (id: number) => void;
   onBasemap?: (status: BasemapStatus, attribution: string | null) => void;
 }
 
@@ -98,6 +108,8 @@ export class NetworkScene {
   private readonly ground: THREE.Mesh;
   private readonly resizeObserver: ResizeObserver;
   private readonly raycaster = new THREE.Raycaster();
+  /** Route of the selected vehicle (#125). */
+  private readonly routeGroup = new THREE.Group();
   private readonly clock = new THREE.Clock();
   private frameHandle = 0;
   private dirty = true;
@@ -142,7 +154,7 @@ export class NetworkScene {
     // Drawn before the terrain and the basemap ground layers, which do not write depth.
     this.ground.renderOrder = -5;
     this.ground.scale.set(20_000, 20_000, 1);
-    this.scene.add(this.ground, this.basemapGroup, this.networkGroup, this.tunnelGroup, this.overlayGroup, this.highlightGroup, this.simulation.group, this.signs.group, this.transit.group, this.heatmap.group, this.terrain.group);
+    this.scene.add(this.ground, this.basemapGroup, this.networkGroup, this.tunnelGroup, this.overlayGroup, this.highlightGroup, this.routeGroup, this.simulation.group, this.signs.group, this.transit.group, this.heatmap.group, this.terrain.group);
     this.scene.add(this.crossings.markings, this.crossings.pedestrians);
 
     this.controls = new RtsCameraController(this.camera, this.renderer.domElement, (x, y) => this.pick(x, y));
@@ -191,6 +203,8 @@ export class NetworkScene {
 
   clearSimulation(): void {
     this.simulation.clear();
+    this.simulation.selected = null;
+    disposeGroup(this.routeGroup);
     this.crossings.clearPedestrians();
     this.dirty = true;
   }
@@ -358,6 +372,40 @@ export class NetworkScene {
     }
   }
 
+  /** Highlights a vehicle (#125). */
+  selectVehicle(id: number | null): void {
+    this.simulation.selected = id;
+    this.dirty = true;
+  }
+
+  /**
+   * Draws a vehicle's route (#125): the links still ahead bright, the ones behind faint; null clears it.
+   */
+  showRoute(route: readonly string[] | null, position = 0): void {
+    disposeGroup(this.routeGroup);
+    this.dirty = true;
+    if (!route || !this.currentPackage) return;
+    const links = new Map(this.currentPackage.links.map((l) => [l.id, l]));
+    const ahead: [number, number, number][][] = [];
+    const behind: [number, number, number][][] = [];
+    route.forEach((id, i) => {
+      const geometry = links.get(id)?.geometry;
+      if (geometry && geometry.length > 1) (i < position ? behind : ahead).push(geometry as [number, number, number][]);
+    });
+    const ribbon = (lines: [number, number, number][][], opacity: number) => {
+      const data = new MeshData();
+      for (const line of lines) addRibbon(data, line, 1.6, 0.6);
+      const mesh = new THREE.Mesh(
+        toBufferGeometry(data),
+        new THREE.MeshBasicMaterial({ color: COLORS.route, transparent: true, opacity, depthTest: false, depthWrite: false }),
+      );
+      mesh.renderOrder = 9;
+      this.routeGroup.add(mesh);
+    };
+    if (behind.length) ribbon(behind, 0.25);
+    if (ahead.length) ribbon(ahead, 0.8);
+  }
+
   /** Routes clicks to a tool before picking (null restores plain picking). */
   setClickHandler(handler: SceneClickHandler | null): void {
     this.clickHandler = handler;
@@ -505,6 +553,12 @@ export class NetworkScene {
     const rect = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(ndc, this.camera);
+    const vehicle = this.callbacks.onPickVehicle ? this.simulation.vehicleAt(this.raycaster) : null;
+    if (vehicle !== null) {
+      this.select(null);
+      this.callbacks.onPickVehicle!(vehicle);
+      return;
+    }
     const targets = this.pickables.filter((p) => p.mesh.visible && (p.mesh.parent?.visible ?? true));
     const hits = this.raycaster.intersectObjects(
       targets.map((p) => p.mesh),

@@ -29,7 +29,8 @@ use crate::driver::{Cdf, Fleet};
 use crate::network::{NONE, Network};
 use crate::package::NodeControl;
 use crate::rng::Pcg32;
-use crate::vehicle::{VehicleClass, VehicleParams};
+use crate::routing::Fit;
+use crate::vehicle::VehicleParams;
 
 /// One arrival process (`demandJson`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -494,7 +495,6 @@ impl Simulation {
         } else {
             self.fleet.sample(&src.types, &src.drivers, &mut rng)
         };
-        let class = params.class;
         let n = src.origins.len();
         let link = src.origins[if src.origin_cum.is_empty() {
             pick_index(&mut rng, n)
@@ -519,10 +519,11 @@ impl Simulation {
         src.next_arrival = next;
         src.rng = rng;
         let informed = self.is_informed(&params);
+        let fit = Fit::of(&params);
         let route = if sampled {
-            self.sample_destination(link, class, informed, dest_set, u_dest)
+            self.sample_destination(link, fit, informed, dest_set, u_dest)
         } else {
-            self.pick_destination(link, class, informed, dest_set, u_dest)
+            self.pick_destination(link, fit, informed, dest_set, u_dest)
         };
         match route {
             Some(route) => {
@@ -538,14 +539,7 @@ impl Simulation {
     /// Draws a destination of `set` by weight and routes to it; retries a few times with a
     /// stream derived from `u` when the draw is unreachable. Avoids routing to every candidate
     /// of large destination sets.
-    fn sample_destination(
-        &mut self,
-        entry: u32,
-        class: VehicleClass,
-        informed: bool,
-        set: u32,
-        u: f64,
-    ) -> Option<u32> {
+    fn sample_destination(&mut self, entry: u32, fit: Fit, informed: bool, set: u32, u: f64) -> Option<u32> {
         let mut retry = Pcg32::new(u.to_bits(), 7);
         let origin = self.net.links[entry as usize].from;
         let mut u = u;
@@ -554,7 +548,7 @@ impl Simulation {
             let dest = self.demand.dest_sets[set as usize][k].0;
             if dest != entry
                 && self.net.links[dest as usize].to != origin
-                && let Some(route) = self.route_id(entry, dest, class, informed)
+                && let Some(route) = self.route_id(entry, dest, fit, informed)
             {
                 return Some(route);
             }
@@ -565,15 +559,13 @@ impl Simulation {
 
     /// Route to a destination of `set` drawn with `u` among the reachable ones (U-turns back to
     /// the origin node excluded); `None` if none is reachable.
-    fn pick_destination(
-        &mut self,
-        entry: u32,
-        class: VehicleClass,
-        informed: bool,
-        set: u32,
-        u: f64,
-    ) -> Option<u32> {
-        let key = (entry, super::cache_class(class, informed), set);
+    fn pick_destination(&mut self, entry: u32, fit: Fit, informed: bool, set: u32, u: f64) -> Option<u32> {
+        let key = (
+            entry,
+            super::cache_class(fit.class, informed),
+            set,
+            self.router.fit_key(&fit),
+        );
         if !self.dest_cache.contains_key(&key) {
             let origin = self.net.links[entry as usize].from;
             let candidates = self.demand.dest_sets[set as usize].clone();
@@ -583,7 +575,7 @@ impl Simulation {
                 if w <= 0.0 || self.net.links[exit as usize].to == origin {
                     continue;
                 }
-                if let Some(route) = self.route_id(entry, exit, class, informed) {
+                if let Some(route) = self.route_id(entry, exit, fit, informed) {
                     acc += w;
                     list.push((route, acc));
                 }

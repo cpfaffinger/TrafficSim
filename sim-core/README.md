@@ -71,6 +71,7 @@ JSON.parse(sim.summaryJson());  // run KPIs + per-link metrics, see "Summary"
 JSON.parse(sim.junctionsJson());// queues, delays and level of service per junction
 JSON.parse(sim.eventsJson());   // tailbacks and stop-and-go waves
 sim.resetMetrics();             // restart the totals (e.g. after a warm-up)
+JSON.parse(sim.vehicleJson(42));       // one vehicle: type, dimensions, trip so far, route (null once it left, #125)
 JSON.parse(sim.vehicleTypesJson());   // catalogue of this run
 JSON.parse(sim.driverProfilesJson()); // driver profiles of this run
 // Free functions: builtinVehicleTypesJson(), builtinDriverProfilesJson(), builtinRoadClassProfilesJson()
@@ -152,7 +153,7 @@ catch typos).
     "criticalGapMinor": 4.0, "criticalGapStop": 4.5, "criticalGapRoundabout": 3.0,
     "criticalGapRightBeforeLeft": 3.0, "criticalGapPermissive": 4.0,  // s, see "Junctions"
     "followUpTime": 2.0,              // s, minimum between two entries of a yielding movement
-    "maxWait": 45.0,                  // s, deadlock breaker
+    "maxWait": 45.0,                  // s, deadlock breaker (2 × maxWait: a vehicle stops waiting for chained junctions, #126)
     "clearanceTime": 1.0              // s, post-encroachment time on a conflict zone (#109)
   },
   "signalControl": { "actuated": false /* true or ["n0", …] */, "minGreen": 7, "maxGreen": 60,
@@ -202,14 +203,19 @@ catch typos).
 Built-in catalogue (`builtinVehicleTypesJson()`; `vehicleTypes` patches a type or adds one based
 on the built-in type of its `class`):
 
-| Type | Class | Length | Width | v max | a | b | T | s0 | gap factor |
-|------|-------|-------:|------:|------:|--:|--:|--:|---:|-----------:|
-| `car` | car | 4.5 | 1.8 | 50 | 1.5 | 2.0 | 1.2 | 2.0 | 1.0 |
-| `van` | van | 5.5 | 2.0 | 44 | 1.2 | 2.0 | 1.2 | 2.0 | 1.0 |
-| `truck` (rigid) | truck | 12.0 | 2.55 | 25 | 0.7 | 1.5 | 1.6 | 2.0 | 1.2 |
-| `articulatedTruck` | truck | 16.5 | 2.55 | 25 | 0.5 | 1.5 | 1.8 | 2.0 | 1.3 |
-| `bus` | bus | 12.0 | 2.55 | 28 | 0.8 | 1.5 | 1.5 | 2.0 | 1.2 |
-| `motorcycle` | motorcycle | 2.2 | 0.8 | 55 | 2.5 | 2.0 | 1.2 | 1.5 | 0.9 |
+| Type | Class | Length | Width | Height | Weight (t) | v max | a | b | T | s0 | gap factor |
+|------|-------|-------:|------:|-------:|-----------:|------:|--:|--:|--:|---:|-----------:|
+| `car` | car | 4.5 | 1.8 | 1.5 | 1.5 | 50 | 1.5 | 2.0 | 1.2 | 2.0 | 1.0 |
+| `van` | van | 5.5 | 2.0 | 2.6 | 3.5 | 44 | 1.2 | 2.0 | 1.2 | 2.0 | 1.0 |
+| `truck` (rigid) | truck | 12.0 | 2.55 | 3.8 | 18 | 25 | 0.7 | 1.5 | 1.6 | 2.0 | 1.2 |
+| `articulatedTruck` | truck | 16.5 | 2.55 | 4.0 | 40 | 25 | 0.5 | 1.5 | 1.8 | 2.0 | 1.3 |
+| `bus` | bus | 12.0 | 2.55 | 3.2 | 18 | 28 | 0.8 | 1.5 | 1.5 | 2.0 | 1.2 |
+| `motorcycle` | motorcycle | 2.2 | 0.8 | 1.3 | 0.3 | 55 | 2.5 | 2.0 | 1.2 | 1.5 | 0.9 |
+
+Routing (#125) only uses links whose `limits` (network package) the vehicle's length, width,
+height and weight are within; the vehicle's origin and destination link are exempt. A vehicle
+with no such route is counted as `unroutable`. Routes are cached per class and per set of
+exceeded limits, so a network without limits routes exactly as before.
 
 Further fields: `delta` (4), `safeDeceleration` (4 / 3 for heavy vehicles), `politeness`
 (0.25 / 0.4). Mixes reference type names; the class decides lane permissions, routing and the

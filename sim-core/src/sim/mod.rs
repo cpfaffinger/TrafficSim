@@ -1128,7 +1128,18 @@ impl Simulation {
             let lost = dt * (1.0 - v.speed / net.seg_speed_limit[v.seg as usize]).max(0.0);
             v.lost_time += lost;
             v.still = if v.speed < 0.1 { v.still + dt } else { 0.0 };
-            if stuck_timeout > 0.0 && v.alive && v.still > stuck_timeout && !net.is_lane(v.seg) {
+            // Only inside a junction (#154: a queue standing across a plain joint is no gridlock).
+            if stuck_timeout > 0.0
+                && v.alive
+                && v.still > stuck_timeout
+                && net.segment_connector(v.seg).is_some_and(|c| {
+                    let node = net.connectors[c as usize].node;
+                    !matches!(
+                        net.nodes[node as usize].control,
+                        crate::package::NodeControl::None | crate::package::NodeControl::Boundary
+                    )
+                })
+            {
                 counters.removed_stuck += 1;
                 v.alive = false;
             }

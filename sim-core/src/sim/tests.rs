@@ -2208,6 +2208,37 @@ fn vehicles_are_not_inserted_into_a_queue_beyond_a_very_short_entry_link() {
     );
 }
 
+/// #154: Innsbruck: a queue standing across a plain joint (two ways meeting, no junction) is a
+/// queue, not a gridlock; its vehicles on the joint's connector were removed as stuck.
+#[test]
+fn vehicles_queued_across_a_joint_are_not_removed_as_stuck() {
+    let mut b = NetBuilder::new();
+    let v = 13.9;
+    b.node("W", -300.0, 0.0, NodeControl::Boundary)
+        .node("K", 0.0, 0.0, NodeControl::None)
+        .node("E", 300.0, 0.0, NodeControl::Boundary)
+        .link("in", "W", "K", 1, v)
+        .link("out", "K", "E", 1, v)
+        .connect("go", "in", 0, "out", 0, Priority::Major);
+    let mut config = quiet();
+    config.junction.stuck_timeout = 20.0;
+    let mut s = sim(&b, config);
+    let blocker = s.place_vehicle("out", 0, 4.0, 0.0, "out", crawler()).unwrap();
+    let queued = s.place_vehicle("in", 0, 280.0, 0.0, "out", car()).unwrap();
+    put_on_connector(&mut s, queued, "go", 1.0);
+    while s.time < 60.0 {
+        s.step();
+        if let Some(v) = s.vehicles.iter_mut().find(|v| v.id == blocker) {
+            (v.pos, v.speed) = (4.0, 0.0);
+        }
+    }
+    assert!(
+        vehicle(&s, queued).is_some(),
+        "removed although only queued behind a vehicle"
+    );
+    assert_eq!(s.stats().removed_stuck, 0);
+}
+
 /// W → J1 → J2 → E: straight (`short`) or around (`up`, `down`); a held vehicle blocks `short`.
 fn navi_net() -> NetBuilder {
     let mut b = NetBuilder::new();

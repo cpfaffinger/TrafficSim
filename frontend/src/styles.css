@@ -718,3 +718,15 @@ dl.stats dd {
   margin-top: 8px;
   width: 100%;
 }
+
+/* Focus / follow buttons of a vehicle (#130). */
+.inspector-actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.inspector-actions button[aria-pressed='true'] {
+  background: var(--accent);
+  color: #fff;
+}

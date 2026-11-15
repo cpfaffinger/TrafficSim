@@ -89,6 +89,13 @@ describe('basemap meshes', () => {
   it('triangulates polygons with holes', () => {
     expect(triangulate([square(0, 0, 10)])).toHaveLength(2);
     expect(triangulate([square(0, 0, 10), square(4, 4, 2).reverse()])).toHaveLength(8);
+  });
+
+  it('drops holes that would break the triangulation into stripes (#130)', () => {
+    // A hole reaching outside its outer ring (generalised low-zoom tiles): earcut cannot cover the
+    // polygon, the outer ring alone is used.
+    const broken = triangulate([square(0, 0, 10), square(5, -3, 8).reverse()]);
+    expect(broken).toEqual(triangulate([square(0, 0, 10)]));
     expect(triangulate([[[0, 0], [1, 1]]])).toEqual([]);
   });
 

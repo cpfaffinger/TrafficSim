@@ -25,10 +25,22 @@ export function buildBasemapMeshes(polygons: readonly BasemapPolygon[]): Basemap
 }
 
 /** Triangle indices into the concatenated rings (outer first, then holes). */
+/**
+ * Triangles of a polygon with holes (indices into the rings' vertices in order). Generalised tiles at
+ * low zoom contain holes that touch their outer ring; earcut then bridges them with long horizontal
+ * slivers (stripes across the map, #130). When the triangles do not cover the polygon's area, the
+ * outer ring alone is used: a hole drawn filled is far less visible than a stripe.
+ */
 export function triangulate(rings: readonly (readonly [number, number])[][]): number[][] {
   const [outer, ...holes] = rings.map((r) => r.map(([x, y]) => new Vector2(x, y)));
   if (!outer || outer.length < 3) return [];
-  return ShapeUtils.triangulateShape(outer, holes);
+  if (holes.length === 0) return ShapeUtils.triangulateShape(outer, []);
+  const tris = ShapeUtils.triangulateShape(outer, holes);
+  const points = [outer, ...holes].flat();
+  const covered = tris.reduce((sum, [a, b, c]) => sum + Math.abs(ShapeUtils.area([points[a!]!, points[b!]!, points[c!]!])), 0);
+  const expected = Math.abs(ShapeUtils.area(outer)) - holes.reduce((sum, h) => sum + Math.abs(ShapeUtils.area(h)), 0);
+  if (expected > 0 && Math.abs(covered - expected) <= 0.01 * expected) return tris;
+  return ShapeUtils.triangulateShape(outer, []);
 }
 
 function flat(mesh: MeshData, rings: [number, number][][], z: number): void {

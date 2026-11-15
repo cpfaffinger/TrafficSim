@@ -21,6 +21,15 @@ describe('InspectorPanel', () => {
     expect(container.innerHTML).toBe('');
   });
 
+  it('offers buttons for the selection (#130)', () => {
+    const focus = vi.fn();
+    const model = inspect(new PackageIndex(pkg), { kind: 'lane', linkId: 'l1', laneIndex: 0 });
+    render(<InspectorPanel model={model} onClose={vi.fn()} actions={[{ label: 'Focus', onClick: focus }, { label: 'Stop following', onClick: vi.fn(), pressed: true }]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Focus' }));
+    expect(focus).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Stop following' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('renders sections, values and assumed markers', () => {
     const onClose = vi.fn();
     const model = inspect(new PackageIndex(pkg), { kind: 'lane', linkId: 'l1', laneIndex: 0 });

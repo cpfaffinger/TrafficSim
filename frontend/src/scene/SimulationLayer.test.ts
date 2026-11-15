@@ -26,4 +26,11 @@ describe('SimulationLayer (#125)', () => {
     layer.updateVehicles(snapshot([[500, 300, 0, 0, 5, 4.5, 0, 0, 7]]));
     expect(layer.vehicleAt(rayDown(500, 300))).toBe(7);
   });
+
+  it('knows where a vehicle is (focus and follow, #130)', () => {
+    const layer = new SimulationLayer();
+    layer.updateVehicles(snapshot([[12, -4, 0, 0, 5, 4.5, 0, 0, 3]]));
+    expect(layer.positionOf(3)).toEqual([12, -4]);
+    expect(layer.positionOf(4)).toBeNull();
+  });
 });

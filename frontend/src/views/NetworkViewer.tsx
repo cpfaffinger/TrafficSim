@@ -52,6 +52,7 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
   const [target, setTarget] = useState<PickTarget | null>(null);
   /** Clicked vehicle (#125): its state, route and trip in the inspector. */
   const [vehicleId, setVehicleId] = useState<number | null>(null);
+  const [following, setFollowing] = useState(false);
   const [basemap, setBasemap] = useState<{ status: BasemapStatus; attribution: string | null }>({ status: 'idle', attribution: null });
   const [geocoderAttribution, setGeocoderAttribution] = useState<string | null>(null);
   const [showTunnels, setShowTunnels] = useState(true);
@@ -136,6 +137,26 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
     sceneRef.current?.selectVehicle(vehicleId);
     if (vehicleId === null) sceneRef.current?.showRoute(null);
   }, [vehicleId, watchVehicle]);
+  // Following a vehicle (#130) ends with another selection or when it leaves the network.
+  const [followedId, setFollowedId] = useState(vehicleId);
+  if (followedId !== vehicleId) {
+    setFollowedId(vehicleId);
+    setFollowing(false);
+  }
+  const left = sim.vehicle?.left ?? false;
+  useEffect(() => {
+    sceneRef.current?.followVehicle(following && vehicleId !== null && !left ? vehicleId : null);
+  }, [following, vehicleId, left]);
+  const vehicleActions = useMemo(
+    () =>
+      vehicleId === null || left
+        ? undefined
+        : [
+            { label: 'Focus', onClick: () => void sceneRef.current?.focusVehicle(vehicleId) },
+            { label: following ? 'Stop following' : 'Follow', onClick: () => setFollowing((f) => !f), pressed: following },
+          ],
+    [vehicleId, following, left],
+  );
   const watched = sim.vehicle;
   const routeKey = watched
     ? `${watched.info.id}:${watched.info.routePos}:${watched.info.route.join()}:${watched.info.trail.length}:${watched.left}`
@@ -354,7 +375,12 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
             {editing && !drawing && index && (
               <EditorPanel index={index} target={target} session={editor.session} scope={editor.scope} onScope={editor.setScope} />
             )}
-            <InspectorPanel model={shownModel} onClose={closeInspector} onDebug={sim.ready && selection ? () => void downloadDebug() : undefined} />
+            <InspectorPanel
+              model={shownModel}
+              onClose={closeInspector}
+              onDebug={sim.ready && selection ? () => void downloadDebug() : undefined}
+              actions={vehicleActions}
+            />
           </div>
         )}
       </div>

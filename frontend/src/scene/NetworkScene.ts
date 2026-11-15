@@ -110,6 +110,8 @@ export class NetworkScene {
   private readonly raycaster = new THREE.Raycaster();
   /** Route of the selected vehicle (#125). */
   private readonly routeGroup = new THREE.Group();
+  /** Vehicle the camera follows (#130). */
+  private followed: number | null = null;
   private readonly clock = new THREE.Clock();
   private frameHandle = 0;
   private dirty = true;
@@ -375,7 +377,24 @@ export class NetworkScene {
   /** Highlights a vehicle (#125). */
   selectVehicle(id: number | null): void {
     this.simulation.selected = id;
+    if (id !== this.followed) this.followed = null;
     this.dirty = true;
+  }
+
+  /** Centres the camera on a vehicle, closer than 400 m (#130); false when it is not on the network. */
+  focusVehicle(id: number): boolean {
+    const p = this.simulation.positionOf(id);
+    if (!p) return false;
+    const s = this.controls.state;
+    this.controls.setState({ ...s, target: [p[0], -p[1]], distance: Math.min(s.distance, 400) });
+    this.dirty = true;
+    return true;
+  }
+
+  /** Keeps a vehicle at the centre of the view (null stops following, #130). */
+  followVehicle(id: number | null): void {
+    this.followed = id;
+    if (id !== null) this.focusVehicle(id);
   }
 
   /**
@@ -393,7 +412,8 @@ export class NetworkScene {
       const data = new MeshData();
       for (const line of lines(ids)) addRibbon(data, line, width, lift);
       if (data.triangleCount === 0) return;
-      const mesh = new THREE.Mesh(toBufferGeometry(data), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false }));
+      const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthTest: false, depthWrite: false, side: THREE.DoubleSide });
+      const mesh = new THREE.Mesh(toBufferGeometry(data), material);
       mesh.renderOrder = 9;
       this.routeGroup.add(mesh);
     };
@@ -595,6 +615,12 @@ export class NetworkScene {
     if (this.controls.update(dt)) this.dirty = true;
     this.applyLod(false);
     if (this.followView) this.followBasemap();
+    if (this.followed !== null) {
+      const p = this.simulation.positionOf(this.followed);
+      const t = this.controls.state.target;
+      if (!p) this.followed = null;
+      else if (Math.hypot(p[0] - t[0], -p[1] - t[1]) > 0.05) this.controls.setState({ ...this.controls.state, target: [p[0], -p[1]] });
+    }
     // Render on demand: camera movement, new content or resize. Pointer moves mark dirty via the camera.
     const fogFar = Math.max(4000, this.controls.state.distance * 12);
     const fog = this.scene.fog as THREE.Fog;

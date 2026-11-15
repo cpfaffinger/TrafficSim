@@ -80,6 +80,16 @@ export class SimulationLayer {
     if (this.vehicles.instanceColor) this.vehicles.instanceColor.needsUpdate = true;
   }
 
+  /** Position (east, north in m) of a vehicle in the latest snapshot, or null (#130). */
+  positionOf(id: number): [number, number] | null {
+    const s = this.last;
+    if (!s) return null;
+    for (let o = 0; o + NETWORK_SNAPSHOT_STRIDE <= s.length; o += NETWORK_SNAPSHOT_STRIDE) {
+      if (Math.round(s[o + 8]!) === id) return [s[o]!, s[o + 1]!];
+    }
+    return null;
+  }
+
   /** Id of the vehicle nearest along the ray, or null (#125). */
   vehicleAt(raycaster: THREE.Raycaster): number | null {
     if (!this.last || this.vehicles.count === 0) return null;

@@ -5,10 +5,12 @@ export interface InspectorPanelProps {
   onClose: () => void;
   /** Downloads a debug snapshot of the selection as JSON (#129); absent without a running simulation. */
   onDebug?: () => void;
+  /** Buttons for the selection, e.g. focus and follow a vehicle (#130). */
+  actions?: { label: string; onClick: () => void; pressed?: boolean }[];
 }
 
 /** Details of the picked lane, link, movement or junction (#37). */
-export function InspectorPanel({ model, onClose, onDebug }: InspectorPanelProps) {
+export function InspectorPanel({ model, onClose, onDebug, actions }: InspectorPanelProps) {
   // Nothing selected: the scene stays clear (#128); the hint is in the View section.
   if (!model) return null;
   const hasAssumed = model.sections.some((s) => s.fields.some((f) => f.assumed));
@@ -20,6 +22,15 @@ export function InspectorPanel({ model, onClose, onDebug }: InspectorPanelProps)
           ×
         </button>
       </header>
+      {actions && actions.length > 0 && (
+        <div className="inspector-actions">
+          {actions.map((a) => (
+            <button key={a.label} type="button" onClick={a.onClick} aria-pressed={a.pressed}>
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
       {model.sections.map((section) => (
         <div key={section.title} className="inspector-section">
           <h3>{section.title}</h3>

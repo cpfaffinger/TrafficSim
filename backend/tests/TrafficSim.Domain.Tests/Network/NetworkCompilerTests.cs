@@ -93,6 +93,35 @@ public class NetworkCompilerTests
     }
 
     [Fact]
+    public void A_signal_facing_one_direction_controls_only_the_junction_ahead_of_it()
+    {
+        // #139: Manhattan, Park Avenue: traffic_signals:direction=forward 15 m before one junction and
+        // 20 m after another one also made the junction behind it a signal.
+        var b = new OsmBuilder()
+            .Node(1, -200, 0).Node(2, 0, 0).Node(20, 20, 0, ("highway", "traffic_signals"), ("traffic_signals:direction", "forward"))
+            .Node(3, 35, 0).Node(4, 235, 0)
+            .Node(5, 0, 200).Node(6, 0, -200).Node(7, 35, 200).Node(8, 35, -200)
+            .Way(10, [1, 2, 20, 3, 4], ("highway", "primary"))
+            .Way(11, [5, 2, 6], ("highway", "residential"))
+            .Way(12, [7, 3, 8], ("highway", "residential"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        Assert.Equal(NodeControl.Signal, net.Nodes.Single(n => n.OsmId == 3).Control);
+        Assert.NotEqual(NodeControl.Signal, net.Nodes.Single(n => n.OsmId == 2).Control);
+
+        var backward = new OsmBuilder()
+            .Node(1, -200, 0).Node(2, 0, 0).Node(20, 20, 0, ("highway", "traffic_signals"), ("traffic_signals:direction", "backward"))
+            .Node(3, 35, 0).Node(4, 235, 0)
+            .Node(5, 0, 200).Node(6, 0, -200).Node(7, 35, 200).Node(8, 35, -200)
+            .Way(10, [1, 2, 20, 3, 4], ("highway", "primary"))
+            .Way(11, [5, 2, 6], ("highway", "residential"))
+            .Way(12, [7, 3, 8], ("highway", "residential"));
+        var net2 = NetworkCompiler.Compile(backward.Build(), backward.Area());
+        Assert.Equal(NodeControl.Signal, net2.Nodes.Single(n => n.OsmId == 2).Control);
+        Assert.NotEqual(NodeControl.Signal, net2.Nodes.Single(n => n.OsmId == 3).Control);
+    }
+
+    [Fact]
     public void Signals_where_ways_join_just_before_a_junction_control_the_junction()
     {
         // #135: Linz, Ziegeleistrasse x Waldeggstrasse: a signal on each approach, each on the node where

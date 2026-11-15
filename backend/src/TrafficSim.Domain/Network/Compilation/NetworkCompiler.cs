@@ -566,12 +566,14 @@ public static class NetworkCompiler
                     var signs = SignRule.NodeSigns(tags);
                     if (highway == "traffic_signals")
                     {
-                        if (toEnd <= options.SignalCaptureMetres && !SignalsSuppressed(NodeByKey(piece.EndKey)))
+                        // A signal facing one direction controls only the junction ahead of it (#139).
+                        var facing = SignalFacing(tags);
+                        if (facing != false && toEnd <= options.SignalCaptureMetres && !SignalsSuppressed(NodeByKey(piece.EndKey)))
                         {
                             NodeByKey(piece.EndKey).SignalNearby = true;
                         }
 
-                        if (toStart <= options.SignalCaptureMetres && !SignalsSuppressed(NodeByKey(piece.StartKey)))
+                        if (facing != true && toStart <= options.SignalCaptureMetres && !SignalsSuppressed(NodeByKey(piece.StartKey)))
                         {
                             NodeByKey(piece.StartKey).SignalNearby = true;
                         }
@@ -592,9 +594,17 @@ public static class NetworkCompiler
             // way crosses the junction) controls the junctions just ahead of it like a signal inside a way.
             foreach (var g in _nodes.Values.Where(g => g.Pieces.Count == 2 && Tags.Get(g.Tags, "highway") == "traffic_signals" && !SignalsSuppressed(g)))
             {
+                var facing = SignalFacing(g.Tags);
                 foreach (var piece in g.Pieces)
                 {
-                    var other = NodeByKey(piece.StartKey == g.Key ? piece.EndKey : piece.StartKey);
+                    // Ahead of a forward signal lies the end of the piece starting at the signal (#139).
+                    var ahead = piece.StartKey == g.Key;
+                    if (facing is { } f && f != ahead)
+                    {
+                        continue;
+                    }
+
+                    var other = NodeByKey(ahead ? piece.EndKey : piece.StartKey);
                     if (other.Pieces.Count >= 3 && other.Node!.Control != NodeControl.Boundary && !SignalsSuppressed(other)
                         && Polyline.PlanarLength(piece.Points) <= options.SignalCaptureMetres)
                     {
@@ -640,6 +650,15 @@ public static class NetworkCompiler
 
             return false;
         }
+
+        /// <summary>Direction a signal faces along its way: true = forward, false = backward, null = both or unknown.</summary>
+        private static bool? SignalFacing(IReadOnlyDictionary<string, string> tags) =>
+            (Tags.Get(tags, "traffic_signals:direction") ?? Tags.Get(tags, "direction")) switch
+            {
+                "forward" => true,
+                "backward" => false,
+                _ => null,
+            };
 
         private static bool SignalsSuppressed(GraphNode g) => Tags.Get(g.Tags, "trafficsim:signals") == "no";
 

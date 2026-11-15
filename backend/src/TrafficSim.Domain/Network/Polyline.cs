@@ -112,6 +112,62 @@ public static class Polyline
         return result;
     }
 
+    /// <summary>
+    /// Shifts a centreline sideways (positive = right of the direction of travel) by <paramref name="start"/> at
+    /// its start and <paramref name="end"/> at its end, each easing to zero over <paramref name="taper"/> metres
+    /// (#146: branches of forks and merges kept flush with the road they leave or join). Points are added
+    /// every few metres along the tapers so the shift is smooth.
+    /// </summary>
+    public static IReadOnlyList<Vec3> ShiftEnds(IReadOnlyList<Vec3> points, double start, double end, double taper)
+    {
+        ArgumentNullException.ThrowIfNull(points);
+        if (points.Count < 2 || (start == 0 && end == 0) || taper <= 0)
+        {
+            return points.ToList();
+        }
+
+        const double step = 4;
+        var total = PlanarLength(points);
+        var dense = new List<(Vec3 P, double S)>();
+        var s0 = 0.0;
+        for (var i = 0; i < points.Count - 1; i++)
+        {
+            var a = points[i];
+            var b = points[i + 1];
+            var len = (b - a).PlanarLength;
+            dense.Add((a, s0));
+            for (var d = step; d < len; d += step)
+            {
+                var at = s0 + d;
+                if (at < taper || at > total - taper)
+                {
+                    dense.Add((a + ((b - a) * (d / len)), at));
+                }
+            }
+
+            s0 += len;
+        }
+
+        dense.Add((points[^1], total));
+        static double Ease(double x) => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - (2 * x));
+        var result = new List<Vec3>(dense.Count);
+        for (var i = 0; i < dense.Count; i++)
+        {
+            var prev = i > 0 ? (dense[i].P - dense[i - 1].P).PlanarNormalized() : (dense[1].P - dense[0].P).PlanarNormalized();
+            var next = i < dense.Count - 1 ? (dense[i + 1].P - dense[i].P).PlanarNormalized() : prev;
+            var normal = (prev.RightNormal() + next.RightNormal()).PlanarNormalized();
+            if (normal.PlanarLength < 1e-9)
+            {
+                normal = prev.RightNormal();
+            }
+
+            var shift = (start * Ease(1 - (dense[i].S / taper))) + (end * Ease(1 - ((total - dense[i].S) / taper)));
+            result.Add(dense[i].P + (normal * shift));
+        }
+
+        return result;
+    }
+
     /// <summary>Cubic Bézier between two lane ends, sampled into <paramref name="segments"/> pieces.</summary>
     public static IReadOnlyList<Vec3> Bezier(Vec3 start, Vec3 startDirection, Vec3 end, Vec3 endDirection, int segments = 8)
     {

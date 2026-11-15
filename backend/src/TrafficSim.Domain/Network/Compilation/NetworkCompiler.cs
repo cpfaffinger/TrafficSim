@@ -101,6 +101,7 @@ public static class NetworkCompiler
             DecideControls();
             BuildGeometry();
             BuildConnectors();
+            ShiftBranches();
             BuildConflicts();
             BuildSignalPlans();
             AssignEndSigns();
@@ -759,16 +760,7 @@ public static class NetworkCompiler
 
                 var trimmed = rs > 0 || re > 0 ? Polyline.Slice(full, rs, length - re) : full;
                 link.Geometry = trimmed;
-
-                var gap = _bothWaysGap[link];
-                var leftEdge = gap >= 0 ? gap : -link.TotalWidth / 2;
-                var leftOf = 0.0;
-                foreach (var lane in link.Lanes.OrderByDescending(l => l.Index))
-                {
-                    var offset = leftEdge + leftOf + (lane.Width / 2);
-                    lane.Geometry = Polyline.Offset(trimmed, offset);
-                    leftOf += lane.Width;
-                }
+                LayLanes(link);
 
                 if (to.Node!.Control == NodeControl.Signal && link.Lanes.Count > 1)
                 {
@@ -784,6 +776,101 @@ public static class NetworkCompiler
         /// diameter): they get an assumed length limit unless the way has one (#125). Runs on the
         /// untrimmed geometry.
         /// </summary>
+        /// <summary>Lane centrelines of a link from its centreline.</summary>
+        private void LayLanes(Link link)
+        {
+            var gap = _bothWaysGap[link];
+            var leftEdge = gap >= 0 ? gap : -link.TotalWidth / 2;
+            var leftOf = 0.0;
+            foreach (var lane in link.Lanes.OrderByDescending(l => l.Index))
+            {
+                var offset = leftEdge + leftOf + (lane.Width / 2);
+                lane.Geometry = Polyline.Offset(link.Geometry, offset);
+                leftOf += lane.Width;
+            }
+        }
+
+        /// <summary>
+        /// Shifts the branches of forks and merges (#146) once the movements are known: turns are classified on the
+        /// OSM centrelines, only the drawn lanes and the connector curves between them move.
+        /// </summary>
+        private void ShiftBranches()
+        {
+            var shifts = BranchShifts();
+            var moved = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var link in shifts.Keys.Select(k => k.Link).Distinct())
+            {
+                var start = shifts.GetValueOrDefault((link, true));
+                var end = shifts.GetValueOrDefault((link, false));
+                if (Math.Abs(start) < 0.01 && Math.Abs(end) < 0.01)
+                {
+                    continue;
+                }
+
+                var taper = Math.Min(BranchTaperMetres, 0.45 * Polyline.PlanarLength(link.Geometry));
+                link.Geometry = Polyline.ShiftEnds(link.Geometry, start, end, taper);
+                LayLanes(link);
+                moved.Add(link.Id);
+            }
+
+            foreach (var c in _connectors.Where(c => moved.Contains(c.FromLink) || moved.Contains(c.ToLink)))
+            {
+                c.Geometry = ConnectorGeometry(_linkById[c.FromLink].Lanes[c.FromLane].Geometry, _linkById[c.ToLink].Lanes[c.ToLane].Geometry);
+            }
+        }
+
+        /// <summary>Curve of a movement from the end of one lane to the start of another.</summary>
+        private static IReadOnlyList<Vec3> ConnectorGeometry(IReadOnlyList<Vec3> a, IReadOnlyList<Vec3> b)
+        {
+            var start = a[^1];
+            var end = b[0];
+            return (end - start).PlanarLength < 0.5
+                ? new List<Vec3> { start, end }
+                : Polyline.Bezier(start, Polyline.Direction(a, atEnd: true, span: 3), end, Polyline.Direction(b, atEnd: false, span: 3));
+        }
+
+        /// <summary>Length over which a fork or merge branch eases from the flush edge to its own centreline.</summary>
+        private const double BranchTaperMetres = 60;
+
+        /// <summary>
+        /// Sideways shifts (positive = right) of link ends at forks and merges of one-way roads (#146). OSM draws
+        /// roads as centrelines meeting in one node, so an exit ramp started in the middle of the carriageway and
+        /// the lanes going on jumped sideways. The leftmost branch keeps its left edge flush with the road it leaves
+        /// or joins, the rightmost branch its right edge.
+        /// </summary>
+        private Dictionary<(Link Link, bool AtStart), double> BranchShifts()
+        {
+            var shifts = new Dictionary<(Link, bool), double>();
+            foreach (var g in _nodes.Values)
+            {
+                if (g.Node!.Control is NodeControl.Roundabout or NodeControl.Boundary || g.Incoming.Concat(g.Outgoing).Any(l => l.OppositeLinkId is not null))
+                {
+                    continue;
+                }
+
+                if (g.Incoming.Count == 1 && g.Outgoing.Count >= 2)
+                {
+                    var trunk = g.Incoming[0];
+                    var dir = Polyline.Direction(trunk.Geometry, atEnd: true);
+                    // Branches left to right: the more a branch turns right, the further right it lies.
+                    var branches = g.Outgoing.OrderByDescending(o => Polyline.SignedAngle(dir, Polyline.Direction(o.Geometry, atEnd: false))).ToList();
+                    shifts[(branches[0], true)] = -(trunk.TotalWidth - branches[0].TotalWidth) / 2;
+                    shifts[(branches[^1], true)] = (trunk.TotalWidth - branches[^1].TotalWidth) / 2;
+                }
+                else if (g.Outgoing.Count == 1 && g.Incoming.Count >= 2)
+                {
+                    var trunk = g.Outgoing[0];
+                    var dir = Polyline.Direction(trunk.Geometry, atEnd: false);
+                    // A road joining from the right turns right into the trunk (left to right: decreasing turn).
+                    var branches = g.Incoming.OrderByDescending(i => Polyline.SignedAngle(Polyline.Direction(i.Geometry, atEnd: true), dir)).ToList();
+                    shifts[(branches[0], false)] = -(trunk.TotalWidth - branches[0].TotalWidth) / 2;
+                    shifts[(branches[^1], false)] = (trunk.TotalWidth - branches[^1].TotalWidth) / 2;
+                }
+            }
+
+            return shifts;
+        }
+
         private void LimitTightRoundabouts()
         {
             var ring = _links.Where(l => l.Roundabout).ToList();
@@ -1192,13 +1279,7 @@ public static class NetworkCompiler
 
         private void AddConnector(GraphNode g, Link incoming, int fromLane, Link outgoing, int toLane, Turn turn, HashSet<Piece> majorPieces)
         {
-            var a = incoming.Lanes[fromLane].Geometry;
-            var b = outgoing.Lanes[toLane].Geometry;
-            var start = a[^1];
-            var end = b[0];
-            var geometry = (end - start).PlanarLength < 0.5
-                ? new List<Vec3> { start, end }
-                : Polyline.Bezier(start, Polyline.Direction(a, atEnd: true, span: 3), end, Polyline.Direction(b, atEnd: false, span: 3));
+            var geometry = ConnectorGeometry(incoming.Lanes[fromLane].Geometry, outgoing.Lanes[toLane].Geometry);
             var priority = g.Node!.Control switch
             {
                 NodeControl.Signal => ConnectorPriority.Signal,

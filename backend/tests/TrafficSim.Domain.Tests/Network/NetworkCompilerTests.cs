@@ -619,6 +619,56 @@ public class NetworkCompilerTests
     }
 
     [Fact]
+    public void An_exit_ramp_leaves_from_the_right_edge_and_the_motorway_keeps_its_lanes_in_place()
+    {
+        // #146: A1 St. Poelten Sued: OSM ways are centrelines, so the ramp started in the middle of the
+        // four lanes and the three lanes going on jumped half a lane to the right.
+        var b = new OsmBuilder()
+            .Node(1, -300, 0).Node(2, 0, 0).Node(3, 300, 0).Node(4, 300, -30)
+            .Way(10, [1, 2], ("highway", "motorway"), ("oneway", "yes"), ("lanes", "4"))
+            .Way(11, [2, 3], ("highway", "motorway"), ("oneway", "yes"), ("lanes", "3"))
+            .Way(12, [2, 4], ("highway", "motorway_link"), ("oneway", "yes"), ("lanes", "1"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var approach = net.Links.Single(l => l.OsmWayId == 10);
+        var main = net.Links.Single(l => l.OsmWayId == 11);
+        var ramp = net.Links.Single(l => l.OsmWayId == 12);
+        double EndY(Link l, int lane) => l.Lanes[lane].Geometry[^1].Y;
+        double StartY(Link l, int lane) => l.Lanes[lane].Geometry[0].Y;
+        // The lanes going on start where lanes 1..3 of the approach end.
+        for (var k = 0; k < 3; k++)
+        {
+            Assert.InRange(StartY(main, k), EndY(approach, k + 1) - 0.3, EndY(approach, k + 1) + 0.3);
+        }
+
+        // The ramp starts next to the rightmost lane, not in the middle of the carriageway.
+        Assert.InRange(StartY(ramp, 0), EndY(approach, 0) - 1.2, EndY(approach, 0) + 0.3);
+        // Far from the fork every road is back on its OSM centreline.
+        Assert.InRange(main.Geometry[^1].Y, -0.01, 0.01);
+    }
+
+    [Fact]
+    public void An_on_ramp_joins_at_the_right_edge()
+    {
+        var b = new OsmBuilder()
+            .Node(1, -300, 0).Node(5, -300, -30).Node(2, 0, 0).Node(3, 300, 0)
+            .Way(10, [1, 2], ("highway", "motorway"), ("oneway", "yes"), ("lanes", "3"))
+            .Way(12, [5, 2], ("highway", "motorway_link"), ("oneway", "yes"), ("lanes", "1"))
+            .Way(11, [2, 3], ("highway", "motorway"), ("oneway", "yes"), ("lanes", "4"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var main = net.Links.Single(l => l.OsmWayId == 10);
+        var ramp = net.Links.Single(l => l.OsmWayId == 12);
+        var after = net.Links.Single(l => l.OsmWayId == 11);
+        for (var k = 0; k < 3; k++)
+        {
+            Assert.InRange(main.Lanes[k].Geometry[^1].Y, after.Lanes[k + 1].Geometry[0].Y - 0.3, after.Lanes[k + 1].Geometry[0].Y + 0.3);
+        }
+
+        Assert.InRange(ramp.Lanes[0].Geometry[^1].Y, after.Lanes[0].Geometry[0].Y - 1.2, after.Lanes[0].Geometry[0].Y + 0.3);
+    }
+
+    [Fact]
     public void Lanes_of_a_three_way_motorway_fork_follow_their_arrows_in_order()
     {
         // #134: A23 Vienna, Knoten Prater: "none|none|through|slight_right|right" splits into the motorway

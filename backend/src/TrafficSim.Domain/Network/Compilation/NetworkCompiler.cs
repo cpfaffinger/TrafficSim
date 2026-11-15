@@ -922,7 +922,7 @@ public static class NetworkCompiler
                         }
                         else
                         {
-                            pairs = merge?.GetValueOrDefault(incoming) ?? MapLanes(incoming, outgoing, turn, forks[i], movements.Count);
+                            pairs = CoverClasses(incoming, outgoing, (merge?.GetValueOrDefault(incoming) ?? MapLanes(incoming, outgoing, turn, forks[i], movements.Count)).ToList());
                         }
 
                         planned.Add((outgoing, turn, pairs.ToList()));
@@ -942,6 +942,39 @@ public static class NetworkCompiler
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Lane permissions along a movement (#133): a source lane whose vehicle classes cannot use any of its
+        /// target lanes (one became a bus lane) also gets the nearest target lane that allows them, so its
+        /// cars do not end up on a lane without a way on.
+        /// </summary>
+        private static List<(int From, int To)> CoverClasses(Link incoming, Link outgoing, List<(int From, int To)> pairs)
+        {
+            foreach (var from in pairs.Select(p => p.From).Distinct().ToList())
+            {
+                var targets = pairs.Where(p => p.From == from).Select(p => p.To).ToList();
+                var covered = targets.Aggregate(VehicleClasses.None, (a, t) => a | outgoing.Lanes[t].Allowed);
+                var missing = incoming.Lanes[from].Allowed & ~covered;
+                if (missing == VehicleClasses.None)
+                {
+                    continue;
+                }
+
+                var near = targets.Average();
+                var extra = outgoing.Lanes
+                    .Where(l => (l.Allowed & missing) != VehicleClasses.None && !targets.Contains(l.Index))
+                    .OrderBy(l => Math.Abs(l.Index - near))
+                    .ThenBy(l => l.Index)
+                    .Select(l => (int?)l.Index)
+                    .FirstOrDefault();
+                if (extra is { } t)
+                {
+                    pairs.Add((from, t));
+                }
+            }
+
+            return pairs;
         }
 
         /// <summary>

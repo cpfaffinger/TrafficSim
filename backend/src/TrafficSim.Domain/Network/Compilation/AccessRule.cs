@@ -56,7 +56,10 @@ public static class AccessRule
         var allowed = wayAllowed;
         if (Tags.IsNo(access))
         {
-            return VehicleClasses.None;
+            // Closed to general traffic: only what the lane allows explicitly, e.g. a bus lane mapped
+            // as access:lanes=yes|no + bus:lanes=|yes (#133; it allowed nothing at all).
+            return (Tags.IsYes(bus) ? VehicleClasses.Bus : VehicleClasses.None)
+                | (Tags.IsYes(hgv) ? VehicleClasses.Truck : VehicleClasses.None);
         }
 
         if (bus == "designated" || (Tags.IsYes(bus) && wayAllowed == VehicleClasses.None))

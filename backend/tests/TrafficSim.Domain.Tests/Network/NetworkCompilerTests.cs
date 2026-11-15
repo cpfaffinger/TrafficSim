@@ -485,6 +485,25 @@ public class NetworkCompilerTests
     }
 
     [Fact]
+    public void Bus_lanes_mapped_with_access_no_and_bus_yes_carry_buses_and_cars_keep_a_way_on()
+    {
+        // #133: Graz, Volksgartenstrasse: access:lanes=yes|no + bus:lanes=|yes (right lane: buses only).
+        var b = new OsmBuilder()
+            .Node(1, -200, 0).Node(2, 0, 0).Node(3, 200, 0)
+            .Way(10, [1, 2], ("highway", "secondary"), ("oneway", "yes"), ("lanes", "2"))
+            .Way(11, [2, 3], ("highway", "secondary"), ("oneway", "yes"), ("lanes", "2"), ("access:lanes", "yes|no"), ("bus:lanes", "|yes"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var bus = net.Links.Single(l => l.OsmWayId == 11);
+        Assert.Equal(VehicleClasses.Bus, bus.Lanes[0].Allowed);
+        Assert.True((bus.Lanes[1].Allowed & VehicleClasses.Car) != 0);
+        // Cars in the right lane before it can still go on (into the left lane).
+        var approach = net.Links.Single(l => l.OsmWayId == 10);
+        var fromRight = net.Connectors.Where(c => c.FromLink == approach.Id && c.FromLane == 0).Select(c => c.ToLane).Order();
+        Assert.Equal([0, 1], fromRight);
+    }
+
+    [Fact]
     public void Dead_end_allows_turning_around()
     {
         var b = new OsmBuilder()

@@ -94,7 +94,7 @@ describe('ImportPanel', () => {
     });
     const onArea = vi.fn();
     render(<ImportPanel api={api} onArea={onArea} onDraw={onDraw} onPackage={vi.fn()} onGeocoderAttribution={vi.fn()} language="en" sleep={() => Promise.resolve()} />);
-    fireEvent.click(screen.getByText('Draw an area on the map'));
+    fireEvent.click(screen.getByText('Draw a polygon'));
     await waitFor(() => expect(draw).not.toBeNull());
     expect(onArea).toHaveBeenLastCalledWith([], false);
     expect(screen.queryByText('Use a rectangle')).toBeNull();
@@ -113,6 +113,28 @@ describe('ImportPanel', () => {
       [14.3, 48.29],
       [14.29, 48.3],
     ]);
+  });
+
+  it('draws a rectangle on the map with two clicks, then edits it like a searched area (#143)', async () => {
+    const api = fakeApi();
+    let draw: ((p: readonly [number, number]) => void) | null = null;
+    const onDraw = vi.fn((h: ((p: readonly [number, number]) => void) | null) => {
+      draw = h;
+    });
+    const onArea = vi.fn();
+    render(<ImportPanel api={api} onArea={onArea} onDraw={onDraw} onPackage={vi.fn()} onGeocoderAttribution={vi.fn()} language="en" sleep={() => Promise.resolve()} />);
+    fireEvent.click(screen.getByText('Draw a rectangle'));
+    await waitFor(() => expect(draw).not.toBeNull());
+    expect(onArea).toHaveBeenLastCalledWith([], false);
+    draw!([14.3, 48.3]);
+    expect(onArea).toHaveBeenLastCalledWith([[14.3, 48.3]], false);
+    await waitFor(() => expect(screen.getByText('Click the opposite corner on the map.')).toBeTruthy());
+    draw!([14.28, 48.29]);
+    expect(onArea).toHaveBeenLastCalledWith([14.28, 48.29, 14.3, 48.3]);
+    await waitFor(() => expect(screen.getByText('Import this area')).toBeTruthy());
+    fireEvent.click(screen.getByText('Import this area'));
+    await waitFor(() => expect(api.startImport).toHaveBeenCalled());
+    expect(api.startImport.mock.calls[0]![0]).toEqual([14.28, 48.29, 14.3, 48.3]);
   });
 
   it('searches, proposes a 1.5 km area and previews it', async () => {

@@ -37,6 +37,9 @@ export interface ImportPanelProps {
 }
 
 const RECENT_LIMIT = 10;
+/** Smallest side of a rectangle drawn on the map (about 50 m). */
+const MIN_RECT_DEGREES = 0.0005;
+
 const errorMessage = (e: unknown) => (e instanceof Error ? e.message : 'Unexpected error');
 
 /** Search → area → import → load (#34), plus "load recent". */
@@ -57,6 +60,42 @@ export function ImportPanel({ api, onArea, onDraw, onPackage, onGeocoderAttribut
   useEffect(() => {
     if (shape) onArea(shape.ring, shape.ring.length >= 3);
   }, [shape, onArea]);
+
+  // A rectangle drawn on the map (#143): two clicks on opposite corners, then the area editor.
+  const [rect, setRect] = useState<{ corner: LonLat | null } | null>(null);
+  const rectCorner = useRef<LonLat | null>(null);
+  const drawingRect = rect !== null;
+  useEffect(() => {
+    if (!onDraw || !drawingRect) return;
+    onDraw((point) => {
+      const first = rectCorner.current;
+      if (!first) {
+        rectCorner.current = point;
+        setRect({ corner: point });
+        onArea([point], false);
+        return;
+      }
+      const bbox: BBox = [Math.min(first[0], point[0]), Math.min(first[1], point[1]), Math.max(first[0], point[0]), Math.max(first[1], point[1])];
+      if (bbox[2] - bbox[0] < MIN_RECT_DEGREES || bbox[3] - bbox[1] < MIN_RECT_DEGREES) return; // a second click on the first corner
+      rectCorner.current = null;
+      setRect(null);
+      setSelection({ label: 'Area drawn on the map', bbox });
+      setPhase(null);
+      setError(null);
+      onArea(bbox);
+    });
+    return () => onDraw(null);
+  }, [onDraw, drawingRect, onArea]);
+  const startRect = () => {
+    rectCorner.current = null;
+    setRect({ corner: null });
+    onArea([], false);
+  };
+  const cancelRect = () => {
+    rectCorner.current = null;
+    setRect(null);
+    onArea(null);
+  };
   const [phase, setPhase] = useState<ImportPhase | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [recent, setRecent] = useState<NetworkSummary[]>([]);
@@ -169,12 +208,29 @@ export function ImportPanel({ api, onArea, onDraw, onPackage, onGeocoderAttribut
         onSelect={select}
         onAttribution={onGeocoderAttribution}
       />
-      {!selection && !shape && onDraw && !busy && (
-        <div className="buttons draw-start">
-          <button type="button" onClick={startShape}>
-            Draw an area on the map
-          </button>
+      {!selection && !shape && !rect && onDraw && !busy && (
+        <div className="draw-start">
+          <p className="muted small">Or draw the import area on the map:</p>
+          <div className="buttons">
+            <button type="button" onClick={startRect}>
+              Draw a rectangle
+            </button>
+            <button type="button" onClick={startShape}>
+              Draw a polygon
+            </button>
+          </div>
         </div>
+      )}
+      {rect && (
+        <section aria-label="Rectangle import area">
+          <h2>Import area — rectangle</h2>
+          <p className="muted">{rect.corner ? 'Click the opposite corner on the map.' : 'Click one corner of the area on the map.'}</p>
+          <div className="buttons">
+            <button type="button" onClick={cancelRect}>
+              Cancel
+            </button>
+          </div>
+        </section>
       )}
       {(selection ?? shape) && (
         <div className="field import-name">

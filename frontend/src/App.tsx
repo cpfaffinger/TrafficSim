@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ApiClient, type BackendStatus } from './api/client';
 import { AboutDialog } from './components/AboutDialog';
-import { AttributionBar } from './components/AttributionBar';
 import { ModeTabs, type AppMode } from './components/ModeTabs';
 import { mergeAttributions } from './lib/attribution';
 import { NetworkViewer } from './views/NetworkViewer';
@@ -77,17 +76,19 @@ export function App() {
       <header className="app-header">
         <h1>TrafficSim</h1>
         <ModeTabs mode={mode} onChange={setMode} />
+        <button type="button" className="link-button header-about" aria-label="About and sources" onClick={() => setAboutOpen(true)}>
+          About
+        </button>
         <span className={`status-dot ${status}`} role="img" aria-label={`Backend ${status}`} title={`Backend ${status}`} />
       </header>
       {outdated && <UpdateBanner onReload={() => window.location.reload()} />}
       <main className="app-main" id={`panel-${mode}`} role="tabpanel" aria-labelledby={`tab-${mode}`}>
         {mode === 'network' ? (
-          <NetworkViewer api={api} onAttributions={setViewerAttributions} shareToken={shareToken} />
+          <NetworkViewer api={api} onAttributions={setViewerAttributions} shareToken={shareToken} onSources={() => setAboutOpen(true)} />
         ) : (
           <RingDemo status={status} version={version} />
         )}
       </main>
-      <AttributionBar attributions={attributions} onAbout={() => setAboutOpen(true)} />
       <AboutDialog open={aboutOpen} version={version} attributions={attributions} onClose={closeAbout} />
     </div>
   );

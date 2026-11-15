@@ -65,7 +65,8 @@ export function AboutDialog({ open, version, attributions, onClose }: AboutDialo
           them must credit “© OpenStreetMap contributors”. The basemap is rendered from OpenFreeMap vector tiles
           (OpenMapTiles schema, OpenStreetMap data).
         </p>
-        <h3>Data sources in use</h3>
+        <h3>Sources</h3>
+        <p className="muted small">Data and services behind what is shown right now (map, elevation, search):</p>
         <ul>
           {attributions.map((a) => (
             <li key={a}>{a}</li>

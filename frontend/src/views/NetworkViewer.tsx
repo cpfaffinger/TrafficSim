@@ -7,6 +7,7 @@ import { SimulationPanel, type SimulationSettings } from '../components/Simulati
 import { DataBasisPanel, type ActivityAnalysis } from '../components/DataBasisPanel';
 import { DemandEditorHost } from '../demand/DemandEditorHost';
 import { ViewToolbar } from '../components/ViewToolbar';
+import { SceneCredit } from '../components/SceneCredit';
 import { DrawRoadPanel } from '../editor/components/DrawRoadPanel';
 import { EditorPanel } from '../editor/components/EditorPanel';
 import { EditorToolbar } from '../editor/components/EditorToolbar';
@@ -35,12 +36,14 @@ export interface NetworkViewerProps {
   /** Opens a shared scenario read-only (#76): no import and no edit tools. */
   shareToken?: string | null;
   scenarioClient?: ScenarioClient;
+  /** Opens the sources and licences page (#128). */
+  onSources?: () => void;
 }
 
 const language = () => (typeof navigator !== 'undefined' ? navigator.language.slice(0, 2) : undefined);
 
 /** Network viewer and editor: import panel, 3D scene, inspector, scenarios and edit tools (glue only; logic lives in lib/, network/, editor/). */
-export function NetworkViewer({ api, onAttributions, shareToken = null, scenarioClient }: NetworkViewerProps) {
+export function NetworkViewer({ api, onAttributions, shareToken = null, scenarioClient, onSources }: NetworkViewerProps) {
   const sceneHost = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<NetworkScene | null>(null);
   const [pkg, setPkg] = useState<NetworkPackage | null>(null);
@@ -237,6 +240,17 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
             language={language()}
           />
         )}
+        <ViewToolbar
+          showBasemap={showBasemap}
+          showTunnels={showTunnels}
+          basemapStatus={basemap.status}
+          canReset={pkg !== null}
+          onShowBasemap={setShowBasemap}
+          onShowTunnels={setShowTunnels}
+          showTerrain={showTerrain}
+          onShowTerrain={pkg?.terrain ? setShowTerrain : undefined}
+          onReset={() => sceneRef.current?.resetView()}
+        />
         {pkg && <NetworkSummaryPanel pkg={pkg} />}
         {pkg && analysis && <DataBasisPanel analysis={analysis} />}
         {pkg && (
@@ -299,17 +313,7 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
       </aside>
       <div className="scene-wrap">
         <div className="scene" ref={sceneHost} />
-        <ViewToolbar
-          showBasemap={showBasemap}
-          showTunnels={showTunnels}
-          basemapStatus={basemap.status}
-          canReset={pkg !== null}
-          onShowBasemap={setShowBasemap}
-          onShowTunnels={setShowTunnels}
-          showTerrain={showTerrain}
-          onShowTerrain={pkg?.terrain ? setShowTerrain : undefined}
-          onReset={() => sceneRef.current?.resetView()}
-        />
+        {onSources && <SceneCredit onSources={onSources} />}
         {pkg && demandOpen && demandScenario && (
           <DemandEditorHost
             scenario={demandScenario}
@@ -320,9 +324,6 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
             onSave={readOnly ? undefined : saveDemand}
             onClose={() => setDemandOpen(false)}
           />
-        )}
-        {!pkg && !readOnly && (
-          <p className="scene-hint">Search a place to import its road network, or load a recent import.</p>
         )}
         {pkg && (
           <div className="scene-side">

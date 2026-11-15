@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { inspect, PackageIndex } from '../network/inspect';
 import { loadGoldenFixture } from '../test/goldenFixture';
 import { AboutDialog } from './AboutDialog';
-import { AttributionBar } from './AttributionBar';
+import { SceneCredit } from './SceneCredit';
 import { ImportProgress } from './ImportProgress';
 import { InspectorPanel } from './InspectorPanel';
 import { ModeTabs } from './ModeTabs';
@@ -16,9 +16,9 @@ afterEach(cleanup);
 const pkg = loadGoldenFixture();
 
 describe('InspectorPanel', () => {
-  it('shows a hint without selection', () => {
-    render(<InspectorPanel model={null} onClose={vi.fn()} />);
-    expect(screen.getByText(/Click a lane/)).toBeTruthy();
+  it('keeps the scene clear without selection (#128)', () => {
+    const { container } = render(<InspectorPanel model={null} onClose={vi.fn()} />);
+    expect(container.innerHTML).toBe('');
   });
 
   it('renders sections, values and assumed markers', () => {
@@ -34,12 +34,12 @@ describe('InspectorPanel', () => {
 });
 
 describe('attribution and legal', () => {
-  it('always shows attributions and opens the dialog', () => {
-    const onAbout = vi.fn();
-    render(<AttributionBar attributions={['© OpenStreetMap contributors (ODbL)', 'OpenFreeMap']} onAbout={onAbout} />);
-    expect(screen.getByText('© OpenStreetMap contributors (ODbL)')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'About & legal' }));
-    expect(onAbout).toHaveBeenCalled();
+  it('credits OpenStreetMap on the map and links the sources page (#128)', () => {
+    const onSources = vi.fn();
+    render(<SceneCredit onSources={onSources} />);
+    expect(screen.getByRole('link', { name: '© OpenStreetMap' }).getAttribute('href')).toBe('https://www.openstreetmap.org/copyright');
+    fireEvent.click(screen.getByRole('button', { name: 'Sources' }));
+    expect(onSources).toHaveBeenCalled();
   });
 
   it('shows licence and ODbL notice, closes on Escape and backdrop click', () => {
@@ -96,24 +96,6 @@ describe('ViewToolbar', () => {
     expect(screen.getByRole('status').textContent).toContain('plain ground');
   });
 
-  it('folds the options behind a toggle (phones)', () => {
-    render(
-      <ViewToolbar
-        showBasemap
-        showTunnels
-        basemapStatus="ready"
-        canReset
-        onShowBasemap={vi.fn()}
-        onShowTunnels={vi.fn()}
-        onReset={vi.fn()}
-      />,
-    );
-    const toggle = screen.getByRole('button', { name: 'Show view options' });
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(toggle);
-    expect(screen.getByRole('toolbar').className).toContain('open');
-    expect(screen.getByRole('button', { name: 'Hide view options' }).getAttribute('aria-expanded')).toBe('true');
-  });
 });
 
 describe('summaries', () => {

@@ -37,9 +37,13 @@ body,
 }
 
 .app {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   height: 100%;
+}
+
+.app > .app-main {
+  flex: 1;
 }
 
 .app-header {
@@ -52,7 +56,7 @@ body,
 }
 
 .app-header .status-dot {
-  margin-left: auto;
+  margin-left: 0;
 }
 
 .app-main {
@@ -139,24 +143,38 @@ body,
   outline-offset: -3px;
 }
 
-.view-toolbar {
-  position: absolute;
-  top: 10px;
-  left: 10px;
+/* View options live in the side panel; the scene stays free of controls (#128). */
+.view-options p {
+  margin: 6px 0 0;
+}
+
+.view-options-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--panel) 90%, transparent);
-  border: 1px solid var(--border);
-  max-width: calc(100% - 20px);
 }
 
-/* Phones only (#121): the options fold behind this button. */
-.view-toolbar-toggle {
-  display: none;
+/* The one credit on the map (#128); all sources are on the sources page. */
+.scene-credit {
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  margin: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  color: var(--muted);
+}
+
+.scene-credit a {
+  color: inherit;
+}
+
+.header-about {
+  margin-left: auto;
+  font-size: 13px;
 }
 
 .camera-help summary {
@@ -168,21 +186,6 @@ body,
   margin: 6px 0 0;
   padding-left: 18px;
   font-size: 12px;
-}
-
-.scene-hint {
-  pointer-events: none;
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  margin: 0;
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--panel) 92%, transparent);
-  border: 1px solid var(--border);
-  text-align: center;
-  max-width: 80%;
 }
 
 .inspector {
@@ -310,22 +313,6 @@ select:focus-visible,
 summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
-}
-
-.attribution-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 4px 12px;
-  border-top: 1px solid var(--border);
-  background: var(--panel);
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.attribution-texts {
-  flex: 1;
-  min-width: 0;
 }
 
 .link-button {
@@ -570,30 +557,6 @@ dl.stats dd {
     grid-template-areas: 'scene' 'panel';
   }
 
-  .view-toolbar {
-    top: 8px;
-    left: 8px;
-    padding: 4px;
-  }
-
-  .view-toolbar:not(.open) > :not(.view-toolbar-toggle) {
-    display: none;
-  }
-
-  .view-toolbar.open {
-    padding: 6px 10px 6px 4px;
-  }
-
-  .view-toolbar-toggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 36px;
-    min-height: 36px;
-    padding: 0;
-    font-size: 18px;
-  }
-
   .panel {
     border-right: none;
     border-top: 1px solid var(--border);
@@ -619,13 +582,6 @@ dl.stats dd {
   .mode-tabs button {
     padding: 4px 8px;
     font-size: 13px;
-  }
-}
-
-/* Phones: the empty-inspector hint would cover a large part of the small map. */
-@media (max-width: 760px) {
-  .inspector-empty {
-    display: none;
   }
 }
 

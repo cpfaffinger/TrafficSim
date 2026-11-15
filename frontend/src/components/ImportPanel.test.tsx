@@ -86,6 +86,35 @@ describe('ImportPanel', () => {
   });
 
 
+  it('draws a polygon on the map without a search first (#142)', async () => {
+    const api = fakeApi();
+    let draw: ((p: readonly [number, number]) => void) | null = null;
+    const onDraw = vi.fn((h: ((p: readonly [number, number]) => void) | null) => {
+      draw = h;
+    });
+    const onArea = vi.fn();
+    render(<ImportPanel api={api} onArea={onArea} onDraw={onDraw} onPackage={vi.fn()} onGeocoderAttribution={vi.fn()} language="en" sleep={() => Promise.resolve()} />);
+    fireEvent.click(screen.getByText('Draw an area on the map'));
+    await waitFor(() => expect(draw).not.toBeNull());
+    expect(onArea).toHaveBeenLastCalledWith([], false);
+    expect(screen.queryByText('Use a rectangle')).toBeNull();
+    for (const p of [
+      [14.28, 48.29],
+      [14.3, 48.29],
+      [14.29, 48.3],
+    ] as const) {
+      draw!(p);
+    }
+    await waitFor(() => expect(onArea).toHaveBeenLastCalledWith(expect.any(Array), true));
+    fireEvent.click(screen.getByText('Import this area'));
+    await waitFor(() => expect(api.startImport).toHaveBeenCalled());
+    expect(api.startImport.mock.calls[0]![0]).toEqual([
+      [14.28, 48.29],
+      [14.3, 48.29],
+      [14.29, 48.3],
+    ]);
+  });
+
   it('searches, proposes a 1.5 km area and previews it', async () => {
     const props = setup();
     await searchAndPick();

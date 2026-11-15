@@ -28,7 +28,7 @@ import { ComparePanel } from '../runs/ComparePanel';
 import { RunsPanel, type SimResults } from '../runs/RunsPanel';
 import { useNetworkEditor } from './useNetworkEditor';
 import { confirmDiscard } from '../editor/discard';
-import type { LonLat, Ring } from '../lib/polygonArea';
+import { isRing, type LonLat, type Ring } from '../lib/polygonArea';
 import { debugFileName, debugReport, debugSelection, downloadText } from '../lib/debugReport';
 import { BUILD_ID } from '../lib/version';
 import '../editor/editor.css';
@@ -62,8 +62,15 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
   const [simSettings, setSimSettings] = useState<SimulationSettings>({ demandScale: 100, truckShare: 0.08, seed: 1 });
   const [analysis, setAnalysis] = useState<ActivityAnalysis | null>(null);
   const [demandOpen, setDemandOpen] = useState(false);
-  // An area preview hides the start map (#140).
+  // An area preview hides the start map (#140); an outline drawn without a search stays on it (#142).
   const [previewing, setPreviewing] = useState(false);
+  const previewingRef = useRef(false);
+  const [startRing, setStartRing] = useState<Ring | null>(null);
+  const [drawHandler, setDrawHandler] = useState<((point: LonLat) => void) | null>(null);
+  const hasPackage = useRef(false);
+  useEffect(() => {
+    hasPackage.current = pkg !== null;
+  }, [pkg]);
   const [sharedScenario, setSharedScenario] = useState<Scenario | null>(null);
   const readOnly = shareToken !== null;
   const scenarios = useMemo(() => scenarioClient ?? new ScenarioClient(), [scenarioClient]);
@@ -252,10 +259,19 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
   const onSharedPackage = useCallback((p: NetworkPackage) => showPackage(p, false), [showPackage]);
 
   const onArea = useCallback((area: BBox | Ring | null, closed?: boolean) => {
-    setPreviewing(!!area && area.length > 0);
+    // Nothing shown in the scene yet: the outline is drawn on the start map (#142).
+    // (An empty outline is a ring just started: a box always has four numbers.)
+    if (area && (area.length === 0 || isRing(area)) && !hasPackage.current && !previewingRef.current) {
+      setStartRing(area as Ring);
+      return;
+    }
+    setStartRing(null);
+    previewingRef.current = !!area && area.length > 0;
+    setPreviewing(previewingRef.current);
     sceneRef.current?.showAreaPreview(area, closed ?? true);
   }, []);
   const onDraw = useCallback((handler: ((point: LonLat) => void) | null) => {
+    setDrawHandler(() => handler);
     sceneRef.current?.setClickHandler(
       handler
         ? (click) => {
@@ -363,7 +379,7 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
       </aside>
       <div className="scene-wrap">
         <div className="scene" ref={sceneHost} />
-        {!pkg && !previewing && !readOnly && <StartMap />}
+        {!pkg && !previewing && !readOnly && <StartMap ring={startRing} onPick={startRing ? drawHandler : null} />}
         {onSources && <SceneCredit onSources={onSources} />}
         {pkg && demandOpen && demandScenario && (
           <DemandEditorHost

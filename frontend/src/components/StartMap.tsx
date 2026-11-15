@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { lonLatToTile } from '../basemap/tiles';
+import { lonLatToTile, tileToLonLat } from '../basemap/tiles';
+import type { LonLat, Ring } from '../lib/polygonArea';
 
 /** Start view before anything is searched (#140): the OSM map of Europe with Austria in the middle. */
 export const START_VIEW = { lat: 47.6, lon: 13.35, zoom: 7 };
@@ -28,12 +29,22 @@ function zoomAt(v: View, delta: number, px: number, py: number): View {
   return { zoom, x: (v.x + px) * f - px, y: (v.y + py) * f - py };
 }
 
+export interface StartMapProps {
+  /** Import outline being drawn on this map (#142). */
+  ring?: Ring | null;
+  /** While set, a click (not a drag) adds a corner at that point. */
+  onPick?: ((point: LonLat) => void) | null;
+}
+
+/** Clicks that moved less than this (pixels) are picks, not drags. */
+const CLICK_SLOP = 5;
+
 /** Pannable, zoomable OpenStreetMap raster map shown under the panels while no network or area is shown. */
-export function StartMap() {
+export function StartMap({ ring = null, onPick = null }: StartMapProps = {}) {
   const host = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>(initialView);
   const [size, setSize] = useState({ w: 1024, h: 768 });
-  const drag = useRef<{ id: number; x: number; y: number } | null>(null);
+  const drag = useRef<{ id: number; x: number; y: number; moved: number } | null>(null);
   const wheel = useRef(0);
 
   useEffect(() => {
@@ -67,7 +78,7 @@ export function StartMap() {
   }, []);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
-    drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    drag.current = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: 0 };
     e.currentTarget.setPointerCapture?.(e.pointerId);
   }, []);
   const onPointerMove = useCallback((e: React.PointerEvent) => {
@@ -75,18 +86,40 @@ export function StartMap() {
     if (!d || d.id !== e.pointerId) return;
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
-    drag.current = { ...d, x: e.clientX, y: e.clientY };
+    drag.current = { ...d, x: e.clientX, y: e.clientY, moved: d.moved + Math.abs(dx) + Math.abs(dy) };
     setView((v) => ({ ...v, x: v.x - dx, y: v.y - dy }));
   }, []);
-  const onPointerUp = useCallback(() => {
+  const onPointerUp = useCallback(
+    (e: React.PointerEvent) => {
+      const d = drag.current;
+      drag.current = null;
+      if (!onPick || !d || d.moved >= CLICK_SLOP) return;
+      const r = e.currentTarget.getBoundingClientRect();
+      const wx = view.x - size.w / 2 + (e.clientX - r.left);
+      const wy = view.y - size.h / 2 + (e.clientY - r.top);
+      const [lon, lat] = tileToLonLat(wx / TILE, wy / TILE, view.zoom);
+      onPick([lon, lat]);
+    },
+    [onPick, view, size],
+  );
+  const onPointerCancel = useCallback(() => {
     drag.current = null;
   }, []);
-  const onDoubleClick = useCallback((e: React.MouseEvent) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    setView((v) => zoomAt(v, 1, e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2));
-  }, []);
+  const onDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (onPick) return; // double clicks add corners while drawing
+      const r = e.currentTarget.getBoundingClientRect();
+      setView((v) => zoomAt(v, 1, e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2));
+    },
+    [onPick],
+  );
 
   const n = 2 ** view.zoom;
+  const toScreen = ([lon, lat]: LonLat): [number, number] => {
+    const [tx, ty] = lonLatToTile(lon, lat, view.zoom);
+    return [tx * TILE - (view.x - size.w / 2), ty * TILE - (view.y - size.h / 2)];
+  };
+  const outline = ring?.map(toScreen) ?? [];
   const left = view.x - size.w / 2;
   const top = view.y - size.h / 2;
   const tiles: { key: string; src: string; x: number; y: number }[] = [];
@@ -101,19 +134,31 @@ export function StartMap() {
   return (
     <div
       ref={host}
-      className="start-map"
+      className={onPick ? 'start-map drawing' : 'start-map'}
       role="application"
-      aria-label="Map of Europe. Drag to pan, wheel or double-click to zoom. Search a place to import its road network."
+      aria-label={
+        onPick
+          ? 'Map: click to add corners of the import area, drag to pan, wheel to zoom.'
+          : 'Map of Europe. Drag to pan, wheel or double-click to zoom. Search a place or draw an area to import its road network.'
+      }
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onDoubleClick={onDoubleClick}
     >
       {tiles.map((t) => (
         // CORS mode: the app is cross-origin isolated (COEP require-corp); OSM tiles allow any origin.
         <img key={t.key} src={t.src} alt="" crossOrigin="anonymous" draggable={false} style={{ left: t.x, top: t.y }} />
       ))}
+      {outline.length > 0 && (
+        <svg className="start-map-outline" aria-label="Import outline">
+          {outline.length >= 3 ? <polygon points={outline.join(' ')} /> : <polyline points={outline.join(' ')} />}
+          {outline.map(([x, y], k) => (
+            <circle key={k} cx={x} cy={y} r={4} />
+          ))}
+        </svg>
+      )}
       <div className="start-map-zoom">
         <button type="button" aria-label="Zoom in" onClick={() => setView((v) => zoomAt(v, 1, 0, 0))}>
           +

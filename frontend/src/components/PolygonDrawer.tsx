@@ -6,7 +6,8 @@ export interface PolygonDrawerProps {
   busy: boolean;
   onUndo: () => void;
   onClear: () => void;
-  onRectangle: () => void;
+  /** Back to the searched rectangle; absent when the outline was started on the map (#142). */
+  onRectangle?: () => void;
   onImport: () => void;
   onCancel: () => void;
 }
@@ -42,9 +43,11 @@ export function PolygonDrawer({ ring, busy, onUndo, onClear, onRectangle, onImpo
         <button type="button" className="primary" onClick={onImport} disabled={busy || problem !== null}>
           Import this area
         </button>
-        <button type="button" onClick={onRectangle} disabled={busy}>
-          Use a rectangle
-        </button>
+        {onRectangle && (
+          <button type="button" onClick={onRectangle} disabled={busy}>
+            Use a rectangle
+          </button>
+        )}
         <button type="button" onClick={onCancel} disabled={busy}>
           Cancel
         </button>

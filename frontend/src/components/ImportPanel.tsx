@@ -104,7 +104,7 @@ export function ImportPanel({ api, onArea, onDraw, onPackage, onGeocoderAttribut
   const startShape = () => setShape({ ring: [] });
   const backToRectangle = () => {
     setShape(null);
-    if (selection) onArea(selection.bbox);
+    onArea(selection ? selection.bbox : null);
   };
 
   const load = async (work: (signal: AbortSignal) => Promise<string>) => {
@@ -169,6 +169,13 @@ export function ImportPanel({ api, onArea, onDraw, onPackage, onGeocoderAttribut
         onSelect={select}
         onAttribution={onGeocoderAttribution}
       />
+      {!selection && !shape && onDraw && !busy && (
+        <div className="buttons draw-start">
+          <button type="button" onClick={startShape}>
+            Draw an area on the map
+          </button>
+        </div>
+      )}
       {(selection ?? shape) && (
         <div className="field import-name">
           <label htmlFor="import-name">Name of the import</label>
@@ -202,7 +209,7 @@ export function ImportPanel({ api, onArea, onDraw, onPackage, onGeocoderAttribut
           busy={busy}
           onUndo={() => setShape((s) => (s ? { ring: s.ring.slice(0, -1) } : s))}
           onClear={() => setShape({ ring: [] })}
-          onRectangle={backToRectangle}
+          {...(selection ? { onRectangle: backToRectangle } : {})}
           onImport={startImport}
           onCancel={cancelSelection}
         />

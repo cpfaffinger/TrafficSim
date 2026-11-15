@@ -139,6 +139,28 @@ fn bus_stops_at_the_stop_position_and_dwells_for_the_configured_time() {
     assert!((m.mean_dwell.unwrap() - 20.0).abs() < 1e-9);
 }
 
+/// #132: a bus re-routed off its line while dwelling (a missed turn) pulls out and drives on instead
+/// of standing still forever; buses on a line never follow navigation detours.
+#[test]
+fn a_bus_rerouted_while_dwelling_drives_on() {
+    let net = line_builder(1, &[("up", 150.0, false)], 600.0).network();
+    let mut config = config(60.0, 0.0);
+    config.navigation.share = 1.0;
+    let mut s = sim_on(net, config, 3);
+    assert!(run_until(&mut s, 700.0, |s| dwelling_bus(s).is_some()));
+    let id = dwelling_bus(&s).unwrap().id;
+    let i = s.vehicles.iter().position(|v| v.id == id).unwrap();
+    let rest = s.routes[s.vehicles[i].route as usize][s.vehicles[i].route_pos as usize..].to_vec();
+    s.routes.push(rest);
+    s.vehicles[i].route = (s.routes.len() - 1) as u32;
+    s.vehicles[i].route_pos = 0;
+    assert!(
+        run_until(&mut s, 200.0, |s| s.vehicles().iter().all(|v| v.id != id)),
+        "the bus left the network"
+    );
+    assert_eq!(s.stats().nav_accepted + s.stats().nav_ignored, 0);
+}
+
 fn link_id(s: &Simulation, v: &Vehicle) -> String {
     s.network().links[s.network().segment_link(v.seg) as usize]
         .id

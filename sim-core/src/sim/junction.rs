@@ -238,10 +238,10 @@ impl Simulation {
             if n == CHAIN || net.seg_length[lane as usize] >= room {
                 break;
             }
-            let Some(&link) = route.get(idx + 1) else {
+            if route.get(idx + 1).is_none() {
                 break;
-            };
-            let next = net.choose_connector(lane, link, v.params.class.mask());
+            }
+            let next = super::choose_on_route(net, route, lane, idx + 1, v.params.class.mask());
             if next == NONE {
                 break;
             }
@@ -744,10 +744,10 @@ impl Simulation {
             if len >= needed {
                 break;
             }
-            let Some(&link) = route.get(idx) else {
+            if route.get(idx).is_none() {
                 break;
-            };
-            let next = net.choose_connector(lane, link, v.params.class.mask());
+            }
+            let next = super::choose_on_route(net, route, lane, idx, v.params.class.mask());
             if next == NONE {
                 break;
             }

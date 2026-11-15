@@ -138,13 +138,20 @@ impl Simulation {
         let v = &self.vehicles[i];
         let lane = &self.net.lanes[v.seg as usize];
         let link = &self.net.links[lane.link as usize];
-        let next = self.routes[v.route as usize][v.route_pos as usize + 1];
+        let route = &self.routes[v.route as usize];
+        let rp = v.route_pos as usize + 1;
+        let next = route[rp];
         let mask = v.params.class.mask();
         let idx = lane.index as i32;
-        (0..link.lane_count)
-            .filter(|&j| self.net.choose_connector(link.first_lane + j, next, mask) != NONE)
-            .min_by_key(|&j| (j as i32 - idx).abs())
-            .map(|j| (j as i32 - idx).signum())
+        let nearest = |ok: &dyn Fn(u32) -> bool| {
+            (0..link.lane_count)
+                .filter(|&j| ok(link.first_lane + j))
+                .min_by_key(|&j| (j as i32 - idx).abs())
+                .map(|j| (j as i32 - idx).signum())
+        };
+        // A lane that also leads on through very short links (#133), else any reaching the next link.
+        nearest(&|l| super::leads_on(&self.net, route, l, rp, mask, 4))
+            .or_else(|| nearest(&|l| self.net.choose_connector(l, next, mask) != NONE))
     }
 
     /// Leader and follower on `lane` around position `s` (occupant lists are sorted downstream
@@ -406,24 +413,14 @@ impl Simulation {
     /// change lanes on (a junction of several nodes) up to the first one long enough. A lane that
     /// only reaches the next link but then a turn the route does not take is a dead end there.
     fn lane_leads_on(&self, lane: u32, route: u32, idx: u32, mask: u8) -> bool {
-        const ROOM: f64 = 30.0;
-        let net = &self.net;
-        let route = &self.routes[route as usize];
-        let mut lane = lane;
-        for k in idx as usize..idx as usize + 4 {
-            let Some(&next) = route.get(k) else {
-                return true;
-            };
-            let c = net.choose_connector(lane, next, mask);
-            if c == NONE {
-                return false;
-            }
-            lane = net.connectors[c as usize].to_lane;
-            if net.seg_length[lane as usize] >= ROOM {
-                return true;
-            }
-        }
-        true
+        super::leads_on(
+            &self.net,
+            &self.routes[route as usize],
+            lane,
+            idx as usize,
+            mask,
+            4,
+        )
     }
 
     /// Target lane of an advisable and safe lane change, if any.

@@ -150,6 +150,11 @@ impl Transit {
         self.buses.get(&v.id)
     }
 
+    /// A bus running a line (#132): it keeps to its line and never takes navigation detours.
+    pub(super) fn scheduled(&self, v: &Vehicle) -> bool {
+        self.bus(v).is_some()
+    }
+
     pub(super) fn dwelling(&self, v: &Vehicle) -> bool {
         self.bus(v).is_some_and(|b| b.dwelling)
     }
@@ -356,10 +361,13 @@ impl Simulation {
             let (route, line) = (self.transit.lines[li].route, self.transit.lines[li].line as usize);
             let stops = &self.net.transit[line].stops;
             if v.route != route {
-                // Re-routed off its line: the remaining stops are missed.
+                // Re-routed off its line (a missed turn): the remaining stops are missed, and a bus
+                // re-routed while dwelling pulls out (#132: it stood still forever).
                 self.transit.lines[li].stats.missed +=
                     (stops.len() as u64).saturating_sub(u64::from(bus.next_stop));
                 bus.next_stop = stops.len() as u32;
+                bus.dwelling = false;
+                bus.bay = false;
             } else if bus.dwelling {
                 if time >= bus.dwell_until && (!bus.bay || self.bay_exit_clear(i)) {
                     bus.dwelling = false;

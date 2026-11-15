@@ -399,6 +399,53 @@ fn ballistic(speed: f64, acc: f64, dt: f64) -> (f64, f64) {
 
 use perception::exponential;
 
+/// Links shorter than this cannot be used to change lanes (a junction of several nodes): a lane is
+/// judged by where it leads through them (#126, #133).
+const LANE_CHOICE_ROOM: f64 = 30.0;
+
+/// Whether `lane` leads along `route` from `route[idx]` on: some connector reaches that link on a
+/// lane that is long enough to change lanes or itself leads on (up to `depth` links ahead).
+pub(super) fn leads_on(net: &Network, route: &[u32], lane: u32, idx: usize, mask: u8, depth: u32) -> bool {
+    let Some(&next) = route.get(idx) else {
+        return true;
+    };
+    if depth == 0 {
+        return true;
+    }
+    net.lane_outgoing(lane).iter().any(|&c| {
+        let info = &net.connectors[c as usize];
+        info.to_link == next
+            && info.class_mask & mask != 0
+            && (net.seg_length[info.to_lane as usize] >= LANE_CHOICE_ROOM
+                || leads_on(net, route, info.to_lane, idx + 1, mask, depth - 1))
+    })
+}
+
+/// The connector from `lane` to `route[idx]`: of several (one lane fanning out to two), the first
+/// whose target lane leads on along the route, else the first (#133: a vehicle entering a 1 m link
+/// between two junction nodes on a lane that only turns off was stranded there).
+pub(super) fn choose_on_route(net: &Network, route: &[u32], lane: u32, idx: usize, mask: u8) -> u32 {
+    let Some(&next) = route.get(idx) else {
+        return NONE;
+    };
+    let mut first = NONE;
+    for &c in net.lane_outgoing(lane) {
+        let info = &net.connectors[c as usize];
+        if info.to_link != next || info.class_mask & mask == 0 {
+            continue;
+        }
+        if first == NONE {
+            first = c;
+        }
+        if net.seg_length[info.to_lane as usize] >= LANE_CHOICE_ROOM
+            || leads_on(net, route, info.to_lane, idx + 1, mask, 3)
+        {
+            return c;
+        }
+    }
+    first
+}
+
 /// Destination choice cache key: entry link, class + informed, destination set, [`Router::fit_key`].
 type DestKey = (u32, u8, u32, u64);
 
@@ -600,10 +647,13 @@ impl Simulation {
 
     /// Next connector of a vehicle on (or about to enter) `lane`, following its route.
     fn connector_on_route(&self, v: &Vehicle, lane: u32) -> u32 {
-        match self.routes[v.route as usize].get(v.route_pos as usize + 1) {
-            Some(&next) => self.net.choose_connector(lane, next, v.params.class.mask()),
-            None => NONE,
-        }
+        choose_on_route(
+            &self.net,
+            &self.routes[v.route as usize],
+            lane,
+            v.route_pos as usize + 1,
+            v.params.class.mask(),
+        )
     }
 
     fn has_next_link(&self, v: &Vehicle) -> bool {
@@ -895,9 +945,7 @@ impl Simulation {
                     first = false;
                     v.next_conn
                 } else {
-                    route
-                        .get(rp + 1)
-                        .map_or(NONE, |&l| net.choose_connector(cur, l, mask))
+                    choose_on_route(net, route, cur, rp + 1, mask)
                 };
                 if c == NONE {
                     break;
@@ -1033,10 +1081,13 @@ impl Simulation {
                         v.end_lane_change();
                         v.route_pos += 1;
                         v.trail.push(info.to_link);
-                        v.next_conn = match route.get(v.route_pos as usize + 1) {
-                            Some(&next) => net.choose_connector(info.to_lane, next, v.params.class.mask()),
-                            None => NONE,
-                        };
+                        v.next_conn = choose_on_route(
+                            net,
+                            route,
+                            info.to_lane,
+                            v.route_pos as usize + 1,
+                            v.params.class.mask(),
+                        );
                         v.stop_done = false;
                         v.wait = 0.0;
                         // Chained junctions (#117): the claim moves on to the next connector.

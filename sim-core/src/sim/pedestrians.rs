@@ -622,9 +622,7 @@ impl Simulation {
                     first = false;
                     v.next_conn
                 } else {
-                    route
-                        .get(rp + 1)
-                        .map_or(NONE, |&l| net.choose_connector(seg, l, mask))
+                    super::choose_on_route(net, route, seg, rp + 1, mask)
                 };
                 if c == NONE {
                     break;

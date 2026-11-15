@@ -114,7 +114,7 @@ impl Simulation {
             if !faster || new_route[..] == self.routes[self.vehicles[i].route as usize][rp..] {
                 continue;
             }
-            let conn = self.net.choose_connector(seg, new_route[1], fit.class.mask());
+            let conn = super::choose_on_route(&self.net, new_route, seg, 1, fit.class.mask());
             let link = &self.net.links[cur as usize];
             let to_end = self.net.seg_length[seg as usize] - self.vehicles[i].pos;
             // A new turn that needs lane changes is only taken with enough room to change.
@@ -148,6 +148,7 @@ impl Simulation {
             let v = &self.vehicles[i];
             if !v.navi
                 || self.is_informed(&v.params)
+                || self.transit.scheduled(v)
                 || !self.net.is_lane(v.seg)
                 || v.claimed != NONE
                 || v.lost
@@ -174,7 +175,7 @@ impl Simulation {
             {
                 continue;
             }
-            let conn = self.net.choose_connector(seg, new_route[1], fit.class.mask());
+            let conn = super::choose_on_route(&self.net, new_route, seg, 1, fit.class.mask());
             let link = &self.net.links[cur as usize];
             let to_end = self.net.seg_length[seg as usize] - self.vehicles[i].pos;
             if conn == NONE && to_end < horizon + link.no_lane_change_zone {

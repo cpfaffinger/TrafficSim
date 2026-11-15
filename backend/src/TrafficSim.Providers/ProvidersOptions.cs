@@ -87,8 +87,15 @@ public sealed class OverpassOptions : HttpProviderOptions
         CacheTtl = TimeSpan.FromDays(1);
     }
 
-    /// <summary>Further instances tried in order when the primary fails.</summary>
-    public IList<Uri> Mirrors { get; } = [new Uri("https://overpass.private.coffee/api/")];
+    /// <summary>
+    /// Further free, key-less instances with global coverage, tried in order when the primary fails
+    /// (OSM wiki "Overpass API", public instances). Geofabrik extracts are the last resort for roads.
+    /// </summary>
+    public IList<Uri> Mirrors { get; } =
+    [
+        new Uri("https://overpass.private.coffee/api/"),
+        new Uri("https://maps.mail.ru/osm/tools/overpass/api/"),
+    ];
 
     /// <summary>Largest bounding box accepted per request.</summary>
     public double MaxAreaSquareKilometers { get; set; } = 50;

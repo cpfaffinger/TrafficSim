@@ -46,16 +46,20 @@ public sealed class OverpassRoadNetworkSource : IRoadNetworkSource
         return FetchQueryAsync(OverpassQuery.Build(area, _options.QueryTimeoutSeconds), cancellationToken);
     }
 
-    private async Task<OsmDataSet> FetchQueryAsync(string query, CancellationToken cancellationToken)
+    private Task<OsmDataSet> FetchQueryAsync(string query, CancellationToken cancellationToken) =>
+        FirstAvailableAsync(_options, endpoint => FetchFromAsync(endpoint, query, cancellationToken));
+
+    /// <summary>Runs <paramref name="fetch"/> against the primary instance and then each mirror until one answers.</summary>
+    internal static async Task<T> FirstAvailableAsync<T>(OverpassOptions options, Func<Uri, Task<T>> fetch)
     {
-        var endpoints = new[] { _options.BaseUrl }.Concat(_options.Mirrors).Distinct().ToList();
+        var endpoints = new[] { options.BaseUrl }.Concat(options.Mirrors).Distinct().ToList();
         ProviderUnavailableException? last = null;
 
         foreach (var endpoint in endpoints)
         {
             try
             {
-                return await FetchFromAsync(endpoint, query, cancellationToken).ConfigureAwait(false);
+                return await fetch(endpoint).ConfigureAwait(false);
             }
             catch (ProviderUnavailableException ex)
             {

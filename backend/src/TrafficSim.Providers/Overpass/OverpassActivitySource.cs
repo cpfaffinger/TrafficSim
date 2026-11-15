@@ -68,8 +68,12 @@ public sealed class OverpassActivitySource : IActivitySource
     public Task<IReadOnlyList<OsmPoi>> FetchAsync(GeoPolygon area, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(area);
-        var uri = OverpassRoadNetworkSource.BuildUri(_options.BaseUrl, BuildQuery(area, _options.QueryTimeoutSeconds));
-        return ProviderErrors.GuardAsync<IReadOnlyList<OsmPoi>>(ProviderName, async () =>
+        var query = BuildQuery(area, _options.QueryTimeoutSeconds);
+        return OverpassRoadNetworkSource.FirstAvailableAsync(_options, endpoint => FetchFromAsync(OverpassRoadNetworkSource.BuildUri(endpoint, query), cancellationToken));
+    }
+
+    private Task<IReadOnlyList<OsmPoi>> FetchFromAsync(Uri uri, CancellationToken cancellationToken) =>
+        ProviderErrors.GuardAsync<IReadOnlyList<OsmPoi>>(ProviderName, async () =>
         {
             using var response = await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
             ProviderErrors.EnsureSuccess(ProviderName, response);
@@ -81,7 +85,6 @@ public sealed class OverpassActivitySource : IActivitySource
 
             return Map(body.Elements);
         }, cancellationToken);
-    }
 
     internal static List<OsmPoi> Map(IEnumerable<OverpassPoiElement> elements) => elements
         .Select(e => (Point: e.Lat is { } lat && e.Lon is { } lon ? (lat, lon) : e.Center is { } c ? (c.Lat, c.Lon) : ((double, double)?)null, e.Tags))

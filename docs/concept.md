@@ -261,7 +261,7 @@ Free by default; every provider is configurable and can be disabled ([ADR-0005](
 | Provider | Purpose | Policy notes we must honour |
 |----------|---------|------------------------------|
 | OpenStreetMap data (ODbL) | road network | Attribution "© OpenStreetMap contributors"; derived databases share-alike. |
-| Overpass API (overpass-api.de, other community instances) | area extracts | Fair use: small bboxes, rate limiting, caching, identify via User-Agent. Large areas → Geofabrik extracts. |
+| Overpass API (overpass-api.de; mirrors overpass.private.coffee, VK Maps) | area extracts | Fair use: small bboxes, rate limiting, caching, identify via User-Agent. Mirrors are tried in order when the primary fails; roads fall back to Geofabrik extracts last. Large areas → Geofabrik extracts. |
 | Photon (photon.komoot.io) | geocoding / search | Fair use, no bulk geocoding; self-hosted Photon container as fallback. |
 | Nominatim (nominatim.openstreetmap.org) | reverse geocoding fallback | Max 1 req/s, valid User-Agent, caching required. |
 | OpenFreeMap | vector tiles for basemap ground | Free, no key; attribution. |

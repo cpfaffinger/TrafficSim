@@ -11,6 +11,7 @@ import { StartMap } from '../components/StartMap';
 import { DemoIntro } from '../components/DemoIntro';
 import { parseNetworkPackage } from '../network/parse';
 import { SceneCameraPad } from '../components/SceneCameraPad';
+import { SceneCompass } from '../components/SceneCompass';
 import { SceneCredit } from '../components/SceneCredit';
 import { DrawRoadPanel } from '../editor/components/DrawRoadPanel';
 import { EditorPanel } from '../editor/components/EditorPanel';
@@ -415,18 +416,21 @@ export function NetworkViewer({ api, onAttributions, shareToken = null, scenario
             onClose={() => setDemandOpen(false)}
           />
         )}
-        {pkg && (
+        {(pkg || previewing) && (
           <div className="scene-side">
+            <SceneCompass scene={() => sceneRef.current} />
             {drawing && <DrawRoadPanel draft={editor.draft} onFinish={editor.finishRoad} />}
             {editing && !drawing && index && (
               <EditorPanel index={index} target={target} session={editor.session} scope={editor.scope} onScope={editor.setScope} />
             )}
-            <InspectorPanel
-              model={shownModel}
-              onClose={closeInspector}
-              onDebug={sim.ready && selection ? () => void downloadDebug() : undefined}
-              actions={vehicleActions}
-            />
+            {pkg && (
+              <InspectorPanel
+                model={shownModel}
+                onClose={closeInspector}
+                onDebug={sim.ready && selection ? () => void downloadDebug() : undefined}
+                actions={vehicleActions}
+              />
+            )}
           </div>
         )}
       </div>

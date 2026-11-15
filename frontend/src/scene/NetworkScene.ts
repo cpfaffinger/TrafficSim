@@ -465,6 +465,11 @@ export class NetworkScene {
     this.dirty = true;
   }
 
+  /** Current camera turn (radians, 0 = north up) for the compass (#156). */
+  cameraYaw(): number {
+    return this.controls.state.yaw;
+  }
+
   /** Turns the view north up, keeping the tilt. */
   northUp(): void {
     this.controls.orbitTo(this.controls.state.pitch, 0);

@@ -855,3 +855,39 @@ dl.stats dd {
   font-size: 12px;
   font-weight: 600;
 }
+
+/* Compass on the 3D view (#156). */
+.scene-compass {
+  align-self: flex-end;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.scene-compass .compass-ring {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.scene-compass .compass-north {
+  fill: #e5484d;
+}
+
+.scene-compass .compass-south {
+  fill: var(--muted);
+}
+
+.scene-compass .compass-n {
+  fill: var(--text);
+  font-size: 8px;
+  font-weight: 700;
+}

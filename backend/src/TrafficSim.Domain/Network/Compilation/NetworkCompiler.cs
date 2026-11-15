@@ -656,7 +656,10 @@ public static class NetworkCompiler
                 var tags = g.Tags;
                 var highway = Tags.Get(tags, "highway");
                 var degree = g.Pieces.Count;
-                var ring = g.Pieces.Count(p => IsRoundabout(p));
+                // Only roundabouts give the ring priority; on a circular junction (junction=circular) the
+                // roundabout rule does not apply (#136).
+                var ring = g.Pieces.Count(p => Tags.Get(p.Way.Tags, "junction") == "roundabout");
+                var circular = g.Pieces.Any(p => Tags.Get(p.Way.Tags, "junction") == "circular");
                 var nodeSigns = SignRule.NodeSigns(tags);
                 var priorityRoad = g.Pieces.Any(p => SignRule.IsPriorityRoad(p.Way.Tags));
                 if (((highway == "traffic_signals" || (degree <= 2 && CrossingRule.IsSignalisedCrossing(tags))) && !SignalsSuppressed(g) && !g.SignalMoved) || g.SignalNearby)
@@ -679,7 +682,7 @@ public static class NetworkCompiler
                 {
                     node.Control = NodeControl.AllWayStop;
                 }
-                else if (g.Pieces.All(p => RoadClasses.IsMinorStreet(p.RoadClass))
+                else if ((circular || g.Pieces.All(p => RoadClasses.IsMinorStreet(p.RoadClass)))
                          && (nodeSigns & (SignKinds.Stop | SignKinds.GiveWay)) == 0
                          && !priorityRoad
                          && g.Incoming.All(l => _approachSigns.GetValueOrDefault(l) == Sign.None))
@@ -692,8 +695,6 @@ public static class NetworkCompiler
                 }
             }
         }
-
-        private static bool IsRoundabout(Piece p) => Tags.Get(p.Way.Tags, "junction") is "roundabout" or "circular";
 
         // ---------------------------------------------------------------- geometry
 

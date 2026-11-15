@@ -330,6 +330,45 @@ public class NetworkCompilerTests
         Assert.NotEmpty(entry.Conflicts);
     }
 
+    [Fact]
+    public void Circular_junctions_without_signs_give_way_to_the_right_not_to_the_ring()
+    {
+        // #136: Paris, Place du General Brocard (junction=circular): the roundabout rule does not apply,
+        // so entering traffic is not made to yield to the ring (it waited 800 s behind a signal).
+        var b = new OsmBuilder()
+            .Node(1, 20, 0).Node(2, 0, 20).Node(3, -20, 0).Node(4, 0, -20)
+            .Node(11, 150, 0).Node(13, -150, 0)
+            .Way(100, [1, 2, 3, 4, 1], ("highway", "tertiary"), ("junction", "circular"))
+            .Way(101, [11, 1], ("highway", "residential"))
+            .Way(103, [13, 3], ("highway", "residential"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        Assert.Contains(net.Links, l => l.Roundabout);
+        var entryNode = net.Nodes.Single(n => n.OsmId == 1);
+        Assert.Equal(NodeControl.RightBeforeLeft, entryNode.Control);
+        Assert.All(net.Connectors.Where(c => c.NodeId == entryNode.Id), c => Assert.Equal(ConnectorPriority.RightBeforeLeft, c.Priority));
+    }
+
+    [Fact]
+    public void Signed_entries_of_a_circular_junction_yield_to_the_ring()
+    {
+        var b = new OsmBuilder()
+            .Node(1, 20, 0).Node(2, 0, 20).Node(3, -20, 0).Node(4, 0, -20)
+            .Node(11, 150, 0).Node(13, -150, 0)
+            .Node(21, 40, 0, ("highway", "give_way"))
+            .Way(100, [1, 2, 3, 4, 1], ("highway", "tertiary"), ("junction", "circular"))
+            .Way(101, [11, 21, 1], ("highway", "residential"))
+            .Way(103, [13, 3], ("highway", "residential"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var entryNode = net.Nodes.Single(n => n.OsmId == 1);
+        Assert.Equal(NodeControl.Priority, entryNode.Control);
+        var atEntry = net.Connectors.Where(c => c.NodeId == entryNode.Id).ToList();
+        var entry = net.Links.Single(l => l.OsmWayId == 101 && l.To == entryNode.Id);
+        Assert.All(atEntry.Where(c => c.FromLink == entry.Id), c => Assert.Equal(ConnectorPriority.Minor, c.Priority));
+        Assert.Contains(atEntry, c => c.FromLink != entry.Id && c.Priority == ConnectorPriority.Major);
+    }
+
     [Theory]
     [InlineData(8, 12.0)] // ~45 m ring: too tight for articulated trucks (#125)
     [InlineData(20, null)] // ~113 m ring

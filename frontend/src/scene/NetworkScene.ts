@@ -109,6 +109,14 @@ export class NetworkScene {
   private basemapKey = '';
   /** How far (km) the basemap surroundings reach around the loaded network (#122). */
   private surroundingsKm = 0;
+  /** Geo box the current basemap covers. */
+  private basemapBbox: BBox | null = null;
+  private basemapLoading = false;
+  /** While choosing an import area the camera pans freely and the basemap follows the view (#124). */
+  private followView = false;
+  private followChecked = 0;
+  /** Extent of the loaded network in scene coordinates (for its camera limits). */
+  private networkRect: [number, number, number, number] | null = null;
   private clickHandler: SceneClickHandler | null = null;
 
   constructor(
@@ -230,6 +238,7 @@ export class NetworkScene {
 
     const [minE, minN, maxE, maxN] = m.extent;
     const rect: [number, number, number, number] = [minE, -maxN, maxE, -minN];
+    this.networkRect = rect;
     const { margin, ...limits } = limitsFor(rect, this.controls.limits);
     this.controls.limits = limits;
     this.surroundingsKm = margin / 1000 + 1;
@@ -245,8 +254,11 @@ export class NetworkScene {
   showAreaPreview(area: BBox | Ring | null, closed = true): void {
     disposeGroup(this.overlayGroup);
     this.dirty = true;
+    this.followView = !!area && area.length > 0;
     if (!area) {
-      // Preview ended: show the loaded network's surroundings again.
+      // Preview ended: back to the network's limits and surroundings.
+      if (this.networkRect) this.controls.limits = limitsFor(this.networkRect, this.controls.limits);
+      // Show the loaded network's surroundings again.
       if (this.networkBbox && this.origin) this.loadBasemapFor(this.networkBbox, this.origin, this.currentPackage?.terrain, this.surroundingsKm);
       return;
     }
@@ -277,7 +289,7 @@ export class NetworkScene {
     fill.rotation.x = -Math.PI / 2;
     fill.position.set((w + e) / 2, 0.5, -(s + n) / 2);
     this.overlayGroup.add(outline, fill);
-    this.controls.limits = { ...limitsFor([w, -n, e, -s], this.controls.limits), bounds: [w - 3000, -n - 3000, e + 3000, -s + 3000] };
+    this.controls.limits = { ...limitsFor([w, -n, e, -s], this.controls.limits), bounds: null };
     this.controls.setState(frameRect([w, -n, e, -s], (this.camera.fov * Math.PI) / 180, this.camera.aspect, this.controls.limits));
     // Basemap around the proposed area (with room to draw a custom shape), also over a loaded network.
     this.loadBasemapFor(expandBbox(bbox, PREVIEW_BASEMAP_FACTOR), this.origin!);
@@ -444,11 +456,15 @@ export class NetworkScene {
     this.basemapAbort?.abort();
     const abort = new AbortController();
     this.basemapAbort = abort;
-    disposeGroup(this.basemapGroup);
+    this.basemapLoading = true;
     this.callbacks.onBasemap?.('loading', null);
     loadBasemap({ bbox, origin, signal: abort.signal })
       .then((result) => {
         if (abort.signal.aborted) return;
+        // The previous basemap stays until this one is ready (no blank map while panning, #124).
+        disposeGroup(this.basemapGroup);
+        this.basemapBbox = bbox;
+        this.basemapLoading = false;
         const meshes = buildBasemapMeshes(result.polygons);
         if (terrain) {
           // Ground polygons follow the terrain at its sample spacing (#87); buildings per vertex.
@@ -472,6 +488,7 @@ export class NetworkScene {
       })
       .catch(() => {
         if (abort.signal.aborted) return;
+        this.basemapLoading = false;
         this.basemapKey = '';
         this.callbacks.onBasemap?.('unavailable', null);
       });
@@ -520,6 +537,7 @@ export class NetworkScene {
     const dt = Math.min(this.clock.getDelta(), 0.1);
     if (this.controls.update(dt)) this.dirty = true;
     this.applyLod(false);
+    if (this.followView) this.followBasemap();
     // Render on demand: camera movement, new content or resize. Pointer moves mark dirty via the camera.
     const fogFar = Math.max(4000, this.controls.state.distance * 12);
     const fog = this.scene.fog as THREE.Fog;
@@ -533,6 +551,25 @@ export class NetworkScene {
       this.renderer.render(this.scene, this.camera);
     }
   };
+
+  /**
+   * Reloads the basemap around the view once it leaves the loaded area (#124): while choosing an
+   * import area the map continues in every direction. Checked twice a second, one load at a time.
+   */
+  private followBasemap(): void {
+    const now = performance.now();
+    if (now - this.followChecked < 500 || this.basemapLoading || !this.origin || !this.basemapBbox) return;
+    this.followChecked = now;
+    const { target, distance } = this.controls.state;
+    const half = distance * 1.2;
+    const plane = new LocalTangentPlane(this.origin);
+    const [east, north] = [target[0], -target[1]];
+    const [w, s] = plane.toGeo(east - half, north - half);
+    const [e, n] = plane.toGeo(east + half, north + half);
+    const b = this.basemapBbox;
+    if (w >= b[0] && s >= b[1] && e <= b[2] && n <= b[3]) return;
+    this.loadBasemapFor(expandBbox([w, s, e, n], 1.5), this.origin);
+  }
 
   private applyLod(force: boolean): void {
     const next = lodFor(this.controls.state.distance);

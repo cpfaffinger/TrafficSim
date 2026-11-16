@@ -1435,6 +1435,8 @@ public static class NetworkCompiler
             }
 
             var k = sources.Count;
+            var straight = !TurnLanesParser.IsLeftish(turn) && !TurnLanesParser.IsRightish(turn);
+            var added = straight && k == n && m > n ? AddedOnTheRight(incoming, outgoing) : 0;
             for (var j = 0; j < k; j++)
             {
                 if (TurnLanesParser.IsLeftish(turn) && movementCount > 1)
@@ -1445,18 +1447,54 @@ public static class NetworkCompiler
                 }
                 else
                 {
-                    yield return (sources[j], Math.Min(j, m - 1));
+                    yield return (sources[j], Math.Min(j + added, m - 1));
                 }
             }
 
-            // Added lanes on the left are fed by the leftmost source lane (through movements).
-            if (!TurnLanesParser.IsLeftish(turn) && !TurnLanesParser.IsRightish(turn) && m > k)
+            // Added lanes are fed by the nearest source lane (through movements): on the right where the
+            // arrows show them there, else on the left.
+            if (straight && m > k)
             {
-                for (var t = k; t < m; t++)
+                for (var t = 0; t < added; t++)
+                {
+                    yield return (sources[0], t);
+                }
+
+                for (var t = k + added; t < m; t++)
                 {
                     yield return (sources[k - 1], t);
                 }
             }
+        }
+
+        /// <summary>
+        /// Lanes a road that widens adds on the right (#165): the shift that lines up most of the arrows of
+        /// the lanes before with those after (left|left|through|through → left|left|through|through|right:
+        /// one). Without arrows, or with no better fit, lanes are added on the left (none).
+        /// </summary>
+        private static int AddedOnTheRight(Link incoming, Link outgoing)
+        {
+            var (n, m) = (incoming.Lanes.Count, outgoing.Lanes.Count);
+            var (best, bestScore) = (0, 0);
+            for (var shift = 0; shift <= m - n; shift++)
+            {
+                var score = 0;
+                for (var j = 0; j < n; j++)
+                {
+                    var (a, b) = (incoming.Lanes[j].Turns, outgoing.Lanes[j + shift].Turns);
+                    if (a != TurnMarkings.None && b != TurnMarkings.None)
+                    {
+                        score += (a & b) != 0 ? 1 : -1;
+                    }
+                }
+
+                if (score > bestScore)
+                {
+                    (best, bestScore) = (shift, score);
+                }
+            }
+
+            return best;
         }
 
         private void AddConnector(GraphNode g, Link incoming, int fromLane, Link outgoing, int toLane, Turn turn, HashSet<Piece> majorPieces)

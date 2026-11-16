@@ -275,6 +275,29 @@ public class NetworkCompilerTests
     }
 
     [Theory]
+    [InlineData("left|left|through|through", "left|left|through|through|right", new[] { 0, 0, 1, 2, 3 })]
+    [InlineData("left|through", "left|left|through", new[] { 0, 1, 1 })]
+    [InlineData("", "", new[] { 0, 1, 1 })]
+    public void A_widening_road_adds_its_lane_where_the_arrows_show_it(string before, string after, int[] fromLaneOfTarget)
+    {
+        // #165: Copenhagen, Kalvebod Brygge: left|left|through|through widens to a right turn lane on the
+        // right; the left turn lanes went on as through lanes. Without arrows the lane is added on the left.
+        var lanesBefore = before.Length == 0 ? 2 : before.Split('|').Length;
+        var lanesAfter = after.Length == 0 ? 3 : after.Split('|').Length;
+        var b = new OsmBuilder()
+            .Node(1, -200, 0).Node(2, 0, 0).Node(3, 200, 0)
+            .Way(10, [1, 2], [("highway", "primary"), ("oneway", "yes"), ("lanes", $"{lanesBefore}"), .. Arrows(before)])
+            .Way(11, [2, 3], [("highway", "primary"), ("oneway", "yes"), ("lanes", $"{lanesAfter}"), .. Arrows(after)]);
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var approach = net.Links.Single(l => l.OsmWayId == 10);
+        var pairs = net.Connectors.Where(c => c.FromLink == approach.Id).OrderBy(c => c.ToLane).Select(c => (c.FromLane, c.ToLane)).ToList();
+        Assert.Equal(fromLaneOfTarget.Select((from, to) => (from, to)), pairs);
+
+        static (string, string)[] Arrows(string turnLanes) => turnLanes.Length == 0 ? [] : [("turn:lanes", turnLanes)];
+    }
+
+    [Theory]
     [InlineData("through|slight_right")]
     [InlineData("none|slight_right")]
     [InlineData("|slight_right")]

@@ -318,6 +318,25 @@ public class NetworkCompilerTests
     }
 
     [Fact]
+    public void A_lane_with_arrows_for_both_branches_of_a_fork_feeds_both()
+    {
+        // #166: Stockholm, Centralbron: through|through;right|right forks into the bridge and a ramp; the
+        // through;right lane only fed the ramp, so the bridge had a single lane from three.
+        var b = new OsmBuilder()
+            .Node(1, -200, 0).Node(2, 0, 0).Node(3, 200, 30).Node(4, 200, -40)
+            .Way(10, [1, 2], ("highway", "trunk"), ("oneway", "yes"), ("turn:lanes", "through|through;right|right"))
+            .Way(11, [2, 3], ("highway", "trunk"), ("oneway", "yes"), ("lanes", "1"))
+            .Way(12, [2, 4], ("highway", "trunk_link"), ("oneway", "yes"), ("lanes", "2"));
+        var net = NetworkCompiler.Compile(b.Build(), b.Area());
+
+        var approach = net.Links.Single(l => l.OsmWayId == 10);
+        var fromApproach = net.Connectors.Where(c => c.FromLink == approach.Id).ToList();
+        int[] FromLanesTo(long way) => fromApproach.Where(c => c.ToLink == net.Links.Single(l => l.OsmWayId == way).Id).Select(c => c.FromLane).Distinct().Order().ToArray();
+        Assert.Equal([1, 2], FromLanesTo(11));
+        Assert.Equal([0, 1], FromLanesTo(12));
+    }
+
+    [Fact]
     public void Every_lane_leads_somewhere_when_no_arrow_fits()
     {
         // Arrows that match no movement at the node (mapping errors) must not strand a lane.

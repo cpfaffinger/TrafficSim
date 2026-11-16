@@ -1214,7 +1214,8 @@ public static class NetworkCompiler
         /// Source lanes per movement where a marked road forks into branches that all run nearly straight
         /// (motorway exits, #134), or null: lanes ordered by the direction of their arrow (left … through or
         /// unmarked … right) go to the branches in their order left to right, one arrow direction per branch
-        /// when the counts match; with two branches, the right one takes the lanes with right arrows.
+        /// when the counts match; with two branches, the right one takes the lanes with right arrows. Lanes
+        /// with a through arrow as well also go with the through lanes.
         /// </summary>
         private static List<IReadOnlyList<int>>? ForkLanes(Link incoming, List<Turn> turns)
         {
@@ -1246,6 +1247,16 @@ public static class NetworkCompiler
             else
             {
                 return null;
+            }
+
+            // A lane with a through arrow besides its turn arrow (through;right) also feeds the branch of the
+            // through lanes (#166: Centralbron in Stockholm).
+            var straight = groups.FindIndex(g => g.Any(k => score[k] == 0));
+            if (straight >= 0)
+            {
+                var shared = Enumerable.Range(0, score.Count)
+                    .Where(k => score[k] != 0 && (incoming.Lanes[k].Turns & TurnMarkings.Through) != 0 && !groups[straight].Contains(k));
+                groups[straight] = groups[straight].Concat(shared).Order().ToList();
             }
 
             return groups;

@@ -23,6 +23,15 @@ use crate::idm::IdmParams;
 use crate::network::{NONE, Network};
 use crate::routing::LANE_CHOICE_ROOM;
 
+/// Room (m) beyond its own length that a discretionary lane change leaves at the start of the
+/// target lane for a vehicle about to enter it from a connector (#164): what the junction
+/// needs to let that vehicle in (see `exit_space_ok`), plus a metre.
+const ENTRY_ROOM: f64 = 3.0;
+
+/// Road (m) left before the no-lane-change zone below which a mandatory lane change no longer
+/// keeps the start of the target lane clear (#164).
+const ENTRY_ROOM_LATER: f64 = 30.0;
+
 /// `3p² − 2p³`: smooth lateral position profile of a lane change (zero lateral speed at both ends).
 pub(super) fn smoothstep(p: f64) -> f64 {
     p * p * (3.0 - 2.0 * p)
@@ -544,6 +553,19 @@ impl Simulation {
                 .as_ref()
                 .map_or(f64::INFINITY, |f| s - me.length - f.pos);
             if gap_front < 1.0 || gap_back < 1.0 {
+                continue;
+            }
+            // A change keeps the start of the target lane clear for the vehicle about to enter
+            // it there: changing in right behind its stop line, again and again, starves that
+            // entry for good (#164: Madrid, a merge into Plaza de España waiting 680 s while
+            // vehicles from the next lane took every gap). A mandatory change only waits while
+            // there is road left to change on.
+            if (mandatory.is_none() || zone_start - v.pos > ENTRY_ROOM_LATER)
+                && follow.is_none()
+                && new_follower
+                    .as_ref()
+                    .is_some_and(|f| s - me.length < f.length + ENTRY_ROOM)
+            {
                 continue;
             }
             let b_safe = v.params.safe_deceleration * if mandatory.is_some() { 1.0 + urgency } else { 1.0 };
